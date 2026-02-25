@@ -97,13 +97,15 @@ impl Chart {
         });
 
         // Core chart primitives
-        out.extend(build_axis_commands(&layout, visible, ts_price, &pane_scales));
-        out.push(DrawCommand::PushClip { rect: price_pane });
-        out.extend(build_volume_commands(
+        out.extend(build_axis_commands(
+            &layout,
             visible,
             ts_price,
-            price_pane,
-            max_vol,
+            &pane_scales,
+        ));
+        out.push(DrawCommand::PushClip { rect: price_pane });
+        out.extend(build_volume_commands(
+            visible, ts_price, price_pane, max_vol,
         ));
         out.extend(build_candle_commands(visible, ts_price, ps));
         out.push(DrawCommand::PopClip);
@@ -140,14 +142,12 @@ impl Chart {
         }
 
         // User drawings are painted last so they stay visually on top.
-        out.push(DrawCommand::PushClip { rect: layout.plot });
         out.extend(build_drawing_commands(
             self.drawings.items(),
             layout,
             ps,
             self.viewport,
         ));
-        out.push(DrawCommand::PopClip);
 
         out
     }

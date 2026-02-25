@@ -24,11 +24,9 @@ pub fn build_drawing_commands(
             Drawing::HorizontalLine(h) => {
                 let y = ps.y_for_price(h.price);
                 if y >= price_pane.y && y <= price_pane.bottom() {
+                    out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Line {
-                        from: Point {
-                            x: price_pane.x,
-                            y,
-                        },
+                        from: Point { x: price_pane.x, y },
                         to: Point {
                             x: price_pane.right(),
                             y,
@@ -47,6 +45,7 @@ pub fn build_drawing_commands(
                         color: "#fbbf24".to_string(),
                         align: "right".to_string(),
                     });
+                    out.push(DrawCommand::PopClip);
                 }
             }
             Drawing::VerticalLine(v) => {
@@ -57,11 +56,9 @@ pub fn build_drawing_commands(
                         let x = price_pane.x + price_pane.w * u;
                         let bottom_y = layout.plot_bottom();
 
+                        out.push(DrawCommand::PushClip { rect: layout.plot });
                         out.push(DrawCommand::Line {
-                            from: Point {
-                                x,
-                                y: price_pane.y,
-                            },
+                            from: Point { x, y: price_pane.y },
                             to: Point { x, y: bottom_y },
                             width: 1.0,
                             color: "#38bdf8".to_string(),
@@ -77,6 +74,7 @@ pub fn build_drawing_commands(
                             color: "#7dd3fc".to_string(),
                             align: "center".to_string(),
                         });
+                        out.push(DrawCommand::PopClip);
                     }
                 }
             }
