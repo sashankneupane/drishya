@@ -1,7 +1,5 @@
 use crate::{
-    drawings::hit_test::{
-        InteractionMode, LocalHitInfo, RectCorner, RectEdge, RectHitTarget,
-    },
+    drawings::hit_test::{InteractionMode, LocalHitInfo, RectCorner, RectEdge, RectHitTarget},
     types::Point,
 };
 
@@ -88,7 +86,9 @@ impl Chart {
 
         match self.drawing_tool_mode {
             crate::chart::tools::DrawingToolMode::Select => {
-                if let Some(hit) = self.hit_test_drawings(x_pixels, y_pixels, InteractionMode::Select) {
+                if let Some(hit) =
+                    self.hit_test_drawings(x_pixels, y_pixels, InteractionMode::Select)
+                {
                     self.drawing_interaction.pointer_down = true;
                     self.drawing_interaction.dragging_drawing_id = Some(hit.primitive_id);
                     self.drawing_interaction.dragging_resize_target = match hit.local {

@@ -146,8 +146,10 @@ impl Chart {
                         continue;
                     };
 
-                    let start_x = vp.world_x_to_pixel_x(ray.start_index, price_pane.x, price_pane.w.max(1.0));
-                    let end_x = vp.world_x_to_pixel_x(ray.end_index, price_pane.x, price_pane.w.max(1.0));
+                    let start_x =
+                        vp.world_x_to_pixel_x(ray.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let end_x =
+                        vp.world_x_to_pixel_x(ray.end_index, price_pane.x, price_pane.w.max(1.0));
                     if (end_x - start_x).abs() <= 0.5 {
                         continue;
                     }
@@ -181,8 +183,10 @@ impl Chart {
                     let Some(vp) = self.viewport else {
                         continue;
                     };
-                    let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w.max(1.0));
-                    let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w.max(1.0));
+                    let left_x =
+                        vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let right_x =
+                        vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w.max(1.0));
                     let top_y = ps.y_for_price(r.top_price);
                     let bottom_y = ps.y_for_price(r.bottom_price);
 
@@ -206,8 +210,10 @@ impl Chart {
                     let Some(vp) = self.viewport else {
                         continue;
                     };
-                    let left_x = vp.world_x_to_pixel_x(p.start_index, price_pane.x, price_pane.w.max(1.0));
-                    let right_x = vp.world_x_to_pixel_x(p.end_index, price_pane.x, price_pane.w.max(1.0));
+                    let left_x =
+                        vp.world_x_to_pixel_x(p.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let right_x =
+                        vp.world_x_to_pixel_x(p.end_index, price_pane.x, price_pane.w.max(1.0));
                     let top_y = ps.y_for_price(p.target_price);
                     let bottom_y = ps.y_for_price(p.stop_price);
 
@@ -231,8 +237,10 @@ impl Chart {
                     let Some(vp) = self.viewport else {
                         continue;
                     };
-                    let left_x = vp.world_x_to_pixel_x(p.start_index, price_pane.x, price_pane.w.max(1.0));
-                    let right_x = vp.world_x_to_pixel_x(p.end_index, price_pane.x, price_pane.w.max(1.0));
+                    let left_x =
+                        vp.world_x_to_pixel_x(p.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let right_x =
+                        vp.world_x_to_pixel_x(p.end_index, price_pane.x, price_pane.w.max(1.0));
                     let top_y = ps.y_for_price(p.stop_price);
                     let bottom_y = ps.y_for_price(p.target_price);
 
@@ -256,16 +264,10 @@ impl Chart {
                     let Some(vp) = self.viewport else {
                         continue;
                     };
-                    let left_x = vp.world_x_to_pixel_x(
-                        fib.start_index,
-                        price_pane.x,
-                        price_pane.w.max(1.0),
-                    );
-                    let right_x = vp.world_x_to_pixel_x(
-                        fib.end_index,
-                        price_pane.x,
-                        price_pane.w.max(1.0),
-                    );
+                    let left_x =
+                        vp.world_x_to_pixel_x(fib.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let right_x =
+                        vp.world_x_to_pixel_x(fib.end_index, price_pane.x, price_pane.w.max(1.0));
                     let top_y = ps.y_for_price(fib.start_price.max(fib.end_price));
                     let bottom_y = ps.y_for_price(fib.start_price.min(fib.end_price));
 

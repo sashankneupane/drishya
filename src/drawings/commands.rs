@@ -15,8 +15,12 @@ use crate::drawings::{store::DrawingStore, types::DrawingId};
 
 #[derive(Debug, Clone, Copy)]
 pub enum DrawingCommand {
-    AddHorizontalLine { price: f64 },
-    AddVerticalLine { index: f32 },
+    AddHorizontalLine {
+        price: f64,
+    },
+    AddVerticalLine {
+        index: f32,
+    },
     AddRay {
         start_index: f32,
         end_index: f32,
@@ -49,7 +53,9 @@ pub enum DrawingCommand {
         start_price: f64,
         end_price: f64,
     },
-    RemoveById { id: DrawingId },
+    RemoveById {
+        id: DrawingId,
+    },
     ClearAll,
 }
 

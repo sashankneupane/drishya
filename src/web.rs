@@ -252,8 +252,9 @@ impl WasmChart {
 
     /// Returns current drawing layer order as JSON array.
     pub fn drawing_layer_order_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.chart.drawing_layer_order())
-            .map_err(|e| JsValue::from_str(&format!("Failed to serialize drawing layer order: {e}")))
+        serde_json::to_string(&self.chart.drawing_layer_order()).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize drawing layer order: {e}"))
+        })
     }
 
     /// Hit-tests drawings at cursor position and returns structured JSON.

@@ -81,14 +81,33 @@ pub fn short_from_points(
 }
 
 pub fn long_preview(start_index: f32, start_price: f64, end_index: f32, end_price: f64) -> Drawing {
-    Drawing::LongPosition(long_from_points(start_index, start_price, end_index, end_price))
+    Drawing::LongPosition(long_from_points(
+        start_index,
+        start_price,
+        end_index,
+        end_price,
+    ))
 }
 
-pub fn short_preview(start_index: f32, start_price: f64, end_index: f32, end_price: f64) -> Drawing {
-    Drawing::ShortPosition(short_from_points(start_index, start_price, end_index, end_price))
+pub fn short_preview(
+    start_index: f32,
+    start_price: f64,
+    end_index: f32,
+    end_price: f64,
+) -> Drawing {
+    Drawing::ShortPosition(short_from_points(
+        start_index,
+        start_price,
+        end_index,
+        end_price,
+    ))
 }
 
-pub fn add_long_command_from_anchor(world_x: f32, entry_price: f64, price_span: f64) -> DrawingCommand {
+pub fn add_long_command_from_anchor(
+    world_x: f32,
+    entry_price: f64,
+    price_span: f64,
+) -> DrawingCommand {
     let long = long_from_anchor(world_x, entry_price, price_span);
     DrawingCommand::AddLongPosition {
         start_index: long.start_index,
@@ -115,7 +134,11 @@ pub fn add_long_command_from_points(
     }
 }
 
-pub fn add_short_command_from_anchor(world_x: f32, entry_price: f64, price_span: f64) -> DrawingCommand {
+pub fn add_short_command_from_anchor(
+    world_x: f32,
+    entry_price: f64,
+    price_span: f64,
+) -> DrawingCommand {
     let short = short_from_anchor(world_x, entry_price, price_span);
     DrawingCommand::AddShortPosition {
         start_index: short.start_index,
@@ -292,12 +315,7 @@ mod tests {
             group_id: None,
         };
 
-        let target = resize_long(
-            &mut item,
-            RectHitTarget::Edge(RectEdge::Left),
-            120.0,
-            8.0,
-        );
+        let target = resize_long(&mut item, RectHitTarget::Edge(RectEdge::Left), 120.0, 8.0);
 
         assert_eq!(target, RectHitTarget::Edge(RectEdge::Right));
         assert_eq!(item.start_index, 100.0);

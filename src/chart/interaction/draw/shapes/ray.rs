@@ -27,7 +27,8 @@ impl Chart {
             return;
         };
 
-        let cmd = ray_shape::add_command_from_points(start_index, start_price, end_index, end_price);
+        let cmd =
+            ray_shape::add_command_from_points(start_index, start_price, end_index, end_price);
         let _ = execute_command(&mut self.drawings, cmd);
     }
 }

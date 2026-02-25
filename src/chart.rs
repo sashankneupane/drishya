@@ -15,6 +15,7 @@ pub mod scene;
 pub mod state;
 pub mod tools;
 
+use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
     plots::model::PaneId,
@@ -23,7 +24,6 @@ use crate::{
     types::{Candle, Point, Size},
     viewport::Viewport,
 };
-use self::tools::{DrawingInteractionState, DrawingToolMode};
 use std::collections::{HashMap, HashSet};
 
 pub struct Chart {

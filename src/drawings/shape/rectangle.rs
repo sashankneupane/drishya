@@ -18,7 +18,12 @@ pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> Rectangle {
     }
 }
 
-pub fn from_points(start_index: f32, start_price: f64, end_index: f32, end_price: f64) -> Rectangle {
+pub fn from_points(
+    start_index: f32,
+    start_price: f64,
+    end_index: f32,
+    end_price: f64,
+) -> Rectangle {
     Rectangle {
         id: 0,
         start_index,
@@ -59,7 +64,12 @@ pub fn add_command_from_points(
     }
 }
 
-pub fn resize(rect: &mut Rectangle, target: RectHitTarget, world_x: f32, price: f64) -> RectHitTarget {
+pub fn resize(
+    rect: &mut Rectangle,
+    target: RectHitTarget,
+    world_x: f32,
+    price: f64,
+) -> RectHitTarget {
     let mut target = target;
 
     match target {
@@ -154,12 +164,7 @@ mod tests {
             group_id: None,
         };
 
-        let target = resize(
-            &mut rect,
-            RectHitTarget::Edge(RectEdge::Left),
-            120.0,
-            8.0,
-        );
+        let target = resize(&mut rect, RectHitTarget::Edge(RectEdge::Left), 120.0, 8.0);
 
         assert_eq!(target, RectHitTarget::Edge(RectEdge::Right));
         assert_eq!(rect.start_index, 100.0);

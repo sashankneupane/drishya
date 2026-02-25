@@ -10,44 +10,6 @@ pub fn levels() -> &'static [f64] {
     &FIB_LEVELS
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample_fib(start_price: f64, end_price: f64) -> FibRetracement {
-        FibRetracement {
-            id: 1,
-            start_index: 10.0,
-            end_index: 20.0,
-            start_price,
-            end_price,
-            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
-            group_id: None,
-        }
-    }
-
-    #[test]
-    fn level_price_maps_zero_and_one_to_anchors() {
-        let fib = sample_fib(110.0, 100.0);
-        assert_eq!(level_price(&fib, 0.0), 100.0);
-        assert_eq!(level_price(&fib, 1.0), 110.0);
-    }
-
-    #[test]
-    fn negative_level_extends_in_move_direction_down_move() {
-        let fib = sample_fib(110.0, 100.0);
-        let ext = level_price(&fib, -0.272);
-        assert!(ext < fib.end_price);
-    }
-
-    #[test]
-    fn negative_level_extends_in_move_direction_up_move() {
-        let fib = sample_fib(100.0, 110.0);
-        let ext = level_price(&fib, -0.272);
-        assert!(ext > fib.end_price);
-    }
-}
-
 pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> FibRetracement {
     FibRetracement {
         id: 0,
@@ -60,7 +22,12 @@ pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> FibRetracement 
     }
 }
 
-pub fn from_points(start_index: f32, start_price: f64, end_index: f32, end_price: f64) -> FibRetracement {
+pub fn from_points(
+    start_index: f32,
+    start_price: f64,
+    end_index: f32,
+    end_price: f64,
+) -> FibRetracement {
     FibRetracement {
         id: 0,
         start_index,
@@ -101,7 +68,12 @@ pub fn preview(start_index: f32, start_price: f64, end_index: f32, end_price: f6
     Drawing::FibRetracement(from_points(start_index, start_price, end_index, end_price))
 }
 
-pub fn resize(fib: &mut FibRetracement, target: RectHitTarget, world_x: f32, price: f64) -> RectHitTarget {
+pub fn resize(
+    fib: &mut FibRetracement,
+    target: RectHitTarget,
+    world_x: f32,
+    price: f64,
+) -> RectHitTarget {
     let mut target = target;
 
     match target {
@@ -159,5 +131,43 @@ fn flip_resize_target_x(target: RectHitTarget) -> RectHitTarget {
             RectCorner::BottomLeft => RectCorner::BottomRight,
             RectCorner::BottomRight => RectCorner::BottomLeft,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_fib(start_price: f64, end_price: f64) -> FibRetracement {
+        FibRetracement {
+            id: 1,
+            start_index: 10.0,
+            end_index: 20.0,
+            start_price,
+            end_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+        }
+    }
+
+    #[test]
+    fn level_price_maps_zero_and_one_to_anchors() {
+        let fib = sample_fib(110.0, 100.0);
+        assert_eq!(level_price(&fib, 0.0), 100.0);
+        assert_eq!(level_price(&fib, 1.0), 110.0);
+    }
+
+    #[test]
+    fn negative_level_extends_in_move_direction_down_move() {
+        let fib = sample_fib(110.0, 100.0);
+        let ext = level_price(&fib, -0.272);
+        assert!(ext < fib.end_price);
+    }
+
+    #[test]
+    fn negative_level_extends_in_move_direction_up_move() {
+        let fib = sample_fib(100.0, 110.0);
+        let ext = level_price(&fib, -0.272);
+        assert!(ext > fib.end_price);
     }
 }

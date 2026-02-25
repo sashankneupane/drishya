@@ -10,8 +10,8 @@ use crate::{
     types::Size,
 };
 
-use super::Chart;
 use super::tools::{CHART_OBJECT_TREE_MARGIN_PX, CHART_OBJECT_TREE_WIDTH_PX};
+use super::Chart;
 
 const DEFAULT_PRICE_WEIGHT: f32 = 3.0;
 const DEFAULT_NAMED_PANE_WEIGHT: f32 = 1.0;

@@ -1,10 +1,7 @@
 use crate::{
-    drawings::shape::fib as fib_shape,
-    drawings::shape::position as position_shape,
-    drawings::shape::ray as ray_shape,
-    drawings::shape::rectangle as rectangle_shape,
-    drawings::types::Drawing,
-    types::Point,
+    drawings::shape::fib as fib_shape, drawings::shape::position as position_shape,
+    drawings::shape::ray as ray_shape, drawings::shape::rectangle as rectangle_shape,
+    drawings::types::Drawing, types::Point,
 };
 
 use crate::chart::Chart;
@@ -18,15 +15,24 @@ impl Chart {
         let (end_index, end_price) = self.drawing_world_price_at(end.x, end.y)?;
 
         match self.drawing_tool_mode {
-            crate::chart::tools::DrawingToolMode::Rectangle => {
-                Some(rectangle_shape::preview(start_index, start_price, end_index, end_price))
-            }
-            crate::chart::tools::DrawingToolMode::FibRetracement => {
-                Some(fib_shape::preview(start_index, start_price, end_index, end_price))
-            }
-            crate::chart::tools::DrawingToolMode::Ray => {
-                Some(ray_shape::preview(start_index, start_price, end_index, end_price))
-            }
+            crate::chart::tools::DrawingToolMode::Rectangle => Some(rectangle_shape::preview(
+                start_index,
+                start_price,
+                end_index,
+                end_price,
+            )),
+            crate::chart::tools::DrawingToolMode::FibRetracement => Some(fib_shape::preview(
+                start_index,
+                start_price,
+                end_index,
+                end_price,
+            )),
+            crate::chart::tools::DrawingToolMode::Ray => Some(ray_shape::preview(
+                start_index,
+                start_price,
+                end_index,
+                end_price,
+            )),
             crate::chart::tools::DrawingToolMode::LongPosition => Some(
                 position_shape::long_preview(start_index, start_price, end_index, end_price),
             ),

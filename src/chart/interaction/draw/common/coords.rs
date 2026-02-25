@@ -3,12 +3,20 @@ use crate::{plots::model::PaneId, scale::PriceScale};
 use crate::chart::Chart;
 
 impl Chart {
-    pub(crate) fn drawing_world_price_at(&self, x_pixels: f32, y_pixels: f32) -> Option<(f32, f64)> {
+    pub(crate) fn drawing_world_price_at(
+        &self,
+        x_pixels: f32,
+        y_pixels: f32,
+    ) -> Option<(f32, f64)> {
         self.drawing_anchor_at(x_pixels, y_pixels)
             .map(|(world_x, price, _)| (world_x, price))
     }
 
-    pub(crate) fn drawing_anchor_at(&self, x_pixels: f32, y_pixels: f32) -> Option<(f32, f64, f64)> {
+    pub(crate) fn drawing_anchor_at(
+        &self,
+        x_pixels: f32,
+        y_pixels: f32,
+    ) -> Option<(f32, f64, f64)> {
         if self.candles.is_empty() {
             return None;
         }

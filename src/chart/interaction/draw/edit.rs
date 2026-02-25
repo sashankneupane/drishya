@@ -1,10 +1,7 @@
 use crate::{
-    drawings::hit_test::RectHitTarget,
-    drawings::shape::fib as fib_shape,
-    drawings::shape::position as position_shape,
-    drawings::shape::rectangle as rectangle_shape,
-    drawings::types::Drawing,
-    types::Point,
+    drawings::hit_test::RectHitTarget, drawings::shape::fib as fib_shape,
+    drawings::shape::position as position_shape, drawings::shape::rectangle as rectangle_shape,
+    drawings::types::Drawing, types::Point,
 };
 
 use crate::chart::Chart;
@@ -95,13 +92,8 @@ impl Chart {
         target: RectHitTarget,
         pointer: Point,
     ) -> Option<RectHitTarget> {
-        let Some((world_x, price)) = self.drawing_world_price_at(pointer.x, pointer.y) else {
-            return None;
-        };
-
-        let Some(drawing) = self.drawings.drawing_mut(drawing_id) else {
-            return None;
-        };
+        let (world_x, price) = self.drawing_world_price_at(pointer.x, pointer.y)?;
+        let drawing = self.drawings.drawing_mut(drawing_id)?;
 
         match drawing {
             Drawing::Rectangle(item) => Some(rectangle_shape::resize(item, target, world_x, price)),

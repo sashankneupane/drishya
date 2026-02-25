@@ -88,7 +88,8 @@ pub fn build_drawing_commands(
             }
             Drawing::Ray(ray) => {
                 if let Some(vp) = viewport {
-                    let start_x = vp.world_x_to_pixel_x(ray.start_index, price_pane.x, price_pane.w);
+                    let start_x =
+                        vp.world_x_to_pixel_x(ray.start_index, price_pane.x, price_pane.w);
                     let end_x = vp.world_x_to_pixel_x(ray.end_index, price_pane.x, price_pane.w);
                     if (end_x - start_x).abs() > 0.5 {
                         let start_y = ps.y_for_price(ray.start_price);
@@ -310,7 +311,12 @@ pub fn build_preview_drawing_commands(
             );
         }
         Drawing::Rectangle(item) => {
-            temp.add_rectangle(item.start_index, item.end_index, item.top_price, item.bottom_price);
+            temp.add_rectangle(
+                item.start_index,
+                item.end_index,
+                item.top_price,
+                item.bottom_price,
+            );
         }
         Drawing::LongPosition(item) => {
             temp.add_long_position(

@@ -5,8 +5,8 @@
 //! charting decisions.
 
 use crate::{
-    drawings::types::Drawing,
     drawings::render::{build_drawing_commands, build_preview_drawing_commands},
+    drawings::types::Drawing,
     layout::ChartLayout,
     plots::{
         model::{PaneId, PlotPrimitive, PlotSeries},
@@ -24,8 +24,8 @@ use crate::{
 };
 use std::collections::HashSet;
 
-use super::Chart;
 use super::tools::{CHART_TOP_STRIP_HEIGHT_PX, DRAWING_TOOLBAR_MODES};
+use super::Chart;
 
 impl Chart {
     pub(crate) fn compute_visible_bounds(&self, visible: &[Candle]) -> (f64, f64, f64) {
@@ -213,7 +213,12 @@ impl Chart {
 
         out.extend(self.build_drawing_toolbar_commands());
         out.extend(self.build_chart_top_strip_commands(&layout));
-        out.extend(self.build_object_tree_commands(&layout, &plot_series, visible_start, visible_end));
+        out.extend(self.build_object_tree_commands(
+            &layout,
+            &plot_series,
+            visible_start,
+            visible_end,
+        ));
 
         out
     }
@@ -473,7 +478,11 @@ impl Chart {
                     fill: Some(FillStyle::token(ColorToken::CanvasBg)),
                     stroke: Some(StrokeStyle::token(ColorToken::PaneBorder, 1.0)),
                 });
-                out.extend(build_object_tree_eye_icon(eye_rect, visible, ColorToken::AxisText));
+                out.extend(build_object_tree_eye_icon(
+                    eye_rect,
+                    visible,
+                    ColorToken::AxisText,
+                ));
             }
 
             if row.can_delete {
@@ -482,7 +491,10 @@ impl Chart {
                     fill: Some(FillStyle::token(ColorToken::CanvasBg)),
                     stroke: Some(StrokeStyle::token(ColorToken::PaneBorder, 1.0)),
                 });
-                out.extend(build_object_tree_delete_icon(del_rect, ColorToken::AxisText));
+                out.extend(build_object_tree_delete_icon(
+                    del_rect,
+                    ColorToken::AxisText,
+                ));
             }
             y += 16.0;
         }
@@ -500,16 +512,30 @@ impl Chart {
     ) -> Vec<ObjectTreeRow> {
         let mut rows: Vec<ObjectTreeRow> = Vec::new();
         rows.push(ObjectTreeRow::header("Object Tree"));
-        rows.push(ObjectTreeRow::label(format!("Candles: {}", self.candles.len())));
-        rows.push(ObjectTreeRow::label(format!("Visible: {}..{}", visible_start, visible_end)));
+        rows.push(ObjectTreeRow::label(format!(
+            "Candles: {}",
+            self.candles.len()
+        )));
+        rows.push(ObjectTreeRow::label(format!(
+            "Visible: {}..{}",
+            visible_start, visible_end
+        )));
         rows.push(ObjectTreeRow::header("Data"));
 
         for pane_key in self.object_tree_pane_keys() {
             if pane_key == "price" {
-                rows.push(ObjectTreeRow::label_with_indent("pane: price".to_string(), 1));
+                rows.push(ObjectTreeRow::label_with_indent(
+                    "pane: price".to_string(),
+                    1,
+                ));
             } else {
                 let visible = !self.hidden_panes.contains(&pane_key);
-                rows.push(ObjectTreeRow::pane(format!("pane: {}", pane_key), pane_key, 1, visible));
+                rows.push(ObjectTreeRow::pane(
+                    format!("pane: {}", pane_key),
+                    pane_key,
+                    1,
+                    visible,
+                ));
             }
         }
 
@@ -577,15 +603,15 @@ impl Chart {
 
             if row.toggle_visible.is_some() && point_in_rect(x, y, eye_rect) {
                 match row.action {
-                    Some(ObjectTreeAction::PaneToggle(ref pane_id)) => {
+                    Some(ObjectTreeAction::Pane(ref pane_id)) => {
                         let next = self.hidden_panes.contains(pane_id);
                         self.set_pane_visibility(pane_id, next);
                     }
-                    Some(ObjectTreeAction::DrawingToggle(id)) => {
+                    Some(ObjectTreeAction::Drawing(id)) => {
                         let next = !self.is_drawing_visible(id);
                         let _ = self.set_drawing_visible(id, next);
                     }
-                    Some(ObjectTreeAction::SeriesToggle(ref series_id)) => {
+                    Some(ObjectTreeAction::Series(ref series_id)) => {
                         let next = !self.is_series_visible(series_id);
                         self.set_series_visibility(series_id, next);
                     }
@@ -596,13 +622,13 @@ impl Chart {
 
             if row.can_delete && point_in_rect(x, y, del_rect) {
                 match row.action {
-                    Some(ObjectTreeAction::PaneToggle(ref pane_id)) => {
+                    Some(ObjectTreeAction::Pane(ref pane_id)) => {
                         self.set_pane_visibility(pane_id, false);
                     }
-                    Some(ObjectTreeAction::DrawingToggle(id)) => {
+                    Some(ObjectTreeAction::Drawing(id)) => {
                         let _ = self.remove_drawing(id);
                     }
-                    Some(ObjectTreeAction::SeriesToggle(ref series_id)) => {
+                    Some(ObjectTreeAction::Series(ref series_id)) => {
                         self.delete_series(series_id);
                     }
                     _ => {}
@@ -694,7 +720,7 @@ impl ObjectTreeRow {
             label,
             indent,
             header: false,
-            action: Some(ObjectTreeAction::PaneToggle(pane_id)),
+            action: Some(ObjectTreeAction::Pane(pane_id)),
             toggle_visible: Some(visible),
             can_delete: true,
         }
@@ -705,7 +731,7 @@ impl ObjectTreeRow {
             label,
             indent,
             header: false,
-            action: Some(ObjectTreeAction::DrawingToggle(drawing_id)),
+            action: Some(ObjectTreeAction::Drawing(drawing_id)),
             toggle_visible: Some(visible),
             can_delete: true,
         }
@@ -716,7 +742,7 @@ impl ObjectTreeRow {
             label,
             indent,
             header: false,
-            action: Some(ObjectTreeAction::SeriesToggle(series_id)),
+            action: Some(ObjectTreeAction::Series(series_id)),
             toggle_visible: Some(visible),
             can_delete: true,
         }
@@ -725,9 +751,9 @@ impl ObjectTreeRow {
 
 #[derive(Clone)]
 enum ObjectTreeAction {
-    PaneToggle(String),
-    DrawingToggle(u64),
-    SeriesToggle(String),
+    Pane(String),
+    Drawing(u64),
+    Series(String),
 }
 
 fn object_tree_action_rects(
@@ -1006,14 +1032,8 @@ fn build_tool_icon_commands(
             for step in [-0.55f32, -0.05, 0.45] {
                 let y = cy + step * size;
                 out.push(DrawCommand::Line {
-                    from: Point {
-                        x: cx - size,
-                        y,
-                    },
-                    to: Point {
-                        x: cx + size,
-                        y,
-                    },
+                    from: Point { x: cx - size, y },
+                    to: Point { x: cx + size, y },
                     stroke: StrokeStyle::token(color, 1.0),
                 });
             }

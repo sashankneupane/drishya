@@ -1,7 +1,5 @@
 use crate::{
-    drawings::commands::execute_command,
-    drawings::shape::line as line_shape,
-    scale::PriceScale,
+    drawings::commands::execute_command, drawings::shape::line as line_shape, scale::PriceScale,
 };
 
 use crate::chart::Chart;
@@ -27,7 +25,10 @@ impl Chart {
         };
 
         let price = self.price_from_y(y_pixels, ps);
-        let _ = execute_command(&mut self.drawings, line_shape::add_horizontal_command(price));
+        let _ = execute_command(
+            &mut self.drawings,
+            line_shape::add_horizontal_command(price),
+        );
     }
 
     pub fn add_vertical_line_at_x(&mut self, x_pixels: f32) {
@@ -43,7 +44,10 @@ impl Chart {
 
         if let Some(vp) = self.viewport {
             let world_x = vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0));
-            let _ = execute_command(&mut self.drawings, line_shape::add_vertical_command(world_x));
+            let _ = execute_command(
+                &mut self.drawings,
+                line_shape::add_vertical_command(world_x),
+            );
         }
     }
 }

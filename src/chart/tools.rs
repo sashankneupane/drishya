@@ -1,7 +1,7 @@
 //! Native drawing-tool interaction state.
 
-use crate::types::Point;
 use crate::drawings::hit_test::RectHitTarget;
+use crate::types::Point;
 use crate::types::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +64,8 @@ impl crate::chart::Chart {
 
     pub(crate) fn drawing_toolbar_button_rect(&self, index: usize) -> Rect {
         let button_size = DRAWING_TOOLBAR_BUTTON_SIZE_PX;
-        let y = DRAWING_TOOLBAR_PADDING_TOP_PX + index as f32 * (button_size + DRAWING_TOOLBAR_GAP_PX);
+        let y =
+            DRAWING_TOOLBAR_PADDING_TOP_PX + index as f32 * (button_size + DRAWING_TOOLBAR_GAP_PX);
 
         Rect {
             x: DRAWING_TOOLBAR_SIDE_INSET_PX,
@@ -118,7 +119,9 @@ impl crate::chart::Chart {
             x,
             y: top,
             w: CHART_OBJECT_TREE_WIDTH_PX.min(available_w),
-            h: available_h.max(CHART_OBJECT_TREE_MIN_HEIGHT_PX).min(self.size.height.max(1.0)),
+            h: available_h
+                .max(CHART_OBJECT_TREE_MIN_HEIGHT_PX)
+                .min(self.size.height.max(1.0)),
         }
     }
 
