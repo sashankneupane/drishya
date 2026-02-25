@@ -1,0 +1,14 @@
+# Rust build output
+/target
+
+# Generated WASM package
+/pkg
+
+# Cargo lock file
+Cargo.lock
+
+# macOS
+.DS_Store
+
+# Demo site
+demo/
