@@ -9,8 +9,9 @@ use crate::{
     layout::ChartLayout,
     render::primitives::DrawCommand,
     render::styles::{ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
+    render::ticks::{HumanTimeFormatter, TimeLabelFormatter},
     scale::PriceScale,
-    types::{Point, Rect},
+    types::{Candle, Point, Rect},
     viewport::Viewport,
 };
 
@@ -19,6 +20,7 @@ pub fn build_drawing_commands(
     layout: ChartLayout,
     ps: PriceScale,
     viewport: Option<Viewport>,
+    candles: &[Candle],
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let Some(price_pane) = layout.price_pane() else {
@@ -41,11 +43,25 @@ pub fn build_drawing_commands(
                         },
                         stroke: StrokeStyle::token(ColorToken::DrawingPrimary, 1.0),
                     });
+                    out.push(DrawCommand::PopClip);
 
+                    let label_h = 16.0f32;
+                    let label_y = (y - label_h * 0.5)
+                        .clamp(layout.y_axis.y, layout.y_axis.bottom() - label_h);
+                    out.push(DrawCommand::Rect {
+                        rect: Rect {
+                            x: layout.y_axis.x + 1.0,
+                            y: label_y,
+                            w: layout.y_axis.w - 2.0,
+                            h: label_h,
+                        },
+                        fill: Some(FillStyle::token(ColorToken::PaneBorder)),
+                        stroke: None,
+                    });
                     out.push(DrawCommand::Text {
                         pos: Point {
                             x: layout.y_axis.x + layout.y_axis.w - 4.0,
-                            y: y + 4.0,
+                            y: label_y + 12.0,
                         },
                         text: format!("{:.2}", h.price),
                         style: TextStyle::token(
@@ -54,7 +70,6 @@ pub fn build_drawing_commands(
                             TextAlign::Right,
                         ),
                     });
-                    out.push(DrawCommand::PopClip);
                 }
             }
             Drawing::VerticalLine(v) => {
@@ -69,20 +84,35 @@ pub fn build_drawing_commands(
                             to: Point { x, y: bottom_y },
                             stroke: StrokeStyle::token(ColorToken::DrawingSecondary, 1.0),
                         });
+                        out.push(DrawCommand::PopClip);
 
+                        let ts_text = format_vertical_time_label(v.index, candles);
+                        let label_w = 86.0f32;
+                        let label_h = 16.0f32;
+                        let label_x = (x - label_w * 0.5)
+                            .clamp(layout.x_axis.x, layout.x_axis.right() - label_w);
+                        out.push(DrawCommand::Rect {
+                            rect: Rect {
+                                x: label_x,
+                                y: layout.x_axis.y + 2.0,
+                                w: label_w,
+                                h: label_h,
+                            },
+                            fill: Some(FillStyle::token(ColorToken::PaneBorder)),
+                            stroke: None,
+                        });
                         out.push(DrawCommand::Text {
                             pos: Point {
-                                x,
-                                y: layout.x_axis.y + 16.0,
+                                x: label_x + label_w * 0.5,
+                                y: layout.x_axis.y + 13.0,
                             },
-                            text: "|".to_string(),
+                            text: ts_text,
                             style: TextStyle::token(
                                 ColorToken::DrawingSecondaryText,
-                                12.0,
+                                10.0,
                                 TextAlign::Center,
                             ),
                         });
-                        out.push(DrawCommand::PopClip);
                     }
                 }
             }
@@ -350,7 +380,7 @@ pub fn build_preview_drawing_commands(
         let _ = temp.set_drawing_layer(first, "preview");
     }
 
-    build_drawing_commands(&temp, layout, ps, viewport)
+    build_drawing_commands(&temp, layout, ps, viewport, &[])
 }
 
 fn rect_from_edges(x1: f32, x2: f32, y1: f32, y2: f32) -> Rect {
@@ -364,4 +394,14 @@ fn rect_from_edges(x1: f32, x2: f32, y1: f32, y2: f32) -> Rect {
         w: (right - left).max(1.0),
         h: (bottom - top).max(1.0),
     }
+}
+
+fn format_vertical_time_label(index: f32, candles: &[Candle]) -> String {
+    if candles.is_empty() {
+        return String::new();
+    }
+    let idx = index.floor().max(0.0) as usize;
+    let idx = idx.min(candles.len().saturating_sub(1));
+    let ts = candles[idx].ts;
+    HumanTimeFormatter.format_time(ts)
 }
