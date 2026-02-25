@@ -1,2 +1,2 @@
 mod coords;
-mod lifecycle;
+pub(crate) mod lifecycle;

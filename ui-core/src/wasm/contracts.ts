@@ -1,0 +1,100 @@
+export interface Candle {
+  ts: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface PaneLayout {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  yAxisVisible: boolean;
+}
+
+export interface PaneLayoutSnapshot {
+  panes: PaneLayout[];
+}
+
+export interface PaneTreeState {
+  id: string;
+  visible: boolean;
+}
+
+export interface SeriesTreeState {
+  id: string;
+  name: string;
+  pane_id: string;
+  visible: boolean;
+  deleted: boolean;
+}
+
+export interface DrawingTreeState {
+  id: number;
+  kind: string;
+  layer_id: string;
+  group_id: string | null;
+  visible: boolean;
+}
+
+export interface ObjectTreeState {
+  panes: PaneTreeState[];
+  series: SeriesTreeState[];
+  drawings: DrawingTreeState[];
+}
+
+export interface WasmChartLike {
+  resize(width: number, height: number): void;
+  draw(): void;
+  set_ohlcv_json(json: string): void;
+  append_ohlcv_json?(json: string): void;
+  pan_pixels(dx: number): void;
+  pan_pixels_2d?(dx: number, dy: number, anchorY: number): void;
+  zoom_at_x(x: number, zoomFactor: number): void;
+  zoom_y_axis_at?(y: number, zoomFactor: number): void;
+  reset_y_axis_zoom?(paneId: string): void;
+  set_theme?(theme: string): void;
+  set_crosshair_at?(x: number, y: number): void;
+  clear_crosshair?(): void;
+  clear_drawings?(): void;
+  set_drawing_tool_mode?(mode: string): void;
+  drawing_tool_mode?(): string;
+  drawing_pointer_down?(x: number, y: number): boolean;
+  drawing_pointer_move?(x: number, y: number): boolean;
+  drawing_pointer_up?(x: number, y: number): boolean;
+  drawing_cursor_hint?(x: number, y: number): string;
+  cancel_drawing_interaction?(): void;
+  add_sma_overlay?(period: number): void;
+  add_bbands_overlay?(period: number, stdMult: number): void;
+  add_rsi_pane_indicator?(period: number): void;
+  add_momentum_histogram_overlay?(): void;
+  clear_indicator_overlays?(): void;
+  set_pane_weight?(paneId: string, ratio: number): void;
+  set_pane_weights_json?(json: string): void;
+  reset_pane_weights?(): void;
+  set_pane_visible?(paneId: string, visible: boolean): void;
+  register_pane?(paneId: string): void;
+  unregister_pane?(paneId: string): void;
+  registered_panes_json?(): string;
+  set_pane_collapsed?(paneId: string, collapsed: boolean): void;
+  set_pane_y_axis_visible?(paneId: string, visible: boolean): void;
+  set_pane_height_constraints?(paneId: string, minHeightPx: number, maxHeightPx: number): void;
+  move_pane_up?(paneId: string): boolean;
+  move_pane_down?(paneId: string): boolean;
+  set_pane_order_json?(json: string): void;
+  pane_state_json?(): string;
+  restore_pane_state_json?(json: string): void;
+  reset_pane_layout_state?(): void;
+  pane_layouts_json?(): string;
+  object_tree_state_json?(): string;
+  set_series_visible?(seriesId: string, visible: boolean): void;
+  delete_series?(seriesId: string): void;
+  restore_series?(seriesId: string): void;
+  set_drawing_visible?(drawingId: number, visible: boolean): boolean;
+  remove_drawing?(drawingId: number): boolean;
+}
+

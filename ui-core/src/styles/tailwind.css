@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .drishya-workspace {
+    @apply h-full w-full min-h-0 min-w-0 flex bg-slate-900 text-slate-200;
+  }
+
+  .drishya-strip {
+    @apply w-[56px] shrink-0 select-none border-r border-slate-800 bg-slate-900 p-2 flex flex-col gap-1.5;
+  }
+
+  .drishya-strip-brand {
+    @apply h-6 w-full rounded-md border border-slate-700 bg-slate-800 text-slate-300 text-[10px] font-bold tracking-[0.12em] text-center leading-[22px];
+  }
+
+  .drishya-strip-tools {
+    @apply flex flex-col gap-1;
+  }
+
+  .drishya-strip-divider {
+    @apply mt-1 mb-0.5 border-t border-slate-800;
+  }
+
+  .drishya-strip-actions {
+    @apply mt-auto flex flex-col gap-1;
+  }
+
+  .drishya-strip-btn {
+    @apply h-8 w-full inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-800 text-slate-300 transition-colors;
+  }
+
+  .drishya-strip-btn:hover {
+    @apply border-blue-500 text-slate-100;
+  }
+
+  .drishya-strip-btn[data-active="true"] {
+    @apply border-blue-500 bg-blue-900 text-sky-100;
+  }
+
+  .drishya-strip-btn:disabled {
+    @apply opacity-40 cursor-not-allowed;
+  }
+
+  .drishya-stage {
+    @apply flex-1 min-h-0 min-w-0 bg-slate-950;
+  }
+
+  .drishya-stage > canvas {
+    @apply block h-full w-full bg-slate-950;
+  }
+
+  .drishya-tree {
+    @apply w-[252px] shrink-0 min-h-0 flex flex-col border-l border-slate-800 bg-slate-900;
+  }
+
+  .drishya-tree-header {
+    @apply h-[34px] border-b border-slate-800 bg-slate-800 px-2.5 text-slate-300 text-xs font-semibold tracking-[0.04em] leading-[34px];
+  }
+
+  .drishya-tree-body {
+    @apply min-h-0 overflow-auto p-2;
+  }
+
+  .drishya-tree-row {
+    @apply mb-1 min-h-7 flex items-center justify-between rounded-md border border-transparent bg-slate-800 pr-1.5 text-slate-300;
+  }
+
+  .drishya-tree-row.is-header {
+    @apply min-h-6 border-slate-800 bg-slate-800 text-slate-400 text-[10px] font-bold tracking-[0.07em] uppercase;
+  }
+
+  .drishya-tree-label {
+    @apply overflow-hidden text-ellipsis whitespace-nowrap pr-1.5 text-[11px] font-medium;
+  }
+
+  .drishya-tree-actions {
+    @apply shrink-0 flex gap-1;
+  }
+
+  .drishya-tree-btn {
+    @apply h-5 w-[34px] inline-flex items-center justify-center rounded-[5px] border border-slate-700 bg-slate-800 text-slate-300;
+  }
+
+  .drishya-tree-btn:hover {
+    @apply border-blue-500;
+  }
+
+  .drishya-tree-btn.danger:hover {
+    @apply border-red-500 text-red-200;
+  }
+
+  .drishya-tree-btn:disabled {
+    @apply opacity-40 cursor-not-allowed;
+  }
+
+  .drishya-icon {
+    @apply h-[15px] w-[15px];
+  }
+
+  .drishya-icon-xs {
+    @apply h-3 w-3;
+  }
+}

@@ -1,5 +1,15 @@
 use crate::chart::Chart;
 use crate::drawings::commands::{execute_command, DrawingCommand};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DrawingState {
+    pub id: u64,
+    pub kind: String,
+    pub layer_id: String,
+    pub group_id: Option<String>,
+    pub visible: bool,
+}
 
 impl Chart {
     pub fn clear_drawings(&mut self) {
@@ -46,5 +56,31 @@ impl Chart {
 
     pub fn drawing_layer_order(&self) -> Vec<String> {
         self.drawings.layer_order().to_vec()
+    }
+
+    pub(crate) fn drawing_state(&self) -> Vec<DrawingState> {
+        self.drawings
+            .items()
+            .iter()
+            .map(|drawing| DrawingState {
+                id: drawing.id(),
+                kind: drawing_kind(drawing).to_string(),
+                layer_id: drawing.layer_id().to_string(),
+                group_id: drawing.group_id().map(ToString::to_string),
+                visible: self.drawings.is_drawing_visible(drawing.id()),
+            })
+            .collect()
+    }
+}
+
+fn drawing_kind(drawing: &crate::drawings::types::Drawing) -> &'static str {
+    match drawing {
+        crate::drawings::types::Drawing::HorizontalLine(_) => "hline",
+        crate::drawings::types::Drawing::VerticalLine(_) => "vline",
+        crate::drawings::types::Drawing::Ray(_) => "ray",
+        crate::drawings::types::Drawing::Rectangle(_) => "rectangle",
+        crate::drawings::types::Drawing::LongPosition(_) => "long",
+        crate::drawings::types::Drawing::ShortPosition(_) => "short",
+        crate::drawings::types::Drawing::FibRetracement(_) => "fib",
     }
 }

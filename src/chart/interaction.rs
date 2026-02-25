@@ -73,14 +73,6 @@ impl Chart {
     }
 
     pub fn set_crosshair_at(&mut self, x_pixels: f32, y_pixels: f32) {
-        if self.point_in_drawing_toolbar(x_pixels, y_pixels)
-            || self.point_in_chart_top_strip(x_pixels, y_pixels)
-            || self.point_in_chart_object_tree(x_pixels, y_pixels)
-        {
-            self.crosshair = None;
-            return;
-        }
-
         let layout = self.current_layout();
         let plot = layout.plot;
 

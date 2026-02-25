@@ -12,3 +12,14 @@ Cargo.lock
 
 # Demo site
 demo/
+
+# ui-core (TypeScript workspace package)
+ui-core/node_modules/
+ui-core/dist/
+ui-core/.cache/
+ui-core/.turbo/
+ui-core/*.tsbuildinfo
+ui-core/npm-debug.log*
+ui-core/yarn-debug.log*
+ui-core/yarn-error.log*
+ui-core/pnpm-debug.log*
