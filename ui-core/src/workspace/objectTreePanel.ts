@@ -1,6 +1,10 @@
-import { buildObjectTreeNodes, type ObjectTreeAction, type ObjectTreeNode } from "../chrome/objectTree";
-import type { DrishyaChartClient } from "../wasm/client";
-import { makeSvgIcon } from "./icons";
+import {
+  buildObjectTreeNodes,
+  type ObjectTreeAction,
+  type ObjectTreeNode,
+} from "../chrome/objectTree.js";
+import type { DrishyaChartClient } from "../wasm/client.js";
+import { makeSvgIcon } from "./icons.js";
 
 type ActionableNodeKind = "pane" | "series" | "drawing";
 type ActionableObjectTreeNode = ObjectTreeNode & { kind: ActionableNodeKind };

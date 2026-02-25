@@ -1,4 +1,4 @@
-import type { LayoutRect } from "../layout/splitTree";
+import type { LayoutRect } from "../layout/splitTree.js";
 
 export interface ChartChromeLayout {
   drawingStrip: LayoutRect;

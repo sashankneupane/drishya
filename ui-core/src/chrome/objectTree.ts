@@ -1,4 +1,4 @@
-import type { ObjectTreeState } from "../wasm/contracts";
+import type { ObjectTreeState } from "../wasm/contracts.js";
 
 export type ObjectTreeNodeKind = "pane" | "series" | "drawing" | "header";
 

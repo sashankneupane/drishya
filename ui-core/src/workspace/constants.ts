@@ -1,4 +1,4 @@
-import type { WorkspaceToolDef } from "./types";
+import type { WorkspaceToolDef } from "./types.js";
 
 export const WORKSPACE_DRAW_TOOLS: readonly WorkspaceToolDef[] = [
   { id: "select", hotkey: "V", title: "Select / edit drawings" },

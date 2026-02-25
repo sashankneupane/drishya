@@ -1,6 +1,6 @@
-import type { DrawingToolId } from "../toolbar/model";
-import { makeSvgIcon } from "./icons";
-import type { WorkspaceToolDef } from "./types";
+import type { DrawingToolId } from "../toolbar/model.js";
+import { makeSvgIcon } from "./icons.js";
+import type { WorkspaceToolDef } from "./types.js";
 
 interface CreateLeftStripOptions {
   tools: readonly WorkspaceToolDef[];

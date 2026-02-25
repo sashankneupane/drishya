@@ -6,7 +6,7 @@ import type {
   WasmChartLike
 } from "./contracts";
 
-import type { ObjectTreeAction } from "../chrome/objectTree";
+import type { ObjectTreeAction } from "../chrome/objectTree.js";
 
 const EMPTY_OBJECT_TREE: ObjectTreeState = {
   panes: [],

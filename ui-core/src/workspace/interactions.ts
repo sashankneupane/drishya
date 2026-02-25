@@ -1,5 +1,5 @@
-import type { DrishyaChartClient } from "../wasm/client";
-import type { PaneLayout, WasmChartLike } from "../wasm/contracts";
+import type { DrishyaChartClient } from "../wasm/client.js";
+import type { PaneLayout, WasmChartLike } from "../wasm/contracts.js";
 
 const PANE_GAP_PX = 4;
 const PANE_SEPARATOR_HIT_PX = 6;
