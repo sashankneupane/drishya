@@ -25,12 +25,15 @@ pub fn build_axis_commands(
         stroke: Some("#1f2937".to_string()),
         line_width: 1.0,
     });
-    out.push(DrawCommand::Rect {
-        rect: layout.volume_pane,
-        fill: None,
-        stroke: Some("#1f2937".to_string()),
-        line_width: 1.0,
-    });
+
+    if let Some(indicator_pane) = layout.indicator_pane {
+        out.push(DrawCommand::Rect {
+            rect: indicator_pane,
+            fill: None,
+            stroke: Some("#1f2937".to_string()),
+            line_width: 1.0,
+        });
+    }
 
     // Horizontal grid + price labels
     let ticks = 5;
@@ -63,9 +66,14 @@ pub fn build_axis_commands(
             let idx = ((n - 1) as f32 * (k as f32 / (label_count.saturating_sub(1).max(1) as f32))).round() as usize;
             let x = ts.x_for_index(idx);
 
+            let bottom_y = layout
+                .indicator_pane
+                .map(|pane| pane.bottom())
+                .unwrap_or(layout.price_pane.bottom());
+
             out.push(DrawCommand::Line {
                 from: Point { x, y: layout.price_pane.y },
-                to: Point { x, y: layout.volume_pane.bottom() },
+                to: Point { x, y: bottom_y },
                 width: 1.0,
                 color: "rgba(17,24,39,0.7)".to_string(),
             });

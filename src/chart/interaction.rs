@@ -17,7 +17,7 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size);
+        let layout = compute_layout(self.size, self.has_named_pane_series());
         let plot_w = layout.price_pane.w.max(1.0);
 
         if let Some(vp) = &mut self.viewport {
@@ -35,7 +35,7 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size);
+        let layout = compute_layout(self.size, self.has_named_pane_series());
 
         if let Some(vp) = &mut self.viewport {
             let plot_x = layout.price_pane.x;
@@ -59,7 +59,7 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size);
+        let layout = compute_layout(self.size, self.has_named_pane_series());
         if y_pixels < layout.price_pane.y || y_pixels > layout.price_pane.bottom() {
             return;
         }
@@ -84,7 +84,7 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size);
+        let layout = compute_layout(self.size, self.has_named_pane_series());
         if x_pixels < layout.price_pane.x || x_pixels > layout.price_pane.right() {
             return;
         }
