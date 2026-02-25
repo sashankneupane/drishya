@@ -47,21 +47,46 @@ impl Chart {
 
         let plot_series = self.collect_plot_series();
 
-        let has_indicator_pane = plot_series.iter().any(|s| !matches!(s.pane, PaneId::Price));
-
-        let layout: ChartLayout = compute_layout(self.size, has_indicator_pane);
+        let pane_specs = self.pane_descriptors();
+        let layout: ChartLayout = compute_layout(self.size, &pane_specs);
+        let price_pane = layout.price_pane().unwrap_or(layout.plot);
         let (min_price, max_price, max_vol) = self.compute_visible_bounds(visible);
 
         // Price and volume share the same pane and horizontal scale.
         let ts_price = TimeScale {
-            pane: layout.price_pane,
+            pane: price_pane,
             count: visible.len(),
         };
         let ps = PriceScale {
-            pane: layout.price_pane,
+            pane: price_pane,
             min: min_price,
             max: max_price,
         };
+
+        let (visible_start, visible_end) = match self.viewport {
+            Some(vp) => vp.visible_range(self.candles.len()),
+            None => (0, self.candles.len()),
+        };
+
+        let mut pane_scales: Vec<(PaneId, PriceScale)> = vec![(PaneId::Price, ps)];
+        for pane in &layout.panes {
+            if matches!(pane.id, PaneId::Price) {
+                continue;
+            }
+
+            if let Some((min_v, max_v)) =
+                compute_pane_value_bounds(&plot_series, &pane.id, visible_start, visible_end)
+            {
+                pane_scales.push((
+                    pane.id.clone(),
+                    PriceScale {
+                        pane: pane.rect,
+                        min: min_v,
+                        max: max_v,
+                    },
+                ));
+            }
+        }
 
         // Background
         out.push(DrawCommand::Rect {
@@ -72,65 +97,48 @@ impl Chart {
         });
 
         // Core chart primitives
-        out.extend(build_axis_commands(layout, visible, ts_price, ps));
-        out.extend(build_volume_commands(
+        out.extend(build_axis_commands(
+            &layout,
             visible,
             ts_price,
-            layout.price_pane,
-            max_vol,
+            &pane_scales,
+        ));
+        out.push(DrawCommand::PushClip { rect: price_pane });
+        out.extend(build_volume_commands(
+            visible, ts_price, price_pane, max_vol,
         ));
         out.extend(build_candle_commands(visible, ts_price, ps));
-
-        let (visible_start, visible_end) = match self.viewport {
-            Some(vp) => vp.visible_range(self.candles.len()),
-            None => (0, self.candles.len()),
-        };
+        out.push(DrawCommand::PopClip);
 
         let price_range = ValueScaleRange {
             min: min_price,
             max: max_price,
         };
 
-        out.extend(build_plot_draw_commands(
-            &plot_series,
-            PlotRenderContext {
-                visible_start,
-                visible_end,
-                target_pane: PaneId::Price,
-                pane_scale: ps,
-                value_range: price_range,
-            },
-        ));
+        for (pane_id, pane_scale) in &pane_scales {
+            let value_range = if matches!(pane_id, PaneId::Price) {
+                price_range
+            } else {
+                ValueScaleRange {
+                    min: pane_scale.min,
+                    max: pane_scale.max,
+                }
+            };
 
-        if let Some(indicator_pane) = layout.indicator_pane {
-            if let Some(target_named_pane) = first_named_pane(&plot_series) {
-                if let Some((min_v, max_v)) = compute_pane_value_bounds(
-                    &plot_series,
-                    &target_named_pane,
+            out.push(DrawCommand::PushClip {
+                rect: pane_scale.pane,
+            });
+            out.extend(build_plot_draw_commands(
+                &plot_series,
+                PlotRenderContext {
                     visible_start,
                     visible_end,
-                ) {
-                    let pane_scale = PriceScale {
-                        pane: indicator_pane,
-                        min: min_v,
-                        max: max_v,
-                    };
-
-                    out.extend(build_plot_draw_commands(
-                        &plot_series,
-                        PlotRenderContext {
-                            visible_start,
-                            visible_end,
-                            target_pane: target_named_pane,
-                            pane_scale,
-                            value_range: ValueScaleRange {
-                                min: min_v,
-                                max: max_v,
-                            },
-                        },
-                    ));
-                }
-            }
+                    target_pane: pane_id.clone(),
+                    pane_scale: *pane_scale,
+                    value_range,
+                },
+            ));
+            out.push(DrawCommand::PopClip);
         }
 
         // User drawings are painted last so they stay visually on top.
@@ -143,15 +151,6 @@ impl Chart {
 
         out
     }
-}
-
-fn first_named_pane(series: &[PlotSeries]) -> Option<PaneId> {
-    for s in series {
-        if let PaneId::Named(name) = &s.pane {
-            return Some(PaneId::Named(name.clone()));
-        }
-    }
-    None
 }
 
 fn compute_pane_value_bounds(

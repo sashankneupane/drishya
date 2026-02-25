@@ -18,6 +18,17 @@ pub fn paint_canvas2d(
 
     for cmd in cmds {
         match cmd {
+            DrawCommand::PushClip { rect } => {
+                ctx.save();
+                ctx.begin_path();
+                ctx.rect(rect.x as f64, rect.y as f64, rect.w as f64, rect.h as f64);
+                ctx.clip();
+            }
+
+            DrawCommand::PopClip => {
+                ctx.restore();
+            }
+
             DrawCommand::Line {
                 from,
                 to,

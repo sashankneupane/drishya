@@ -3,19 +3,65 @@
 //! All pane rectangles are derived in one place so rendering modules can rely
 //! on consistent coordinates.
 
+use crate::plots::model::PaneId;
 use crate::types::{Rect, Size};
 
 #[derive(Debug, Clone, Copy)]
+pub enum PaneHeightPolicy {
+    FixedPx(f32),
+    Ratio(f32),
+    Auto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AxisVisibilityPolicy {
+    Visible,
+    Hidden,
+}
+
+#[derive(Debug, Clone)]
+pub struct PaneDescriptor {
+    pub id: PaneId,
+    pub height: PaneHeightPolicy,
+    pub y_axis: AxisVisibilityPolicy,
+    pub min_height_px: f32,
+    pub max_height_px: Option<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PaneLayout {
+    pub id: PaneId,
+    pub rect: Rect,
+    pub y_axis: AxisVisibilityPolicy,
+}
+
+#[derive(Debug, Clone)]
 pub struct ChartLayout {
     pub full: Rect,
     pub plot: Rect,
-    pub price_pane: Rect,
-    pub indicator_pane: Option<Rect>,
+    pub panes: Vec<PaneLayout>,
     pub y_axis: Rect,
     pub x_axis: Rect,
 }
 
-pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
+impl ChartLayout {
+    pub fn pane_by_id(&self, pane_id: &PaneId) -> Option<&PaneLayout> {
+        self.panes.iter().find(|pane| &pane.id == pane_id)
+    }
+
+    pub fn price_pane(&self) -> Option<Rect> {
+        self.pane_by_id(&PaneId::Price).map(|pane| pane.rect)
+    }
+
+    pub fn plot_bottom(&self) -> f32 {
+        self.panes
+            .last()
+            .map(|pane| pane.rect.bottom())
+            .unwrap_or(self.plot.bottom())
+    }
+}
+
+pub fn compute_layout(size: Size, pane_specs: &[PaneDescriptor]) -> ChartLayout {
     let full = Rect {
         x: 0.0,
         y: 0.0,
@@ -27,7 +73,6 @@ pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
     let y_axis_w = 72.0;
     let x_axis_h = 24.0;
     let gap = 4.0;
-    let indicator_ratio = 0.24;
 
     let plot = Rect {
         x: 0.0,
@@ -36,28 +81,93 @@ pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
         h: size.height - x_axis_h,
     };
 
-    let (price_pane, indicator_pane) = if has_indicator_pane {
-        // Keep a meaningful lower pane size for RSI/MACD-style charts.
-        let indicator_h = (plot.h * indicator_ratio).clamp(90.0, plot.h * 0.45);
-        let price_h = (plot.h - indicator_h - gap).max(80.0);
-
-        (
-            Rect {
-                x: plot.x,
-                y: plot.y,
-                w: plot.w,
-                h: price_h,
-            },
-            Some(Rect {
-                x: plot.x,
-                y: plot.y + price_h + gap,
-                w: plot.w,
-                h: indicator_h,
-            }),
-        )
+    let pane_specs = if pane_specs.is_empty() {
+        vec![PaneDescriptor {
+            id: PaneId::Price,
+            height: PaneHeightPolicy::Auto,
+            y_axis: AxisVisibilityPolicy::Visible,
+            min_height_px: 1.0,
+            max_height_px: None,
+        }]
     } else {
-        (plot, None)
+        pane_specs.to_vec()
     };
+
+    let pane_count = pane_specs.len() as f32;
+    let total_gap = gap * (pane_count - 1.0).max(0.0);
+    let available_h = (plot.h - total_gap).max(1.0);
+
+    let mut fixed_total = 0.0f32;
+    let mut ratio_total = 0.0f32;
+
+    for pane in &pane_specs {
+        match pane.height {
+            PaneHeightPolicy::FixedPx(px) => fixed_total += px.max(0.0),
+            PaneHeightPolicy::Ratio(ratio) => ratio_total += ratio.max(0.0),
+            PaneHeightPolicy::Auto => {}
+        }
+    }
+
+    let remaining_after_fixed = (available_h - fixed_total).max(1.0);
+    let mut assigned_heights = vec![0.0f32; pane_specs.len()];
+    let min_heights = pane_specs
+        .iter()
+        .map(|pane| pane.min_height_px.max(1.0))
+        .collect::<Vec<_>>();
+    let max_heights = pane_specs
+        .iter()
+        .zip(min_heights.iter())
+        .map(|(pane, min_h)| pane.max_height_px.filter(|max_h| *max_h >= *min_h))
+        .collect::<Vec<_>>();
+
+    for (idx, pane) in pane_specs.iter().enumerate() {
+        assigned_heights[idx] = match pane.height {
+            PaneHeightPolicy::FixedPx(px) => px.max(0.0),
+            PaneHeightPolicy::Ratio(ratio) if ratio_total > 0.0 => {
+                remaining_after_fixed * (ratio.max(0.0) / ratio_total)
+            }
+            PaneHeightPolicy::Ratio(_) => 0.0,
+            PaneHeightPolicy::Auto => 0.0,
+        };
+    }
+
+    let assigned_sum: f32 = assigned_heights.iter().sum();
+    let auto_count = pane_specs
+        .iter()
+        .filter(|pane| matches!(pane.height, PaneHeightPolicy::Auto))
+        .count();
+    let auto_share = if auto_count > 0 {
+        ((available_h - assigned_sum).max(1.0)) / auto_count as f32
+    } else {
+        0.0
+    };
+
+    for (idx, pane) in pane_specs.iter().enumerate() {
+        if matches!(pane.height, PaneHeightPolicy::Auto) {
+            assigned_heights[idx] = auto_share;
+        }
+    }
+
+    assigned_heights = rebalance_heights(assigned_heights, &min_heights, &max_heights, available_h);
+
+    let mut cursor_y = plot.y;
+    let mut panes = Vec::with_capacity(pane_specs.len());
+    for (idx, pane) in pane_specs.iter().enumerate() {
+        let h = assigned_heights[idx].max(1.0);
+
+        panes.push(PaneLayout {
+            id: pane.id.clone(),
+            rect: Rect {
+                x: plot.x,
+                y: cursor_y,
+                w: plot.w,
+                h,
+            },
+            y_axis: pane.y_axis,
+        });
+
+        cursor_y += h + gap;
+    }
 
     let y_axis = Rect {
         x: plot.right(),
@@ -75,11 +185,69 @@ pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
     ChartLayout {
         full,
         plot,
-        price_pane,
-        indicator_pane,
+        panes,
         y_axis,
         x_axis,
     }
+}
+
+fn rebalance_heights(
+    mut heights: Vec<f32>,
+    mins: &[f32],
+    maxs: &[Option<f32>],
+    target_sum: f32,
+) -> Vec<f32> {
+    for (idx, h) in heights.iter_mut().enumerate() {
+        *h = (*h).max(mins[idx]);
+        if let Some(max_h) = maxs[idx] {
+            *h = (*h).min(max_h);
+        }
+    }
+
+    let mut guard = 0;
+    while guard < 16 {
+        guard += 1;
+        let sum: f32 = heights.iter().sum();
+        let delta = target_sum - sum;
+        if delta.abs() < 0.5 {
+            break;
+        }
+
+        if delta > 0.0 {
+            let growable: Vec<usize> = heights
+                .iter()
+                .enumerate()
+                .filter(|(idx, h)| maxs[*idx].map(|max_h| **h < max_h - 0.01).unwrap_or(true))
+                .map(|(idx, _)| idx)
+                .collect();
+            if growable.is_empty() {
+                break;
+            }
+            let add_each = delta / growable.len() as f32;
+            for idx in growable {
+                heights[idx] += add_each;
+                if let Some(max_h) = maxs[idx] {
+                    heights[idx] = heights[idx].min(max_h);
+                }
+            }
+        } else {
+            let shrinkable: Vec<usize> = heights
+                .iter()
+                .enumerate()
+                .filter(|(idx, h)| **h > mins[*idx] + 0.01)
+                .map(|(idx, _)| idx)
+                .collect();
+            if shrinkable.is_empty() {
+                break;
+            }
+            let sub_each = (-delta) / shrinkable.len() as f32;
+            for idx in shrinkable {
+                heights[idx] = (heights[idx] - sub_each).max(mins[idx]);
+            }
+        }
+    }
+
+    heights
 }
 
 #[cfg(test)]
@@ -87,34 +255,106 @@ mod tests {
     use super::*;
 
     #[test]
-    fn layout_without_indicator_pane_uses_single_plot_area() {
+    fn layout_single_auto_pane_uses_full_plot_area() {
         let size = Size {
             width: 1200.0,
             height: 800.0,
         };
-        let layout = compute_layout(size, false);
+        let layout = compute_layout(
+            size,
+            &[PaneDescriptor {
+                id: PaneId::Price,
+                height: PaneHeightPolicy::Auto,
+                y_axis: AxisVisibilityPolicy::Visible,
+                min_height_px: 1.0,
+                max_height_px: None,
+            }],
+        );
 
-        assert!(layout.indicator_pane.is_none());
-        assert_eq!(layout.price_pane.x, layout.plot.x);
-        assert_eq!(layout.price_pane.y, layout.plot.y);
-        assert_eq!(layout.price_pane.w, layout.plot.w);
-        assert_eq!(layout.price_pane.h, layout.plot.h);
+        assert_eq!(layout.panes.len(), 1);
+        let pane = &layout.panes[0];
+        assert_eq!(pane.rect.x, layout.plot.x);
+        assert_eq!(pane.rect.y, layout.plot.y);
+        assert_eq!(pane.rect.w, layout.plot.w);
+        assert_eq!(pane.rect.h, layout.plot.h);
     }
 
     #[test]
-    fn layout_with_indicator_pane_places_it_below_price_pane() {
+    fn layout_with_multiple_ratio_panes_is_stacked() {
         let size = Size {
             width: 1200.0,
             height: 800.0,
         };
-        let layout = compute_layout(size, true);
+        let layout = compute_layout(
+            size,
+            &[
+                PaneDescriptor {
+                    id: PaneId::Price,
+                    height: PaneHeightPolicy::Ratio(3.0),
+                    y_axis: AxisVisibilityPolicy::Visible,
+                    min_height_px: 1.0,
+                    max_height_px: None,
+                },
+                PaneDescriptor {
+                    id: PaneId::Named("rsi".to_string()),
+                    height: PaneHeightPolicy::Ratio(1.0),
+                    y_axis: AxisVisibilityPolicy::Visible,
+                    min_height_px: 1.0,
+                    max_height_px: None,
+                },
+                PaneDescriptor {
+                    id: PaneId::Named("momentum".to_string()),
+                    height: PaneHeightPolicy::Ratio(1.0),
+                    y_axis: AxisVisibilityPolicy::Visible,
+                    min_height_px: 1.0,
+                    max_height_px: None,
+                },
+            ],
+        );
 
-        let indicator = layout.indicator_pane.expect("expected indicator pane");
+        assert_eq!(layout.panes.len(), 3);
+        assert!(layout.panes[0].rect.bottom() < layout.panes[1].rect.y);
+        assert!(layout.panes[1].rect.bottom() < layout.panes[2].rect.y);
+        assert_eq!(layout.panes[0].rect.x, layout.panes[2].rect.x);
+        assert_eq!(layout.panes[0].rect.w, layout.panes[2].rect.w);
+        assert!(layout.panes[0].rect.h > layout.panes[1].rect.h);
+    }
 
-        assert!(layout.price_pane.bottom() < indicator.y);
-        assert_eq!(layout.price_pane.x, indicator.x);
-        assert_eq!(layout.price_pane.w, indicator.w);
-        assert!(layout.price_pane.h > 0.0);
-        assert!(indicator.h >= 90.0);
+    #[test]
+    fn layout_respects_min_height_constraints() {
+        let size = Size {
+            width: 1200.0,
+            height: 500.0,
+        };
+        let layout = compute_layout(
+            size,
+            &[
+                PaneDescriptor {
+                    id: PaneId::Price,
+                    height: PaneHeightPolicy::Ratio(5.0),
+                    y_axis: AxisVisibilityPolicy::Visible,
+                    min_height_px: 120.0,
+                    max_height_px: None,
+                },
+                PaneDescriptor {
+                    id: PaneId::Named("a".to_string()),
+                    height: PaneHeightPolicy::Ratio(1.0),
+                    y_axis: AxisVisibilityPolicy::Visible,
+                    min_height_px: 100.0,
+                    max_height_px: None,
+                },
+                PaneDescriptor {
+                    id: PaneId::Named("b".to_string()),
+                    height: PaneHeightPolicy::Ratio(1.0),
+                    y_axis: AxisVisibilityPolicy::Visible,
+                    min_height_px: 100.0,
+                    max_height_px: None,
+                },
+            ],
+        );
+
+        assert!(layout.panes[0].rect.h >= 120.0);
+        assert!(layout.panes[1].rect.h >= 100.0);
+        assert!(layout.panes[2].rect.h >= 100.0);
     }
 }

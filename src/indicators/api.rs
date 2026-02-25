@@ -11,13 +11,17 @@ pub fn add_bbands(chart: &mut Chart, period: usize, std_mult: f64) {
 }
 
 pub fn add_momentum_histogram(chart: &mut Chart) {
+    chart.register_named_pane("momentum");
     chart.add_plot_provider(Box::new(MomentumHistogramProvider::new()));
 }
 
 pub fn add_rsi(chart: &mut Chart, period: usize) {
+    chart.register_named_pane("rsi");
     chart.add_plot_provider(Box::new(RsiProvider::new(period)));
 }
 
 pub fn clear_builtins(chart: &mut Chart) {
     chart.clear_plot_providers();
+    chart.unregister_named_pane("rsi");
+    chart.unregister_named_pane("momentum");
 }

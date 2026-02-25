@@ -7,6 +7,10 @@ use crate::types::{Point, Rect};
 
 #[derive(Debug, Clone)]
 pub enum DrawCommand {
+    PushClip {
+        rect: Rect,
+    },
+    PopClip,
     Line {
         from: Point,
         to: Point,
