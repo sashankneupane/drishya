@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .drishya-shell {
+    @apply h-full w-full bg-workspace-bg text-workspace-text;
+  }
+
+  .drishya-panel {
+    @apply border border-workspace-border bg-workspace-panel;
+  }
+
+  .drishya-strip {
+    @apply drishya-panel w-chart-strip;
+  }
+}
