@@ -19,6 +19,12 @@ pub enum DrawCommand {
         stroke: Option<String>,
         line_width: f32,
     },
+    Polygon {
+        points: Vec<Point>,
+        fill: Option<String>,
+        stroke: Option<String>,
+        line_width: f32,
+    },
     Text {
         pos: Point,
         text: String,
