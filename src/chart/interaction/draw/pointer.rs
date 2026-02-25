@@ -9,13 +9,6 @@ const DRAW_SHAPE_DRAG_THRESHOLD_PX: f32 = 3.0;
 
 impl Chart {
     pub fn drawing_cursor_hint_at(&self, x_pixels: f32, y_pixels: f32) -> &'static str {
-        if self.point_in_drawing_toolbar(x_pixels, y_pixels)
-            || self.point_in_chart_top_strip(x_pixels, y_pixels)
-            || self.point_in_chart_object_tree(x_pixels, y_pixels)
-        {
-            return "pointer";
-        }
-
         match self.drawing_tool_mode {
             crate::chart::tools::DrawingToolMode::Select => {
                 if self.drawing_interaction.dragging_drawing_id.is_some() {
@@ -60,23 +53,6 @@ impl Chart {
     }
 
     pub fn drawing_pointer_down(&mut self, x_pixels: f32, y_pixels: f32) -> bool {
-        if self.point_in_chart_object_tree(x_pixels, y_pixels) {
-            let _ = self.handle_object_tree_click(x_pixels, y_pixels);
-            self.clear_crosshair();
-            return true;
-        }
-
-        if self.point_in_chart_top_strip(x_pixels, y_pixels) {
-            self.clear_crosshair();
-            return true;
-        }
-
-        if let Some(mode) = self.drawing_toolbar_mode_at(x_pixels, y_pixels) {
-            self.set_drawing_tool_mode(mode);
-            self.clear_crosshair();
-            return true;
-        }
-
         self.set_crosshair_at(x_pixels, y_pixels);
 
         let point = Point {
@@ -139,30 +115,6 @@ impl Chart {
     }
 
     pub fn drawing_pointer_move(&mut self, x_pixels: f32, y_pixels: f32) -> bool {
-        if self.point_in_chart_object_tree(x_pixels, y_pixels)
-            && self.drawing_interaction.dragging_drawing_id.is_none()
-            && self.drawing_interaction.pending_start.is_none()
-        {
-            self.clear_crosshair();
-            return true;
-        }
-
-        if self.point_in_chart_top_strip(x_pixels, y_pixels)
-            && self.drawing_interaction.dragging_drawing_id.is_none()
-            && self.drawing_interaction.pending_start.is_none()
-        {
-            self.clear_crosshair();
-            return true;
-        }
-
-        if self.point_in_drawing_toolbar(x_pixels, y_pixels)
-            && self.drawing_interaction.dragging_drawing_id.is_none()
-            && self.drawing_interaction.pending_start.is_none()
-        {
-            self.clear_crosshair();
-            return true;
-        }
-
         self.set_crosshair_at(x_pixels, y_pixels);
 
         let point = Point {

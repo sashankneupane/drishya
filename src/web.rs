@@ -12,7 +12,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
     chart::plots::PaneLayoutState,
-    chart::tools::{DrawingToolMode, TopStripAction},
+    chart::tools::DrawingToolMode,
     chart::Chart,
     drawings::hit_test::{HitToleranceProfile, InteractionMode},
     indicators::api as indicator_api,
@@ -20,6 +20,38 @@ use crate::{
     render::{backends::canvas2d::paint_canvas2d, styles::ThemeId},
     types::Candle,
 };
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+struct PaneTreeState {
+    id: String,
+    visible: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ObjectTreeState {
+    panes: Vec<PaneTreeState>,
+    series: Vec<SeriesTreeState>,
+    drawings: Vec<DrawingTreeState>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SeriesTreeState {
+    id: String,
+    name: String,
+    pane_id: String,
+    visible: bool,
+    deleted: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DrawingTreeState {
+    id: u64,
+    kind: String,
+    layer_id: String,
+    group_id: Option<String>,
+    visible: bool,
+}
 
 #[wasm_bindgen]
 pub struct WasmChart {
@@ -55,8 +87,6 @@ impl WasmChart {
             canvas,
             ctx,
         };
-
-        chart.set_cursor_select();
         Ok(chart)
     }
 
@@ -88,24 +118,6 @@ impl WasmChart {
             .map_err(|e| JsValue::from_str(&format!("Invalid OHLCV JSON candle batch: {e}")))?;
         self.chart.upsert_candles(candles);
         Ok(())
-    }
-
-    /// Sets native top-strip labels used by source/timeframe controls.
-    pub fn set_top_strip_labels(&mut self, source: &str, timeframe: &str) {
-        self.chart.set_top_strip_labels(source, timeframe);
-    }
-
-    /// Hit-tests native top-strip controls at pixel position.
-    /// Returns one of: "source", "timeframe", "fx", "layout", or "".
-    pub fn top_strip_action_at(&self, x: f32, y: f32) -> String {
-        match self.chart.top_strip_action_at(x, y) {
-            Some(TopStripAction::Source) => "source",
-            Some(TopStripAction::Timeframe) => "timeframe",
-            Some(TopStripAction::Fx) => "fx",
-            Some(TopStripAction::Layout) => "layout",
-            None => "",
-        }
-        .to_string()
     }
 
     pub fn pan_pixels(&mut self, dx: f32) {
@@ -178,11 +190,6 @@ impl WasmChart {
     /// Returns native cursor hint for current drawing mode and hover target.
     pub fn drawing_cursor_hint(&self, x: f32, y: f32) -> String {
         self.chart.drawing_cursor_hint_at(x, y).to_string()
-    }
-
-    /// Returns true when the pointer is inside the native object-tree panel.
-    pub fn point_in_object_tree(&self, x: f32, y: f32) -> bool {
-        self.chart.point_in_chart_object_tree(x, y)
     }
 
     /// Cancels active native drawing interaction.
@@ -272,6 +279,16 @@ impl WasmChart {
         self.chart.set_drawing_layer_visible(layer_id, visible);
     }
 
+    /// Sets drawing visibility (`true` visible, `false` hidden).
+    pub fn set_drawing_visible(&mut self, drawing_id: u64, visible: bool) -> bool {
+        self.chart.set_drawing_visible(drawing_id, visible)
+    }
+
+    /// Removes a drawing by id.
+    pub fn remove_drawing(&mut self, drawing_id: u64) -> bool {
+        self.chart.remove_drawing(drawing_id)
+    }
+
     /// Sets group visibility (`true` visible, `false` hidden).
     pub fn set_drawing_group_visible(&mut self, group_id: &str, visible: bool) {
         self.chart.set_drawing_group_visible(group_id, visible);
@@ -335,30 +352,6 @@ impl WasmChart {
         self.chart.clear_crosshair();
     }
 
-    pub fn set_cursor_select(&self) {
-        self.set_canvas_cursor("crosshair");
-    }
-
-    pub fn set_cursor_default(&self) {
-        self.set_canvas_cursor("default");
-    }
-
-    pub fn set_cursor_grabbing(&self) {
-        self.set_canvas_cursor("grabbing");
-    }
-
-    pub fn set_cursor_row_resize(&self) {
-        self.set_canvas_cursor("row-resize");
-    }
-
-    pub fn set_cursor_ns_resize(&self) {
-        self.set_canvas_cursor("ns-resize");
-    }
-
-    pub fn set_cursor_ew_resize(&self) {
-        self.set_canvas_cursor("ew-resize");
-    }
-
     /// Adds a Simple Moving Average overlay.
     pub fn add_sma_overlay(&mut self, period: u32) {
         indicator_api::add_sma(&mut self.chart, period as usize);
@@ -407,6 +400,21 @@ impl WasmChart {
     /// Sets pane visibility (`true` visible, `false` hidden). Price pane cannot be hidden.
     pub fn set_pane_visible(&mut self, pane_id: &str, visible: bool) {
         self.chart.set_pane_visibility(pane_id, visible);
+    }
+
+    /// Sets series visibility (`true` visible, `false` hidden).
+    pub fn set_series_visible(&mut self, series_id: &str, visible: bool) {
+        self.chart.set_series_visibility(series_id, visible);
+    }
+
+    /// Removes a series from render output by id.
+    pub fn delete_series(&mut self, series_id: &str) {
+        self.chart.delete_series(series_id);
+    }
+
+    /// Restores a previously deleted series by id.
+    pub fn restore_series(&mut self, series_id: &str) {
+        self.chart.restore_series(series_id);
     }
 
     /// Explicitly registers a named pane in the engine registry.
@@ -516,18 +524,64 @@ impl WasmChart {
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize pane layout: {e}")))
     }
 
+    /// Returns external object-tree state as JSON for UI components.
+    pub fn object_tree_state_json(&self) -> Result<String, JsValue> {
+        let mut panes = vec![PaneTreeState {
+            id: "price".to_string(),
+            visible: true,
+        }];
+        panes.extend(
+            self.chart
+                .registered_named_panes()
+                .into_iter()
+                .map(|id| PaneTreeState {
+                    visible: self.chart.is_pane_visible(&id),
+                    id,
+                }),
+        );
+
+        let series = self
+            .chart
+            .plot_series_state()
+            .into_iter()
+            .map(|item| SeriesTreeState {
+                id: item.id,
+                name: item.name,
+                pane_id: item.pane_id,
+                visible: item.visible,
+                deleted: item.deleted,
+            })
+            .collect();
+
+        let drawings = self
+            .chart
+            .drawing_state()
+            .into_iter()
+            .map(|item| DrawingTreeState {
+                id: item.id,
+                kind: item.kind,
+                layer_id: item.layer_id,
+                group_id: item.group_id,
+                visible: item.visible,
+            })
+            .collect();
+
+        let state = ObjectTreeState {
+            panes,
+            series,
+            drawings,
+        };
+
+        serde_json::to_string(&state)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize object tree state: {e}")))
+    }
+
     // -------- Rendering --------
 
     pub fn draw(&self) -> Result<(), JsValue> {
         // Domain builds a backend-agnostic scene; backend handles paint.
         let cmds = self.chart.build_draw_commands();
         paint_canvas2d(&self.ctx, &self.canvas, &cmds, self.chart.theme())
-    }
-}
-
-impl WasmChart {
-    fn set_canvas_cursor(&self, cursor: &str) {
-        let _ = self.canvas.style().set_property("cursor", cursor);
     }
 }
 

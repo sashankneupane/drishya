@@ -10,7 +10,6 @@ use crate::{
     types::Size,
 };
 
-use super::tools::{CHART_OBJECT_TREE_MARGIN_PX, CHART_OBJECT_TREE_WIDTH_PX};
 use super::Chart;
 
 const DEFAULT_PRICE_WEIGHT: f32 = 3.0;
@@ -29,6 +28,15 @@ pub struct PaneLayoutState {
     pub y_axis_visible: BTreeMap<String, bool>,
     pub min_heights: BTreeMap<String, f32>,
     pub max_heights: BTreeMap<String, f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlotSeriesState {
+    pub id: String,
+    pub name: String,
+    pub pane_id: String,
+    pub visible: bool,
+    pub deleted: bool,
 }
 
 impl Chart {
@@ -56,11 +64,34 @@ impl Chart {
             .collect()
     }
 
-    pub(crate) fn is_series_visible(&self, series_id: &str) -> bool {
-        !self.hidden_series.contains(series_id) && !self.deleted_series.contains(series_id)
+    pub fn plot_series_state(&self) -> Vec<PlotSeriesState> {
+        self.plot_providers
+            .iter()
+            .flat_map(|provider| provider.build_series(&self.candles))
+            .map(|series| {
+                let deleted = self.deleted_series.contains(&series.id);
+                let visible =
+                    !deleted && series.visible && !self.hidden_series.contains(&series.id);
+                PlotSeriesState {
+                    id: series.id,
+                    name: series.name,
+                    pane_id: pane_id_label(&series.pane),
+                    visible,
+                    deleted,
+                }
+            })
+            .collect()
     }
 
-    pub(crate) fn set_series_visibility(&mut self, series_id: &str, visible: bool) {
+    pub fn is_series_visible(&self, series_id: &str) -> bool {
+        let key = series_id.trim();
+        if key.is_empty() {
+            return false;
+        }
+        !self.hidden_series.contains(key) && !self.deleted_series.contains(key)
+    }
+
+    pub fn set_series_visibility(&mut self, series_id: &str, visible: bool) {
         let key = series_id.trim().to_string();
         if key.is_empty() || self.deleted_series.contains(&key) {
             return;
@@ -73,14 +104,30 @@ impl Chart {
         }
     }
 
-    pub(crate) fn delete_series(&mut self, series_id: &str) {
+    pub fn delete_series(&mut self, series_id: &str) {
         let key = series_id.trim().to_string();
         if key.is_empty() {
             return;
         }
-
         self.hidden_series.remove(&key);
         self.deleted_series.insert(key);
+    }
+
+    pub fn restore_series(&mut self, series_id: &str) {
+        let key = series_id.trim().to_string();
+        if key.is_empty() {
+            return;
+        }
+        self.deleted_series.remove(&key);
+        self.hidden_series.remove(&key);
+    }
+
+    pub fn is_pane_visible(&self, pane_id: &str) -> bool {
+        let key = pane_key_from_input(pane_id);
+        if key == "price" {
+            return true;
+        }
+        !self.hidden_panes.contains(&key)
     }
 
     pub(crate) fn pane_descriptors(&self) -> Vec<PaneDescriptor> {
@@ -182,11 +229,9 @@ impl Chart {
 
     pub(crate) fn current_layout(&self) -> ChartLayout {
         let pane_specs = self.pane_descriptors();
-        let reserved = CHART_OBJECT_TREE_WIDTH_PX + CHART_OBJECT_TREE_MARGIN_PX * 2.0;
-        let chart_width = (self.size.width - reserved).max(240.0);
         compute_layout(
             Size {
-                width: chart_width,
+                width: self.size.width,
                 height: self.size.height,
             },
             &pane_specs,
@@ -494,6 +539,13 @@ fn ordered_registered_panes(registered: &[String], pane_order: &[String]) -> Vec
     }
 
     ordered
+}
+
+fn pane_id_label(pane_id: &PaneId) -> String {
+    match pane_id {
+        PaneId::Price => "price".to_string(),
+        PaneId::Named(name) => name.clone(),
+    }
 }
 
 #[cfg(test)]
