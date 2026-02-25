@@ -42,15 +42,24 @@ pub fn build_axis_commands(
         let y = layout.price_pane.y + layout.price_pane.h * t;
 
         out.push(DrawCommand::Line {
-            from: Point { x: layout.price_pane.x, y },
-            to: Point { x: layout.price_pane.right(), y },
+            from: Point {
+                x: layout.price_pane.x,
+                y,
+            },
+            to: Point {
+                x: layout.price_pane.right(),
+                y,
+            },
             width: 1.0,
             color: "#111827".to_string(),
         });
 
         let price = ps.max - (ps.max - ps.min) * t as f64;
         out.push(DrawCommand::Text {
-            pos: Point { x: layout.y_axis.x + layout.y_axis.w - 4.0, y: y + 4.0 },
+            pos: Point {
+                x: layout.y_axis.x + layout.y_axis.w - 4.0,
+                y: y + 4.0,
+            },
             text: format!("{:.2}", price),
             size: 11.0,
             color: "#9ca3af".to_string(),
@@ -63,7 +72,8 @@ pub fn build_axis_commands(
     if n > 0 {
         let label_count = 6usize.min(n);
         for k in 0..label_count {
-            let idx = ((n - 1) as f32 * (k as f32 / (label_count.saturating_sub(1).max(1) as f32))).round() as usize;
+            let idx = ((n - 1) as f32 * (k as f32 / (label_count.saturating_sub(1).max(1) as f32)))
+                .round() as usize;
             let x = ts.x_for_index(idx);
 
             let bottom_y = layout
@@ -72,7 +82,10 @@ pub fn build_axis_commands(
                 .unwrap_or(layout.price_pane.bottom());
 
             out.push(DrawCommand::Line {
-                from: Point { x, y: layout.price_pane.y },
+                from: Point {
+                    x,
+                    y: layout.price_pane.y,
+                },
                 to: Point { x, y: bottom_y },
                 width: 1.0,
                 color: "rgba(17,24,39,0.7)".to_string(),
@@ -80,7 +93,10 @@ pub fn build_axis_commands(
 
             let ts_val = candles[idx].ts;
             out.push(DrawCommand::Text {
-                pos: Point { x, y: layout.x_axis.y + 16.0 },
+                pos: Point {
+                    x,
+                    y: layout.x_axis.y + 16.0,
+                },
                 text: format!("{}", ts_val),
                 size: 10.0,
                 color: "#9ca3af".to_string(),

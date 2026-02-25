@@ -11,9 +11,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
-    chart::Chart,
-    indicators::api as indicator_api,
-    render::backends::canvas2d::paint_canvas2d,
+    chart::Chart, indicators::api as indicator_api, render::backends::canvas2d::paint_canvas2d,
     types::Candle,
 };
 
@@ -31,7 +29,9 @@ impl WasmChart {
         // Validate browser handles eagerly so JS gets immediate constructor
         // errors instead of delayed failures during the first draw.
         let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window"))?;
-        let document = window.document().ok_or_else(|| JsValue::from_str("No document"))?;
+        let document = window
+            .document()
+            .ok_or_else(|| JsValue::from_str("No document"))?;
 
         let el = document
             .get_element_by_id(canvas_id)

@@ -3,7 +3,10 @@
 //! This file contains logic that mutates or reads persistent chart state,
 //! but does not decide rendering style or interaction intent.
 
-use crate::{types::{Candle, Size}, viewport::Viewport};
+use crate::{
+    types::{Candle, Size},
+    viewport::Viewport,
+};
 
 use super::Chart;
 

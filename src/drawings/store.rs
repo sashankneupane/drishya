@@ -28,13 +28,15 @@ impl DrawingStore {
 
     pub fn add_horizontal_line(&mut self, price: f64) -> DrawingId {
         let id = self.alloc_id();
-        self.items.push(Drawing::HorizontalLine(HorizontalLine { id, price }));
+        self.items
+            .push(Drawing::HorizontalLine(HorizontalLine { id, price }));
         id
     }
 
     pub fn add_vertical_line(&mut self, index: f32) -> DrawingId {
         let id = self.alloc_id();
-        self.items.push(Drawing::VerticalLine(VerticalLine { id, index }));
+        self.items
+            .push(Drawing::VerticalLine(VerticalLine { id, index }));
         id
     }
 

@@ -45,10 +45,18 @@ pub fn build_plot_draw_commands(series: &[PlotSeries], ctx: PlotRenderContext) -
                 PlotPrimitive::Line { values, style } => {
                     out.extend(render_line(values, style.width, &style.color, &ctx, step));
                 }
-                PlotPrimitive::Band { upper, lower, style } => {
+                PlotPrimitive::Band {
+                    upper,
+                    lower,
+                    style,
+                } => {
                     out.extend(render_band(upper, lower, &style.fill_color, &ctx, step));
                 }
-                PlotPrimitive::Histogram { values, base, style } => {
+                PlotPrimitive::Histogram {
+                    values,
+                    base,
+                    style,
+                } => {
                     out.extend(render_histogram(values, *base, style, &ctx, step));
                 }
                 PlotPrimitive::Markers { points, style } => {
@@ -117,7 +125,15 @@ fn render_band(
                 run_start = Some(global_idx);
             }
         } else if let Some(start) = run_start {
-            append_band_run(&mut out, upper, lower, fill_color, ctx, step, start, global_idx);
+            append_band_run(
+                &mut out,
+                upper,
+                lower,
+                fill_color,
+                ctx,
+                step,
+                start..global_idx,
+            );
             run_start = None;
         }
     }
@@ -130,8 +146,7 @@ fn render_band(
             fill_color,
             ctx,
             step,
-            start,
-            ctx.visible_end,
+            start..ctx.visible_end,
         );
     }
 
@@ -145,10 +160,9 @@ fn append_band_run(
     fill_color: &str,
     ctx: &PlotRenderContext,
     step: f32,
-    start: usize,
-    end: usize,
+    run: std::ops::Range<usize>,
 ) {
-    if end <= start + 1 {
+    if run.end <= run.start + 1 {
         return;
     }
 
@@ -156,10 +170,10 @@ fn append_band_run(
     let mut top_points = Vec::new();
     let mut bottom_points = Vec::new();
 
-    for global_idx in start..end {
+    for (global_idx, maybe_upper) in upper.iter().enumerate().take(run.end).skip(run.start) {
         let local_idx = global_idx - ctx.visible_start;
         let x = pane.x + (local_idx as f32 + 0.5) * step;
-        if let Some(v) = upper[global_idx] {
+        if let Some(v) = *maybe_upper {
             top_points.push(Point {
                 x,
                 y: map_value_to_pane_y(v, ctx).clamp(pane.y, pane.bottom()),
@@ -167,10 +181,10 @@ fn append_band_run(
         }
     }
 
-    for global_idx in (start..end).rev() {
+    for (global_idx, maybe_lower) in lower.iter().enumerate().take(run.end).skip(run.start).rev() {
         let local_idx = global_idx - ctx.visible_start;
         let x = pane.x + (local_idx as f32 + 0.5) * step;
-        if let Some(v) = lower[global_idx] {
+        if let Some(v) = *maybe_lower {
             bottom_points.push(Point {
                 x,
                 y: map_value_to_pane_y(v, ctx).clamp(pane.y, pane.bottom()),

@@ -8,7 +8,12 @@ use crate::{
     types::{Candle, Rect},
 };
 
-pub fn build_volume_commands(candles: &[Candle], ts: TimeScale, pane: Rect, max_volume: f64) -> Vec<DrawCommand> {
+pub fn build_volume_commands(
+    candles: &[Candle],
+    ts: TimeScale,
+    pane: Rect,
+    max_volume: f64,
+) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     // Slightly narrower than candle bodies to reduce visual crowding.
     let bw = (ts.candle_width() * 0.9).max(1.0);

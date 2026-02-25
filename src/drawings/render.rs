@@ -4,12 +4,8 @@
 //! by any backend, just like candles and axes.
 
 use crate::{
-    drawings::types::Drawing,
-    layout::ChartLayout,
-    render::primitives::DrawCommand,
-    scale::PriceScale,
-    types::Point,
-    viewport::Viewport,
+    drawings::types::Drawing, layout::ChartLayout, render::primitives::DrawCommand,
+    scale::PriceScale, types::Point, viewport::Viewport,
 };
 
 pub fn build_drawing_commands(
@@ -26,14 +22,23 @@ pub fn build_drawing_commands(
                 let y = ps.y_for_price(h.price);
                 if y >= layout.price_pane.y && y <= layout.price_pane.bottom() {
                     out.push(DrawCommand::Line {
-                        from: Point { x: layout.price_pane.x, y },
-                        to: Point { x: layout.price_pane.right(), y },
+                        from: Point {
+                            x: layout.price_pane.x,
+                            y,
+                        },
+                        to: Point {
+                            x: layout.price_pane.right(),
+                            y,
+                        },
                         width: 1.0,
                         color: "#f59e0b".to_string(),
                     });
 
                     out.push(DrawCommand::Text {
-                        pos: Point { x: layout.y_axis.x + layout.y_axis.w - 4.0, y: y + 4.0 },
+                        pos: Point {
+                            x: layout.y_axis.x + layout.y_axis.w - 4.0,
+                            y: y + 4.0,
+                        },
                         text: format!("{:.2}", h.price),
                         size: 11.0,
                         color: "#fbbf24".to_string(),
@@ -53,14 +58,20 @@ pub fn build_drawing_commands(
                             .unwrap_or(layout.price_pane.bottom());
 
                         out.push(DrawCommand::Line {
-                            from: Point { x, y: layout.price_pane.y },
+                            from: Point {
+                                x,
+                                y: layout.price_pane.y,
+                            },
                             to: Point { x, y: bottom_y },
                             width: 1.0,
                             color: "#38bdf8".to_string(),
                         });
 
                         out.push(DrawCommand::Text {
-                            pos: Point { x, y: layout.x_axis.y + 16.0 },
+                            pos: Point {
+                                x,
+                                y: layout.x_axis.y + 16.0,
+                            },
                             text: "|".to_string(),
                             size: 12.0,
                             color: "#7dd3fc".to_string(),
