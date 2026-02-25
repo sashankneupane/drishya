@@ -6,10 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     layout::{compute_layout, AxisVisibilityPolicy, ChartLayout, PaneDescriptor, PaneHeightPolicy},
-    plots::{
-        model::{PaneId, PlotSeries},
-        provider::PlotDataProvider,
-    },
+    plots::{model::PaneId, provider::PlotDataProvider},
 };
 
 use super::Chart;
@@ -22,6 +19,7 @@ const DEFAULT_COLLAPSED_HEIGHT: f32 = 24.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PaneLayoutState {
+    pub registered: Vec<String>,
     pub order: Vec<String>,
     pub weights: BTreeMap<String, f32>,
     pub hidden: Vec<String>,
@@ -48,8 +46,7 @@ impl Chart {
     }
 
     pub(crate) fn pane_descriptors(&self) -> Vec<PaneDescriptor> {
-        let series = self.collect_plot_series();
-        let active_named_panes = ordered_named_panes(&series, &self.pane_order);
+        let named_panes = ordered_registered_panes(&self.pane_registry, &self.pane_order);
 
         let price_weight = self
             .pane_weights
@@ -57,7 +54,11 @@ impl Chart {
             .copied()
             .unwrap_or(DEFAULT_PRICE_WEIGHT)
             .max(0.1);
-        let price_axis_visible = self.pane_y_axis_visible.get("price").copied().unwrap_or(true);
+        let price_axis_visible = self
+            .pane_y_axis_visible
+            .get("price")
+            .copied()
+            .unwrap_or(true);
         let price_min_height = self
             .pane_min_heights
             .get("price")
@@ -82,7 +83,7 @@ impl Chart {
             max_height_px: price_max_height,
         }];
 
-        for pane_key in active_named_panes {
+        for pane_key in named_panes {
             if self.hidden_panes.contains(&pane_key) {
                 continue;
             }
@@ -152,6 +153,7 @@ impl Chart {
         }
 
         let key = pane_key_from_input(pane_id);
+        self.ensure_named_pane_registered(&key);
 
         self.pane_weights.insert(key, ratio.max(0.1));
     }
@@ -174,6 +176,7 @@ impl Chart {
         if key == "price" {
             return;
         }
+        self.ensure_named_pane_registered(&key);
 
         if visible {
             self.hidden_panes.remove(&key);
@@ -187,6 +190,7 @@ impl Chart {
         if key == "price" {
             return;
         }
+        self.ensure_named_pane_registered(&key);
 
         if collapsed {
             self.collapsed_panes.insert(key);
@@ -197,6 +201,7 @@ impl Chart {
 
     pub fn set_pane_y_axis_visible(&mut self, pane_id: &str, visible: bool) {
         let key = pane_key_from_input(pane_id);
+        self.ensure_named_pane_registered(&key);
         self.pane_y_axis_visible.insert(key, visible);
     }
 
@@ -207,6 +212,7 @@ impl Chart {
         max_height_px: Option<f32>,
     ) {
         let key = pane_key_from_input(pane_id);
+        self.ensure_named_pane_registered(&key);
 
         if let Some(min_height_px) = min_height_px.filter(|v| *v > 0.0) {
             self.pane_min_heights.insert(key.clone(), min_height_px);
@@ -227,12 +233,43 @@ impl Chart {
         I: IntoIterator<Item = String>,
     {
         let mut dedup = HashSet::new();
-        self.pane_order = order
+        let ordered: Vec<String> = order
             .into_iter()
             .map(|pane_id| pane_key_from_input(&pane_id))
             .filter(|pane_key| pane_key != "price")
             .filter(|pane_key| dedup.insert(pane_key.clone()))
             .collect();
+
+        for pane_key in &ordered {
+            self.ensure_named_pane_registered(pane_key);
+        }
+
+        self.pane_order = ordered;
+    }
+
+    pub fn register_named_pane(&mut self, pane_id: &str) {
+        let key = pane_key_from_input(pane_id);
+        self.ensure_named_pane_registered(&key);
+    }
+
+    pub fn unregister_named_pane(&mut self, pane_id: &str) {
+        let key = pane_key_from_input(pane_id);
+        if key == "price" {
+            return;
+        }
+
+        self.pane_registry.retain(|pane_key| pane_key != &key);
+        self.pane_order.retain(|pane_key| pane_key != &key);
+        self.hidden_panes.remove(&key);
+        self.collapsed_panes.remove(&key);
+        self.pane_y_axis_visible.remove(&key);
+        self.pane_weights.remove(&key);
+        self.pane_min_heights.remove(&key);
+        self.pane_max_heights.remove(&key);
+    }
+
+    pub fn registered_named_panes(&self) -> Vec<String> {
+        ordered_registered_panes(&self.pane_registry, &self.pane_order)
     }
 
     pub fn move_named_pane_up(&mut self, pane_id: &str) -> bool {
@@ -251,6 +288,7 @@ impl Chart {
         collapsed.sort();
 
         PaneLayoutState {
+            registered: self.pane_registry.clone(),
             order: self.pane_order.clone(),
             weights: self
                 .pane_weights
@@ -278,6 +316,17 @@ impl Chart {
     }
 
     pub fn restore_pane_layout_state(&mut self, state: PaneLayoutState) {
+        self.pane_registry = state
+            .registered
+            .into_iter()
+            .map(|pane_id| pane_key_from_input(&pane_id))
+            .filter(|pane_key| pane_key != "price")
+            .fold(Vec::new(), |mut acc, pane_key| {
+                if !acc.contains(&pane_key) {
+                    acc.push(pane_key);
+                }
+                acc
+            });
         self.set_pane_order(state.order);
         self.pane_weights = state
             .weights
@@ -324,6 +373,7 @@ impl Chart {
     }
 
     pub fn clear_pane_layout_state(&mut self) {
+        self.pane_registry.clear();
         self.pane_weights.clear();
         self.pane_order.clear();
         self.hidden_panes.clear();
@@ -338,6 +388,8 @@ impl Chart {
         if pane_key == "price" {
             return false;
         }
+
+        self.ensure_named_pane_registered(&pane_key);
 
         if !self.pane_order.contains(&pane_key) {
             self.pane_order.push(pane_key.clone());
@@ -355,6 +407,20 @@ impl Chart {
         self.pane_order.swap(idx, target as usize);
         true
     }
+
+    fn ensure_named_pane_registered(&mut self, pane_key: &str) {
+        if pane_key == "price" || pane_key.is_empty() {
+            return;
+        }
+
+        if !self
+            .pane_registry
+            .iter()
+            .any(|registered| registered == pane_key)
+        {
+            self.pane_registry.push(pane_key.to_string());
+        }
+    }
 }
 
 fn pane_key_from_input(pane_id: &str) -> String {
@@ -365,30 +431,57 @@ fn pane_key_from_input(pane_id: &str) -> String {
     }
 }
 
-fn ordered_named_panes(series: &[PlotSeries], pane_order: &[String]) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut discovered = Vec::new();
-
-    for s in series {
-        if let PaneId::Named(name) = &s.pane {
-            if seen.insert(name.clone()) {
-                discovered.push(name.clone());
-            }
-        }
-    }
-
+fn ordered_registered_panes(registered: &[String], pane_order: &[String]) -> Vec<String> {
+    let mut seen = registered.iter().cloned().collect::<HashSet<_>>();
     let mut ordered = Vec::new();
+
     for pane_key in pane_order {
         if seen.remove(pane_key) {
             ordered.push(pane_key.clone());
         }
     }
 
-    for pane_key in discovered {
-        if seen.remove(&pane_key) {
-            ordered.push(pane_key);
+    for pane_key in registered {
+        if seen.remove(pane_key) {
+            ordered.push(pane_key.clone());
         }
     }
 
     ordered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart::Chart;
+
+    #[test]
+    fn registry_controls_pane_presence_without_series_discovery() {
+        let mut chart = Chart::new(1200.0, 800.0);
+        chart.register_named_pane("rsi");
+        chart.register_named_pane("momentum");
+
+        let descriptors = chart.pane_descriptors();
+        let named = descriptors
+            .iter()
+            .filter_map(|d| match &d.id {
+                PaneId::Named(name) => Some(name.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(named, vec!["rsi".to_string(), "momentum".to_string()]);
+    }
+
+    #[test]
+    fn pane_order_is_deterministic_from_registry_and_order() {
+        let mut chart = Chart::new(1200.0, 800.0);
+        chart.register_named_pane("rsi");
+        chart.register_named_pane("momentum");
+        chart.register_named_pane("macd");
+        chart.set_pane_order(vec!["macd".to_string(), "rsi".to_string()]);
+
+        let ordered = chart.registered_named_panes();
+        assert_eq!(ordered, vec!["macd", "rsi", "momentum"]);
+    }
 }
