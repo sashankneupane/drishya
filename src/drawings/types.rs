@@ -4,21 +4,154 @@
 //! explicit rather than embedding behavior.
 
 pub type DrawingId = u64;
+pub type DrawingLayerId = String;
+pub type DrawingGroupId = String;
+
+pub const DEFAULT_DRAWING_LAYER: &str = "drawings";
 
 #[derive(Debug, Clone)]
 pub struct HorizontalLine {
     pub id: DrawingId,
     pub price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VerticalLine {
     pub id: DrawingId,
     pub index: f32,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Ray {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub start_price: f64,
+    pub end_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Rectangle {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub top_price: f64,
+    pub bottom_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LongPosition {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub entry_price: f64,
+    pub stop_price: f64,
+    pub target_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShortPosition {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub entry_price: f64,
+    pub stop_price: f64,
+    pub target_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FibRetracement {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub start_price: f64,
+    pub end_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Drawing {
     HorizontalLine(HorizontalLine),
     VerticalLine(VerticalLine),
+    Ray(Ray),
+    Rectangle(Rectangle),
+    LongPosition(LongPosition),
+    ShortPosition(ShortPosition),
+    FibRetracement(FibRetracement),
+}
+
+impl Drawing {
+    pub fn id(&self) -> DrawingId {
+        match self {
+            Drawing::HorizontalLine(item) => item.id,
+            Drawing::VerticalLine(item) => item.id,
+            Drawing::Ray(item) => item.id,
+            Drawing::Rectangle(item) => item.id,
+            Drawing::LongPosition(item) => item.id,
+            Drawing::ShortPosition(item) => item.id,
+            Drawing::FibRetracement(item) => item.id,
+        }
+    }
+
+    pub fn layer_id(&self) -> &str {
+        match self {
+            Drawing::HorizontalLine(item) => item.layer_id.as_str(),
+            Drawing::VerticalLine(item) => item.layer_id.as_str(),
+            Drawing::Ray(item) => item.layer_id.as_str(),
+            Drawing::Rectangle(item) => item.layer_id.as_str(),
+            Drawing::LongPosition(item) => item.layer_id.as_str(),
+            Drawing::ShortPosition(item) => item.layer_id.as_str(),
+            Drawing::FibRetracement(item) => item.layer_id.as_str(),
+        }
+    }
+
+    pub fn group_id(&self) -> Option<&str> {
+        match self {
+            Drawing::HorizontalLine(item) => item.group_id.as_deref(),
+            Drawing::VerticalLine(item) => item.group_id.as_deref(),
+            Drawing::Ray(item) => item.group_id.as_deref(),
+            Drawing::Rectangle(item) => item.group_id.as_deref(),
+            Drawing::LongPosition(item) => item.group_id.as_deref(),
+            Drawing::ShortPosition(item) => item.group_id.as_deref(),
+            Drawing::FibRetracement(item) => item.group_id.as_deref(),
+        }
+    }
+
+    pub fn set_layer_id(&mut self, layer_id: &str) {
+        match self {
+            Drawing::HorizontalLine(item) => item.layer_id = layer_id.to_string(),
+            Drawing::VerticalLine(item) => item.layer_id = layer_id.to_string(),
+            Drawing::Ray(item) => item.layer_id = layer_id.to_string(),
+            Drawing::Rectangle(item) => item.layer_id = layer_id.to_string(),
+            Drawing::LongPosition(item) => item.layer_id = layer_id.to_string(),
+            Drawing::ShortPosition(item) => item.layer_id = layer_id.to_string(),
+            Drawing::FibRetracement(item) => item.layer_id = layer_id.to_string(),
+        }
+    }
+
+    pub fn set_group_id(&mut self, group_id: Option<&str>) {
+        let next = group_id.map(|v| v.to_string());
+        match self {
+            Drawing::HorizontalLine(item) => item.group_id = next,
+            Drawing::VerticalLine(item) => item.group_id = next,
+            Drawing::Ray(item) => item.group_id = next,
+            Drawing::Rectangle(item) => item.group_id = next,
+            Drawing::LongPosition(item) => item.group_id = next,
+            Drawing::ShortPosition(item) => item.group_id = next,
+            Drawing::FibRetracement(item) => item.group_id = next,
+        }
+    }
 }

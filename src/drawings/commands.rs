@@ -15,9 +15,47 @@ use crate::drawings::{store::DrawingStore, types::DrawingId};
 
 #[derive(Debug, Clone, Copy)]
 pub enum DrawingCommand {
-    AddHorizontalLine { price: f64 },
-    AddVerticalLine { index: f32 },
-    RemoveById { id: DrawingId },
+    AddHorizontalLine {
+        price: f64,
+    },
+    AddVerticalLine {
+        index: f32,
+    },
+    AddRay {
+        start_index: f32,
+        end_index: f32,
+        start_price: f64,
+        end_price: f64,
+    },
+    AddRectangle {
+        start_index: f32,
+        end_index: f32,
+        top_price: f64,
+        bottom_price: f64,
+    },
+    AddLongPosition {
+        start_index: f32,
+        end_index: f32,
+        entry_price: f64,
+        stop_price: f64,
+        target_price: f64,
+    },
+    AddShortPosition {
+        start_index: f32,
+        end_index: f32,
+        entry_price: f64,
+        stop_price: f64,
+        target_price: f64,
+    },
+    AddFibRetracement {
+        start_index: f32,
+        end_index: f32,
+        start_price: f64,
+        end_price: f64,
+    },
+    RemoveById {
+        id: DrawingId,
+    },
     ClearAll,
 }
 
@@ -40,6 +78,65 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
         }
         DrawingCommand::AddVerticalLine { index } => {
             let id = store.add_vertical_line(index);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddRay {
+            start_index,
+            end_index,
+            start_price,
+            end_price,
+        } => {
+            let id = store.add_ray(start_index, end_index, start_price, end_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddRectangle {
+            start_index,
+            end_index,
+            top_price,
+            bottom_price,
+        } => {
+            let id = store.add_rectangle(start_index, end_index, top_price, bottom_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddLongPosition {
+            start_index,
+            end_index,
+            entry_price,
+            stop_price,
+            target_price,
+        } => {
+            let id = store.add_long_position(
+                start_index,
+                end_index,
+                entry_price,
+                stop_price,
+                target_price,
+            );
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddShortPosition {
+            start_index,
+            end_index,
+            entry_price,
+            stop_price,
+            target_price,
+        } => {
+            let id = store.add_short_position(
+                start_index,
+                end_index,
+                entry_price,
+                stop_price,
+                target_price,
+            );
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddFibRetracement {
+            start_index,
+            end_index,
+            start_price,
+            end_price,
+        } => {
+            let id = store.add_fib_retracement(start_index, end_index, start_price, end_price);
             DrawingCommandResult::Added { id }
         }
         DrawingCommand::RemoveById { id } => {

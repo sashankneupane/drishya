@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     layout::{compute_layout, AxisVisibilityPolicy, ChartLayout, PaneDescriptor, PaneHeightPolicy},
     plots::{model::PaneId, provider::PlotDataProvider},
+    types::Size,
 };
 
+use super::tools::{CHART_OBJECT_TREE_MARGIN_PX, CHART_OBJECT_TREE_WIDTH_PX};
 use super::Chart;
 
 const DEFAULT_PRICE_WEIGHT: f32 = 3.0;
@@ -36,13 +38,49 @@ impl Chart {
 
     pub fn clear_plot_providers(&mut self) {
         self.plot_providers.clear();
+        self.hidden_series.clear();
+        self.deleted_series.clear();
     }
 
     pub(crate) fn collect_plot_series(&self) -> Vec<crate::plots::model::PlotSeries> {
         self.plot_providers
             .iter()
             .flat_map(|provider| provider.build_series(&self.candles))
+            .filter(|series| !self.deleted_series.contains(&series.id))
+            .map(|mut series| {
+                if self.hidden_series.contains(&series.id) {
+                    series.visible = false;
+                }
+                series
+            })
             .collect()
+    }
+
+    pub(crate) fn is_series_visible(&self, series_id: &str) -> bool {
+        !self.hidden_series.contains(series_id) && !self.deleted_series.contains(series_id)
+    }
+
+    pub(crate) fn set_series_visibility(&mut self, series_id: &str, visible: bool) {
+        let key = series_id.trim().to_string();
+        if key.is_empty() || self.deleted_series.contains(&key) {
+            return;
+        }
+
+        if visible {
+            self.hidden_series.remove(&key);
+        } else {
+            self.hidden_series.insert(key);
+        }
+    }
+
+    pub(crate) fn delete_series(&mut self, series_id: &str) {
+        let key = series_id.trim().to_string();
+        if key.is_empty() {
+            return;
+        }
+
+        self.hidden_series.remove(&key);
+        self.deleted_series.insert(key);
     }
 
     pub(crate) fn pane_descriptors(&self) -> Vec<PaneDescriptor> {
@@ -144,7 +182,15 @@ impl Chart {
 
     pub(crate) fn current_layout(&self) -> ChartLayout {
         let pane_specs = self.pane_descriptors();
-        compute_layout(self.size, &pane_specs)
+        let reserved = CHART_OBJECT_TREE_WIDTH_PX + CHART_OBJECT_TREE_MARGIN_PX * 2.0;
+        let chart_width = (self.size.width - reserved).max(240.0);
+        compute_layout(
+            Size {
+                width: chart_width,
+                height: self.size.height,
+            },
+            &pane_specs,
+        )
     }
 
     pub fn set_pane_weight(&mut self, pane_id: &str, ratio: f32) {
