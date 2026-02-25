@@ -4,6 +4,7 @@
 
 use crate::{
     render::primitives::DrawCommand,
+    render::styles::{ColorToken, FillStyle},
     scale::TimeScale,
     types::{Candle, Rect},
 };
@@ -34,11 +35,10 @@ pub fn build_volume_commands(
 
         let bull = c.close >= c.open;
         let color = if bull {
-            "rgba(34,197,94,0.30)"
+            ColorToken::BullMuted
         } else {
-            "rgba(239,68,68,0.30)"
-        }
-        .to_string();
+            ColorToken::BearMuted
+        };
 
         out.push(DrawCommand::Rect {
             rect: Rect {
@@ -47,9 +47,8 @@ pub fn build_volume_commands(
                 w: bw,
                 h,
             },
-            fill: Some(color),
+            fill: Some(FillStyle::token(color)),
             stroke: None,
-            line_width: 1.0,
         });
     }
 

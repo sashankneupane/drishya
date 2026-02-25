@@ -4,6 +4,7 @@
 
 use crate::{
     render::primitives::DrawCommand,
+    render::styles::{ColorToken, FillStyle, StrokeStyle},
     scale::{PriceScale, TimeScale},
     types::{Candle, Point, Rect},
 };
@@ -22,7 +23,7 @@ pub fn build_candle_commands(
         let x = ts.x_for_global_index(global_idx);
 
         let bull = c.close >= c.open;
-        let color = if bull { "#22c55e" } else { "#ef4444" }.to_string();
+        let color = if bull { ColorToken::Bull } else { ColorToken::Bear };
 
         // Wick
         out.push(DrawCommand::Line {
@@ -34,8 +35,7 @@ pub fn build_candle_commands(
                 x,
                 y: ps.y_for_price(c.low),
             },
-            width: 1.0,
-            color: color.clone(),
+            stroke: StrokeStyle::token(color, 1.0),
         });
 
         // Body height is clamped to at least 1px so doji candles remain visible.
@@ -51,9 +51,8 @@ pub fn build_candle_commands(
                 w: cw,
                 h,
             },
-            fill: Some(color),
+            fill: Some(FillStyle::token(color)),
             stroke: None,
-            line_width: 1.0,
         });
     }
 

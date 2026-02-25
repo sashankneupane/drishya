@@ -28,6 +28,35 @@ impl Chart {
         }
     }
 
+    pub fn pan_pixels_2d(&mut self, dx_pixels: f32, dy_pixels: f32, anchor_y_pixels: f32) {
+        self.pan_pixels(dx_pixels);
+        self.pan_y_pixels_at(dy_pixels, anchor_y_pixels);
+    }
+
+    pub fn pan_y_pixels_at(&mut self, dy_pixels: f32, anchor_y_pixels: f32) {
+        if dy_pixels == 0.0 {
+            return;
+        }
+
+        let pane_specs = self.pane_descriptors();
+        let layout = compute_layout(self.size, &pane_specs);
+        let target_pane = layout
+            .panes
+            .iter()
+            .find(|pane| anchor_y_pixels >= pane.rect.y && anchor_y_pixels <= pane.rect.bottom())
+            .map(|pane| pane.id.clone())
+            .unwrap_or(crate::plots::model::PaneId::Price);
+
+        let pane_h = layout
+            .pane_by_id(&target_pane)
+            .map(|p| p.rect.h.max(1.0))
+            .unwrap_or(layout.plot.h.max(1.0));
+
+        let delta_factor = dy_pixels / pane_h;
+        let current = self.pane_y_pan_factor(&target_pane);
+        self.set_pane_y_pan_factor(&target_pane, current + delta_factor);
+    }
+
     /// zoom_factor < 1.0 => zoom in, > 1.0 => zoom out
     pub fn zoom_at_x(&mut self, x_pixels: f32, zoom_factor: f32) {
         if self.candles.is_empty() || zoom_factor <= 0.0 {
@@ -165,6 +194,7 @@ impl Chart {
             PaneId::Named(pane_id.to_string())
         };
         self.set_pane_y_zoom_factor(&id, 1.0);
+        self.set_pane_y_pan_factor(&id, 0.0);
     }
 
     fn price_from_y(&self, y: f32, ps: PriceScale) -> f64 {

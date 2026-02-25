@@ -3,6 +3,7 @@
 use crate::{
     plots::model::{PaneId, PlotPrimitive, PlotSeries},
     render::primitives::DrawCommand,
+    render::styles::{FillStyle, StrokeStyle},
     scale::{PriceScale, TimeScale},
     types::Point,
 };
@@ -89,8 +90,7 @@ fn render_line(
                     out.push(DrawCommand::Line {
                         from: prev_point,
                         to: current,
-                        width,
-                        color: color.to_string(),
+                        stroke: StrokeStyle::css(color.to_string(), width),
                     });
                 }
                 prev = Some(current);
@@ -191,9 +191,8 @@ fn append_band_run(
 
     out.push(DrawCommand::Polygon {
         points: polygon,
-        fill: Some(fill_color.to_string()),
+        fill: Some(FillStyle::css(fill_color.to_string())),
         stroke: None,
-        line_width: 1.0,
     });
 }
 
@@ -227,9 +226,8 @@ fn render_histogram(
                     w: bar_w,
                     h,
                 },
-                fill: Some(color),
+                fill: Some(FillStyle::css(color)),
                 stroke: None,
-                line_width: 1.0,
             });
         }
     }
@@ -257,14 +255,12 @@ fn render_markers(
         out.push(DrawCommand::Line {
             from: Point { x: x - size, y },
             to: Point { x: x + size, y },
-            width: 1.0,
-            color: style.color.clone(),
+            stroke: StrokeStyle::css(style.color.clone(), 1.0),
         });
         out.push(DrawCommand::Line {
             from: Point { x, y: y - size },
             to: Point { x, y: y + size },
-            width: 1.0,
-            color: style.color.clone(),
+            stroke: StrokeStyle::css(style.color.clone(), 1.0),
         });
     }
 

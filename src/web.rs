@@ -12,7 +12,9 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
     chart::plots::PaneLayoutState, chart::Chart, indicators::api as indicator_api,
-    plots::model::PaneId, render::backends::canvas2d::paint_canvas2d, types::Candle,
+    plots::model::PaneId,
+    render::{backends::canvas2d::paint_canvas2d, styles::ThemeId},
+    types::Candle,
 };
 
 #[wasm_bindgen]
@@ -71,6 +73,10 @@ impl WasmChart {
         self.chart.pan_pixels(dx);
     }
 
+    pub fn pan_pixels_2d(&mut self, dx: f32, dy: f32, anchor_y: f32) {
+        self.chart.pan_pixels_2d(dx, dy, anchor_y);
+    }
+
     /// zoom_factor < 1.0 => zoom in, > 1.0 => zoom out
     pub fn zoom_at_x(&mut self, x: f32, zoom_factor: f32) {
         self.chart.zoom_at_x(x, zoom_factor);
@@ -84,6 +90,13 @@ impl WasmChart {
     /// Resets y-axis zoom factor for a pane id (`price`, `rsi`, etc.).
     pub fn reset_y_axis_zoom(&mut self, pane_id: &str) {
         self.chart.reset_y_axis_zoom(pane_id);
+    }
+
+    pub fn set_theme(&mut self, theme: &str) {
+        match theme.to_ascii_lowercase().as_str() {
+            "light" => self.chart.set_theme(ThemeId::Light),
+            _ => self.chart.set_theme(ThemeId::Dark),
+        }
     }
 
     // -------- Drawing tools --------
@@ -299,7 +312,7 @@ impl WasmChart {
     pub fn draw(&self) -> Result<(), JsValue> {
         // Domain builds a backend-agnostic scene; backend handles paint.
         let cmds = self.chart.build_draw_commands();
-        paint_canvas2d(&self.ctx, &self.canvas, &cmds)
+        paint_canvas2d(&self.ctx, &self.canvas, &cmds, self.chart.theme())
     }
 }
 

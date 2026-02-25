@@ -5,6 +5,8 @@
 
 use crate::types::{Point, Rect};
 
+use super::styles::{FillStyle, StrokeStyle, TextStyle};
+
 #[derive(Debug, Clone)]
 pub enum DrawCommand {
     PushClip {
@@ -14,27 +16,21 @@ pub enum DrawCommand {
     Line {
         from: Point,
         to: Point,
-        width: f32,
-        color: String,
+        stroke: StrokeStyle,
     },
     Rect {
         rect: Rect,
-        fill: Option<String>,
-        stroke: Option<String>,
-        line_width: f32,
+        fill: Option<FillStyle>,
+        stroke: Option<StrokeStyle>,
     },
     Polygon {
         points: Vec<Point>,
-        fill: Option<String>,
-        stroke: Option<String>,
-        line_width: f32,
+        fill: Option<FillStyle>,
+        stroke: Option<StrokeStyle>,
     },
     Text {
         pos: Point,
         text: String,
-        size: f32,
-        color: String,
-        // String-based for a simple wasm boundary; callers use known values.
-        align: String, // "left", "right", "center"
+        style: TextStyle,
     },
 }

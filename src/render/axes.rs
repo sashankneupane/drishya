@@ -7,6 +7,7 @@ use crate::{
     layout::{AxisVisibilityPolicy, ChartLayout},
     plots::model::PaneId,
     render::primitives::DrawCommand,
+    render::styles::{ColorToken, StrokeStyle, TextAlign, TextStyle},
     render::ticks::{
         default_axis_formatters, AxisFormatters, DensityXTickProvider, NumericYTickProvider,
     },
@@ -41,8 +42,7 @@ pub fn build_axis_commands_with_formatters(
         out.push(DrawCommand::Rect {
             rect: pane.rect,
             fill: None,
-            stroke: Some("#1f2937".to_string()),
-            line_width: 1.0,
+            stroke: Some(StrokeStyle::token(ColorToken::PaneBorder, 1.0)),
         });
 
         let pane_scale = pane_scales
@@ -61,8 +61,7 @@ pub fn build_axis_commands_with_formatters(
                         x: pane.rect.right(),
                         y,
                     },
-                    width: 1.0,
-                    color: "#111827".to_string(),
+                    stroke: StrokeStyle::token(ColorToken::GridLine, 1.0),
                 });
 
                 if pane.y_axis == AxisVisibilityPolicy::Visible {
@@ -72,9 +71,7 @@ pub fn build_axis_commands_with_formatters(
                             y: y + 4.0,
                         },
                         text: tick.label,
-                        size: 11.0,
-                        color: "#9ca3af".to_string(),
-                        align: "right".to_string(),
+                        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Right),
                     });
                 }
             }
@@ -94,8 +91,7 @@ pub fn build_axis_commands_with_formatters(
                 x,
                 y: layout.plot_bottom(),
             },
-            width: 1.0,
-            color: "rgba(17,24,39,0.7)".to_string(),
+            stroke: StrokeStyle::token(ColorToken::AxisGridStrong, 1.0),
         });
 
         out.push(DrawCommand::Text {
@@ -104,9 +100,7 @@ pub fn build_axis_commands_with_formatters(
                 y: layout.x_axis.y + 16.0,
             },
             text: tick.label,
-            size: 10.0,
-            color: "#9ca3af".to_string(),
-            align: "center".to_string(),
+            style: TextStyle::token(ColorToken::AxisText, 10.0, TextAlign::Center),
         });
     }
 

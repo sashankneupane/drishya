@@ -13,6 +13,7 @@ use crate::{
     },
     render::{
         axes::build_axis_commands, candles::build_candle_commands, primitives::DrawCommand,
+        styles::{ColorToken, FillStyle, StrokeStyle},
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
@@ -64,6 +65,7 @@ impl Chart {
             min_price,
             max_price,
             self.pane_y_zoom_factor(&PaneId::Price),
+            self.pane_y_pan_factor(&PaneId::Price),
         );
 
         // Price and volume share the same pane and horizontal scale.
@@ -94,7 +96,12 @@ impl Chart {
             if let Some((min_v, max_v)) =
                 compute_pane_value_bounds(&plot_series, &pane.id, visible_start, visible_end)
             {
-                let (min_v, max_v) = apply_y_zoom(min_v, max_v, self.pane_y_zoom_factor(&pane.id));
+                let (min_v, max_v) = apply_y_zoom(
+                    min_v,
+                    max_v,
+                    self.pane_y_zoom_factor(&pane.id),
+                    self.pane_y_pan_factor(&pane.id),
+                );
                 pane_scales.push((
                     pane.id.clone(),
                     PriceScale {
@@ -109,9 +116,8 @@ impl Chart {
         // Background
         out.push(DrawCommand::Rect {
             rect: layout.full,
-            fill: Some("#030712".to_string()),
+            fill: Some(FillStyle::token(ColorToken::CanvasBg)),
             stroke: None,
-            line_width: 1.0,
         });
 
         // Core chart primitives
@@ -180,14 +186,14 @@ impl Chart {
                 layout.plot.y,
                 layout.plot_bottom(),
                 1.0,
-                "rgba(148,163,184,0.78)",
+                ColorToken::Crosshair,
             ));
             out.extend(build_dotted_horizontal(
                 crosshair.y,
                 layout.plot.x,
                 layout.plot.right(),
                 1.0,
-                "rgba(148,163,184,0.78)",
+                ColorToken::Crosshair,
             ));
             out.push(DrawCommand::PopClip);
         }
@@ -201,7 +207,7 @@ fn build_dotted_vertical(
     y_top: f32,
     y_bottom: f32,
     width: f32,
-    color: &str,
+    color: ColorToken,
 ) -> Vec<DrawCommand> {
     build_dotted_line(Point { x, y: y_top }, Point { x, y: y_bottom }, width, color)
 }
@@ -211,12 +217,12 @@ fn build_dotted_horizontal(
     x_left: f32,
     x_right: f32,
     width: f32,
-    color: &str,
+    color: ColorToken,
 ) -> Vec<DrawCommand> {
     build_dotted_line(Point { x: x_left, y }, Point { x: x_right, y }, width, color)
 }
 
-fn build_dotted_line(from: Point, to: Point, width: f32, color: &str) -> Vec<DrawCommand> {
+fn build_dotted_line(from: Point, to: Point, width: f32, color: ColorToken) -> Vec<DrawCommand> {
     let dx = to.x - from.x;
     let dy = to.y - from.y;
     let len = (dx * dx + dy * dy).sqrt();
@@ -243,8 +249,7 @@ fn build_dotted_line(from: Point, to: Point, width: f32, color: &str) -> Vec<Dra
                 x: from.x + ux * seg_end,
                 y: from.y + uy * seg_end,
             },
-            width,
-            color: color.to_string(),
+            stroke: StrokeStyle::token(color, width),
         });
         t += step;
     }
@@ -252,10 +257,11 @@ fn build_dotted_line(from: Point, to: Point, width: f32, color: &str) -> Vec<Dra
     out
 }
 
-fn apply_y_zoom(min: f64, max: f64, zoom_factor: f32) -> (f64, f64) {
+fn apply_y_zoom(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
     let span = (max - min).abs().max(1e-9);
-    let center = (max + min) * 0.5;
-    let half = span * zoom_factor.max(0.01) as f64 * 0.5;
+    let zoomed_span = span * zoom_factor.max(0.01) as f64;
+    let center = (max + min) * 0.5 + pan_factor as f64 * zoomed_span;
+    let half = zoomed_span * 0.5;
     (center - half, center + half)
 }
 
