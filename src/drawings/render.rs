@@ -4,8 +4,13 @@
 //! by any backend, just like candles and axes.
 
 use crate::{
-    drawings::types::Drawing, layout::ChartLayout, render::primitives::DrawCommand,
-    scale::PriceScale, types::Point, viewport::Viewport,
+    drawings::types::Drawing,
+    layout::ChartLayout,
+    render::primitives::DrawCommand,
+    render::styles::{ColorToken, StrokeStyle, TextAlign, TextStyle},
+    scale::PriceScale,
+    types::Point,
+    viewport::Viewport,
 };
 
 pub fn build_drawing_commands(
@@ -31,8 +36,7 @@ pub fn build_drawing_commands(
                             x: price_pane.right(),
                             y,
                         },
-                        width: 1.0,
-                        color: "#f59e0b".to_string(),
+                        stroke: StrokeStyle::token(ColorToken::DrawingPrimary, 1.0),
                     });
 
                     out.push(DrawCommand::Text {
@@ -41,27 +45,26 @@ pub fn build_drawing_commands(
                             y: y + 4.0,
                         },
                         text: format!("{:.2}", h.price),
-                        size: 11.0,
-                        color: "#fbbf24".to_string(),
-                        align: "right".to_string(),
+                        style: TextStyle::token(
+                            ColorToken::DrawingPrimaryText,
+                            11.0,
+                            TextAlign::Right,
+                        ),
                     });
                     out.push(DrawCommand::PopClip);
                 }
             }
             Drawing::VerticalLine(v) => {
                 if let Some(vp) = viewport {
-                    // Convert stored world index into current viewport fraction.
-                    let u = (v.index - vp.offset) / vp.bars_visible;
-                    if (0.0..=1.0).contains(&u) {
-                        let x = price_pane.x + price_pane.w * u;
+                    let x = vp.world_x_to_pixel_x(v.index, price_pane.x, price_pane.w);
+                    if x >= price_pane.x && x <= price_pane.right() {
                         let bottom_y = layout.plot_bottom();
 
                         out.push(DrawCommand::PushClip { rect: layout.plot });
                         out.push(DrawCommand::Line {
                             from: Point { x, y: price_pane.y },
                             to: Point { x, y: bottom_y },
-                            width: 1.0,
-                            color: "#38bdf8".to_string(),
+                            stroke: StrokeStyle::token(ColorToken::DrawingSecondary, 1.0),
                         });
 
                         out.push(DrawCommand::Text {
@@ -70,9 +73,11 @@ pub fn build_drawing_commands(
                                 y: layout.x_axis.y + 16.0,
                             },
                             text: "|".to_string(),
-                            size: 12.0,
-                            color: "#7dd3fc".to_string(),
-                            align: "center".to_string(),
+                            style: TextStyle::token(
+                                ColorToken::DrawingSecondaryText,
+                                12.0,
+                                TextAlign::Center,
+                            ),
                         });
                         out.push(DrawCommand::PopClip);
                     }

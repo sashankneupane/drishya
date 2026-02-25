@@ -3,7 +3,8 @@
 use crate::{
     plots::model::{PaneId, PlotPrimitive, PlotSeries},
     render::primitives::DrawCommand,
-    scale::PriceScale,
+    render::styles::{FillStyle, StrokeStyle},
+    scale::{PriceScale, TimeScale},
     types::Point,
 };
 
@@ -18,6 +19,7 @@ pub struct PlotRenderContext {
     pub visible_end: usize,
     pub target_pane: PaneId,
     pub pane_scale: PriceScale,
+    pub time_scale: TimeScale,
     pub value_range: ValueScaleRange,
 }
 
@@ -27,9 +29,6 @@ pub fn build_plot_draw_commands(series: &[PlotSeries], ctx: PlotRenderContext) -
     }
 
     let mut out = Vec::new();
-    let pane = ctx.pane_scale.pane;
-    let count = ctx.visible_end - ctx.visible_start;
-    let step = pane.w / count as f32;
 
     for s in series {
         if !s.visible {
@@ -43,24 +42,24 @@ pub fn build_plot_draw_commands(series: &[PlotSeries], ctx: PlotRenderContext) -
         for primitive in &s.primitives {
             match primitive {
                 PlotPrimitive::Line { values, style } => {
-                    out.extend(render_line(values, style.width, &style.color, &ctx, step));
+                    out.extend(render_line(values, style.width, &style.color, &ctx));
                 }
                 PlotPrimitive::Band {
                     upper,
                     lower,
                     style,
                 } => {
-                    out.extend(render_band(upper, lower, &style.fill_color, &ctx, step));
+                    out.extend(render_band(upper, lower, &style.fill_color, &ctx));
                 }
                 PlotPrimitive::Histogram {
                     values,
                     base,
                     style,
                 } => {
-                    out.extend(render_histogram(values, *base, style, &ctx, step));
+                    out.extend(render_histogram(values, *base, style, &ctx));
                 }
                 PlotPrimitive::Markers { points, style } => {
-                    out.extend(render_markers(points, style, &ctx, step));
+                    out.extend(render_markers(points, style, &ctx));
                 }
             }
         }
@@ -74,7 +73,6 @@ fn render_line(
     width: f32,
     color: &str,
     ctx: &PlotRenderContext,
-    step: f32,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let pane = ctx.pane_scale.pane;
@@ -82,8 +80,7 @@ fn render_line(
 
     for global_idx in ctx.visible_start..ctx.visible_end {
         let value = values.get(global_idx).and_then(|v| *v);
-        let local_idx = global_idx - ctx.visible_start;
-        let x = pane.x + (local_idx as f32 + 0.5) * step;
+        let x = ctx.time_scale.x_for_global_index(global_idx);
 
         match value {
             Some(y_val) => {
@@ -93,8 +90,7 @@ fn render_line(
                     out.push(DrawCommand::Line {
                         from: prev_point,
                         to: current,
-                        width,
-                        color: color.to_string(),
+                        stroke: StrokeStyle::css(color.to_string(), width),
                     });
                 }
                 prev = Some(current);
@@ -111,7 +107,6 @@ fn render_band(
     lower: &[Option<f64>],
     fill_color: &str,
     ctx: &PlotRenderContext,
-    step: f32,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let mut run_start: Option<usize> = None;
@@ -125,15 +120,7 @@ fn render_band(
                 run_start = Some(global_idx);
             }
         } else if let Some(start) = run_start {
-            append_band_run(
-                &mut out,
-                upper,
-                lower,
-                fill_color,
-                ctx,
-                step,
-                start..global_idx,
-            );
+            append_band_run(&mut out, upper, lower, fill_color, ctx, start..global_idx);
             run_start = None;
         }
     }
@@ -145,7 +132,6 @@ fn render_band(
             lower,
             fill_color,
             ctx,
-            step,
             start..ctx.visible_end,
         );
     }
@@ -159,7 +145,6 @@ fn append_band_run(
     lower: &[Option<f64>],
     fill_color: &str,
     ctx: &PlotRenderContext,
-    step: f32,
     run: std::ops::Range<usize>,
 ) {
     if run.end <= run.start + 1 {
@@ -171,8 +156,7 @@ fn append_band_run(
     let mut bottom_points = Vec::new();
 
     for (global_idx, maybe_upper) in upper.iter().enumerate().take(run.end).skip(run.start) {
-        let local_idx = global_idx - ctx.visible_start;
-        let x = pane.x + (local_idx as f32 + 0.5) * step;
+        let x = ctx.time_scale.x_for_global_index(global_idx);
         if let Some(v) = *maybe_upper {
             top_points.push(Point {
                 x,
@@ -182,8 +166,7 @@ fn append_band_run(
     }
 
     for (global_idx, maybe_lower) in lower.iter().enumerate().take(run.end).skip(run.start).rev() {
-        let local_idx = global_idx - ctx.visible_start;
-        let x = pane.x + (local_idx as f32 + 0.5) * step;
+        let x = ctx.time_scale.x_for_global_index(global_idx);
         if let Some(v) = *maybe_lower {
             bottom_points.push(Point {
                 x,
@@ -201,9 +184,8 @@ fn append_band_run(
 
     out.push(DrawCommand::Polygon {
         points: polygon,
-        fill: Some(fill_color.to_string()),
+        fill: Some(FillStyle::css(fill_color.to_string())),
         stroke: None,
-        line_width: 1.0,
     });
 }
 
@@ -212,16 +194,14 @@ fn render_histogram(
     base: f64,
     style: &crate::plots::model::HistogramStyle,
     ctx: &PlotRenderContext,
-    step: f32,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let pane = ctx.pane_scale.pane;
     let base_y = map_value_to_pane_y(base, ctx).clamp(pane.y, pane.bottom());
-    let bar_w = (step * style.width_factor.clamp(0.05, 1.0)).max(1.0);
+    let bar_w = (ctx.time_scale.step() * style.width_factor.clamp(0.05, 1.0)).max(1.0);
 
     for global_idx in ctx.visible_start..ctx.visible_end {
-        let local_idx = global_idx - ctx.visible_start;
-        let x = pane.x + (local_idx as f32 + 0.5) * step;
+        let x = ctx.time_scale.x_for_global_index(global_idx);
         if let Some(v) = values.get(global_idx).and_then(|v| *v) {
             let y = map_value_to_pane_y(v, ctx).clamp(pane.y, pane.bottom());
             let top = y.min(base_y);
@@ -239,9 +219,8 @@ fn render_histogram(
                     w: bar_w,
                     h,
                 },
-                fill: Some(color),
+                fill: Some(FillStyle::css(color)),
                 stroke: None,
-                line_width: 1.0,
             });
         }
     }
@@ -253,7 +232,6 @@ fn render_markers(
     points: &[crate::plots::model::MarkerPoint],
     style: &crate::plots::model::MarkerStyle,
     ctx: &PlotRenderContext,
-    step: f32,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let pane = ctx.pane_scale.pane;
@@ -264,21 +242,18 @@ fn render_markers(
             continue;
         }
 
-        let local_idx = point.index - ctx.visible_start;
-        let x = pane.x + (local_idx as f32 + 0.5) * step;
+        let x = ctx.time_scale.x_for_global_index(point.index);
         let y = map_value_to_pane_y(point.value, ctx).clamp(pane.y, pane.bottom());
 
         out.push(DrawCommand::Line {
             from: Point { x: x - size, y },
             to: Point { x: x + size, y },
-            width: 1.0,
-            color: style.color.clone(),
+            stroke: StrokeStyle::css(style.color.clone(), 1.0),
         });
         out.push(DrawCommand::Line {
             from: Point { x, y: y - size },
             to: Point { x, y: y + size },
-            width: 1.0,
-            color: style.color.clone(),
+            stroke: StrokeStyle::css(style.color.clone(), 1.0),
         });
     }
 

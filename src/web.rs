@@ -11,8 +11,12 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
-    chart::plots::PaneLayoutState, chart::Chart, indicators::api as indicator_api,
-    plots::model::PaneId, render::backends::canvas2d::paint_canvas2d, types::Candle,
+    chart::plots::PaneLayoutState,
+    chart::Chart,
+    indicators::api as indicator_api,
+    plots::model::PaneId,
+    render::{backends::canvas2d::paint_canvas2d, styles::ThemeId},
+    types::Candle,
 };
 
 #[wasm_bindgen]
@@ -38,24 +42,23 @@ impl WasmChart {
             .ok_or_else(|| JsValue::from_str("Canvas not found"))?;
 
         let canvas: HtmlCanvasElement = el.dyn_into::<HtmlCanvasElement>()?;
-        canvas.set_width(width);
-        canvas.set_height(height);
 
         let ctx = canvas
             .get_context("2d")?
             .ok_or_else(|| JsValue::from_str("2D context missing"))?
             .dyn_into::<CanvasRenderingContext2d>()?;
 
-        Ok(Self {
+        let chart = Self {
             chart: Chart::new(width as f32, height as f32),
             canvas,
             ctx,
-        })
+        };
+
+        chart.set_cursor_select();
+        Ok(chart)
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.canvas.set_width(width);
-        self.canvas.set_height(height);
         self.chart.set_size(width as f32, height as f32);
     }
 
@@ -72,9 +75,30 @@ impl WasmChart {
         self.chart.pan_pixels(dx);
     }
 
+    pub fn pan_pixels_2d(&mut self, dx: f32, dy: f32, anchor_y: f32) {
+        self.chart.pan_pixels_2d(dx, dy, anchor_y);
+    }
+
     /// zoom_factor < 1.0 => zoom in, > 1.0 => zoom out
     pub fn zoom_at_x(&mut self, x: f32, zoom_factor: f32) {
         self.chart.zoom_at_x(x, zoom_factor);
+    }
+
+    /// zoom_factor < 1.0 => zoom in, > 1.0 => zoom out for the pane under `y`.
+    pub fn zoom_y_axis_at(&mut self, y: f32, zoom_factor: f32) {
+        self.chart.zoom_y_axis_at(y, zoom_factor);
+    }
+
+    /// Resets y-axis zoom factor for a pane id (`price`, `rsi`, etc.).
+    pub fn reset_y_axis_zoom(&mut self, pane_id: &str) {
+        self.chart.reset_y_axis_zoom(pane_id);
+    }
+
+    pub fn set_theme(&mut self, theme: &str) {
+        match theme.to_ascii_lowercase().as_str() {
+            "light" => self.chart.set_theme(ThemeId::Light),
+            _ => self.chart.set_theme(ThemeId::Dark),
+        }
     }
 
     // -------- Drawing tools --------
@@ -92,6 +116,40 @@ impl WasmChart {
     /// Optional helpers you can use later from JS
     pub fn clear_drawings(&mut self) {
         self.chart.clear_drawings();
+    }
+
+    /// Sets crosshair position in CSS pixel space.
+    pub fn set_crosshair_at(&mut self, x: f32, y: f32) {
+        self.chart.set_crosshair_at(x, y);
+    }
+
+    /// Clears crosshair overlay.
+    pub fn clear_crosshair(&mut self) {
+        self.chart.clear_crosshair();
+    }
+
+    pub fn set_cursor_select(&self) {
+        self.set_canvas_cursor("crosshair");
+    }
+
+    pub fn set_cursor_default(&self) {
+        self.set_canvas_cursor("default");
+    }
+
+    pub fn set_cursor_grabbing(&self) {
+        self.set_canvas_cursor("grabbing");
+    }
+
+    pub fn set_cursor_row_resize(&self) {
+        self.set_canvas_cursor("row-resize");
+    }
+
+    pub fn set_cursor_ns_resize(&self) {
+        self.set_canvas_cursor("ns-resize");
+    }
+
+    pub fn set_cursor_ew_resize(&self) {
+        self.set_canvas_cursor("ew-resize");
     }
 
     /// Adds a Simple Moving Average overlay.
@@ -256,7 +314,13 @@ impl WasmChart {
     pub fn draw(&self) -> Result<(), JsValue> {
         // Domain builds a backend-agnostic scene; backend handles paint.
         let cmds = self.chart.build_draw_commands();
-        paint_canvas2d(&self.ctx, &self.canvas, &cmds)
+        paint_canvas2d(&self.ctx, &self.canvas, &cmds, self.chart.theme())
+    }
+}
+
+impl WasmChart {
+    fn set_canvas_cursor(&self, cursor: &str) {
+        let _ = self.canvas.style().set_property("cursor", cursor);
     }
 }
 

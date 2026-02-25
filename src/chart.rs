@@ -15,8 +15,10 @@ pub mod state;
 
 use crate::{
     drawings::store::DrawingStore,
+    plots::model::PaneId,
     plots::provider::PlotDataProvider,
-    types::{Candle, Size},
+    render::styles::ThemeId,
+    types::{Candle, Point, Size},
     viewport::Viewport,
 };
 use std::collections::{HashMap, HashSet};
@@ -34,6 +36,10 @@ pub struct Chart {
     pane_y_axis_visible: HashMap<String, bool>,
     pane_min_heights: HashMap<String, f32>,
     pane_max_heights: HashMap<String, f32>,
+    pane_y_zoom_factors: HashMap<String, f32>,
+    pane_y_pan_factors: HashMap<String, f32>,
+    crosshair: Option<Point>,
+    theme: ThemeId,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -54,7 +60,48 @@ impl Chart {
             pane_y_axis_visible: HashMap::new(),
             pane_min_heights: HashMap::new(),
             pane_max_heights: HashMap::new(),
+            pane_y_zoom_factors: HashMap::new(),
+            pane_y_pan_factors: HashMap::new(),
+            crosshair: None,
+            theme: ThemeId::Dark,
             drawings: DrawingStore::new(),
         }
+    }
+
+    pub fn set_theme(&mut self, theme: ThemeId) {
+        self.theme = theme;
+    }
+
+    pub fn theme(&self) -> ThemeId {
+        self.theme
+    }
+
+    pub(crate) fn pane_y_zoom_factor(&self, pane_id: &PaneId) -> f32 {
+        let key = pane_zoom_key(pane_id);
+        self.pane_y_zoom_factors.get(key).copied().unwrap_or(1.0)
+    }
+
+    pub(crate) fn set_pane_y_zoom_factor(&mut self, pane_id: &PaneId, factor: f32) {
+        let key = pane_zoom_key(pane_id).to_string();
+        self.pane_y_zoom_factors
+            .insert(key, factor.clamp(0.2, 10.0));
+    }
+
+    pub(crate) fn pane_y_pan_factor(&self, pane_id: &PaneId) -> f32 {
+        let key = pane_zoom_key(pane_id);
+        self.pane_y_pan_factors.get(key).copied().unwrap_or(0.0)
+    }
+
+    pub(crate) fn set_pane_y_pan_factor(&mut self, pane_id: &PaneId, factor: f32) {
+        let key = pane_zoom_key(pane_id).to_string();
+        self.pane_y_pan_factors
+            .insert(key, factor.clamp(-20.0, 20.0));
+    }
+}
+
+fn pane_zoom_key(pane_id: &PaneId) -> &str {
+    match pane_id {
+        PaneId::Price => "price",
+        PaneId::Named(name) => name.as_str(),
     }
 }

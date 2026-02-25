@@ -24,11 +24,6 @@ impl Chart {
         if !self.candles.is_empty() {
             let total = self.candles.len();
             let mut vp = Viewport::new(total);
-
-            // Start at the most recent data so first render feels like a
-            // trading terminal rather than a historical replay.
-            let default_visible = vp.bars_visible.min(total as f32);
-            vp.offset = (total as f32 - default_visible).max(0.0);
             vp.clamp(total);
 
             self.viewport = Some(vp);
