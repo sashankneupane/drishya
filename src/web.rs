@@ -12,7 +12,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
     chart::plots::PaneLayoutState,
-    chart::tools::DrawingToolMode,
+    chart::tools::{DrawingToolMode, TopStripAction},
     chart::Chart,
     drawings::hit_test::{HitToleranceProfile, InteractionMode},
     indicators::api as indicator_api,
@@ -71,6 +71,41 @@ impl WasmChart {
             .map_err(|e| JsValue::from_str(&format!("Invalid OHLCV JSON: {e}")))?;
         self.chart.set_data(data);
         Ok(())
+    }
+
+    /// Upserts one streaming candle from JSON object:
+    /// {"ts":1,"open":100.0,"high":101.0,"low":99.5,"close":100.5,"volume":1200.0}
+    pub fn append_ohlcv_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let candle: Candle = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid OHLCV JSON candle: {e}")))?;
+        self.chart.upsert_candle(candle);
+        Ok(())
+    }
+
+    /// Upserts many streaming candles from JSON array.
+    pub fn append_ohlcv_batch_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let candles: Vec<Candle> = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid OHLCV JSON candle batch: {e}")))?;
+        self.chart.upsert_candles(candles);
+        Ok(())
+    }
+
+    /// Sets native top-strip labels used by source/timeframe controls.
+    pub fn set_top_strip_labels(&mut self, source: &str, timeframe: &str) {
+        self.chart.set_top_strip_labels(source, timeframe);
+    }
+
+    /// Hit-tests native top-strip controls at pixel position.
+    /// Returns one of: "source", "timeframe", "fx", "layout", or "".
+    pub fn top_strip_action_at(&self, x: f32, y: f32) -> String {
+        match self.chart.top_strip_action_at(x, y) {
+            Some(TopStripAction::Source) => "source",
+            Some(TopStripAction::Timeframe) => "timeframe",
+            Some(TopStripAction::Fx) => "fx",
+            Some(TopStripAction::Layout) => "layout",
+            None => "",
+        }
+        .to_string()
     }
 
     pub fn pan_pixels(&mut self, dx: f32) {

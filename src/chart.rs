@@ -47,6 +47,8 @@ pub struct Chart {
     theme: ThemeId,
     drawing_tool_mode: DrawingToolMode,
     drawing_interaction: DrawingInteractionState,
+    top_strip_source_label: String,
+    top_strip_timeframe_label: String,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -75,6 +77,8 @@ impl Chart {
             theme: ThemeId::Dark,
             drawing_tool_mode: DrawingToolMode::Select,
             drawing_interaction: DrawingInteractionState::default(),
+            top_strip_source_label: "OHLCV".to_string(),
+            top_strip_timeframe_label: "TF".to_string(),
             drawings: DrawingStore::new(),
         }
     }
