@@ -178,6 +178,12 @@ impl MomentumHistogramProvider {
     }
 }
 
+impl Default for MomentumHistogramProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PlotDataProvider for MomentumHistogramProvider {
     fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
         let mut values = vec![None; candles.len()];
