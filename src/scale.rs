@@ -7,29 +7,48 @@ use crate::types::Rect;
 #[derive(Debug, Clone, Copy)]
 pub struct TimeScale {
     pub pane: Rect,
-    pub count: usize,
+    pub world_start_x: f64,
+    pub world_end_x: f64,
 }
 
 impl TimeScale {
     pub fn x_for_index(&self, i: usize) -> f32 {
-        if self.count == 0 {
+        self.x_for_global_index(i)
+    }
+
+    pub fn x_for_global_index(&self, i: usize) -> f32 {
+        if self.world_span() <= 1e-9 {
             return self.pane.x;
         }
-        // Candle centers are offset by half a step to keep bars symmetric.
-        let step = self.pane.w / self.count as f32;
-        self.pane.x + (i as f32 + 0.5) * step
+        // Candle centers are offset by half a bar in world space.
+        let world_x = i as f64 + 0.5;
+        self.x_for_world_x(world_x)
+    }
+
+    pub fn x_for_world_x(&self, world_x: f64) -> f32 {
+        if self.world_span() <= 1e-9 {
+            return self.pane.x;
+        }
+
+        let u = (world_x - self.world_start_x) / self.world_span();
+        self.pane.x + (u as f32) * self.pane.w
     }
 
     pub fn step(&self) -> f32 {
-        if self.count == 0 {
+        let span = self.world_span();
+        if span <= 1e-9 {
             1.0
         } else {
-            self.pane.w / self.count as f32
+            self.pane.w / span as f32
         }
     }
 
     pub fn candle_width(&self) -> f32 {
         (self.step() * 0.7).max(1.0)
+    }
+
+    pub fn world_span(&self) -> f64 {
+        (self.world_end_x - self.world_start_x).max(1e-9)
     }
 }
 

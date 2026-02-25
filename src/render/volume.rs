@@ -10,6 +10,7 @@ use crate::{
 
 pub fn build_volume_commands(
     candles: &[Candle],
+    visible_start: usize,
     ts: TimeScale,
     pane: Rect,
     max_volume: f64,
@@ -25,7 +26,8 @@ pub fn build_volume_commands(
     let band_bottom = pane.bottom();
 
     for (i, c) in candles.iter().enumerate() {
-        let x = ts.x_for_index(i);
+        let global_idx = visible_start + i;
+        let x = ts.x_for_global_index(global_idx);
         let t = (c.volume / maxv) as f32;
         let y = band_bottom - band_h * t;
         let h = (band_bottom - y).max(1.0);

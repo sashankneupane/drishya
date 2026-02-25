@@ -7,4 +7,5 @@ pub mod axes;
 pub mod backends;
 pub mod candles;
 pub mod primitives;
+pub mod ticks;
 pub mod volume;

@@ -10,6 +10,7 @@ use crate::{
 
 pub fn build_candle_commands(
     candles: &[Candle],
+    visible_start: usize,
     ts: TimeScale,
     ps: PriceScale,
 ) -> Vec<DrawCommand> {
@@ -17,7 +18,8 @@ pub fn build_candle_commands(
     let cw = ts.candle_width();
 
     for (i, c) in candles.iter().enumerate() {
-        let x = ts.x_for_index(i);
+        let global_idx = visible_start + i;
+        let x = ts.x_for_global_index(global_idx);
 
         let bull = c.close >= c.open;
         let color = if bull { "#22c55e" } else { "#ef4444" }.to_string();

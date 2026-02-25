@@ -16,7 +16,13 @@ version = "0.3"
 features = [
   "Window",
   "Document",
+  "Element",
+  "HtmlElement",
   "HtmlCanvasElement",
+  "CssStyleDeclaration",
   "CanvasRenderingContext2d",
   "console"
 ]
+
+[dev-dependencies]
+proptest = "1"

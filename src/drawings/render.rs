@@ -50,10 +50,8 @@ pub fn build_drawing_commands(
             }
             Drawing::VerticalLine(v) => {
                 if let Some(vp) = viewport {
-                    // Convert stored world index into current viewport fraction.
-                    let u = (v.index - vp.offset) / vp.bars_visible;
-                    if (0.0..=1.0).contains(&u) {
-                        let x = price_pane.x + price_pane.w * u;
+                    let x = vp.world_x_to_pixel_x(v.index, price_pane.x, price_pane.w);
+                    if x >= price_pane.x && x <= price_pane.right() {
                         let bottom_y = layout.plot_bottom();
 
                         out.push(DrawCommand::PushClip { rect: layout.plot });
