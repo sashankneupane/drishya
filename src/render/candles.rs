@@ -23,7 +23,11 @@ pub fn build_candle_commands(
         let x = ts.x_for_global_index(global_idx);
 
         let bull = c.close >= c.open;
-        let color = if bull { ColorToken::Bull } else { ColorToken::Bear };
+        let color = if bull {
+            ColorToken::Bull
+        } else {
+            ColorToken::Bear
+        };
 
         // Wick
         out.push(DrawCommand::Line {

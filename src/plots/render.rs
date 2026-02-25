@@ -120,14 +120,7 @@ fn render_band(
                 run_start = Some(global_idx);
             }
         } else if let Some(start) = run_start {
-            append_band_run(
-                &mut out,
-                upper,
-                lower,
-                fill_color,
-                ctx,
-                start..global_idx,
-            );
+            append_band_run(&mut out, upper, lower, fill_color, ctx, start..global_idx);
             run_start = None;
         }
     }

@@ -23,7 +23,14 @@ pub fn build_axis_commands(
     pane_scales: &[(PaneId, PriceScale)],
 ) -> Vec<DrawCommand> {
     let formatters = default_axis_formatters();
-    build_axis_commands_with_formatters(layout, candles, visible_start, ts, pane_scales, &formatters)
+    build_axis_commands_with_formatters(
+        layout,
+        candles,
+        visible_start,
+        ts,
+        pane_scales,
+        &formatters,
+    )
 }
 
 pub fn build_axis_commands_with_formatters(
@@ -51,7 +58,8 @@ pub fn build_axis_commands_with_formatters(
             .map(|(_, ps)| ps);
         if let Some(ps) = pane_scale {
             // Horizontal grid + y labels per pane, driven by pluggable provider.
-            let y_ticks = y_provider.generate(ps.min, ps.max, pane.rect.y, pane.rect.h, formatters.y);
+            let y_ticks =
+                y_provider.generate(ps.min, ps.max, pane.rect.y, pane.rect.h, formatters.y);
             for tick in y_ticks {
                 let y = tick.y;
 

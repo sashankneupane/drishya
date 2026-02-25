@@ -12,7 +12,9 @@ use crate::{
         render::{build_plot_draw_commands, PlotRenderContext, ValueScaleRange},
     },
     render::{
-        axes::build_axis_commands, candles::build_candle_commands, primitives::DrawCommand,
+        axes::build_axis_commands,
+        candles::build_candle_commands,
+        primitives::DrawCommand,
         styles::{ColorToken, FillStyle, StrokeStyle},
         volume::build_volume_commands,
     },
@@ -209,7 +211,12 @@ fn build_dotted_vertical(
     width: f32,
     color: ColorToken,
 ) -> Vec<DrawCommand> {
-    build_dotted_line(Point { x, y: y_top }, Point { x, y: y_bottom }, width, color)
+    build_dotted_line(
+        Point { x, y: y_top },
+        Point { x, y: y_bottom },
+        width,
+        color,
+    )
 }
 
 fn build_dotted_horizontal(
@@ -219,7 +226,12 @@ fn build_dotted_horizontal(
     width: f32,
     color: ColorToken,
 ) -> Vec<DrawCommand> {
-    build_dotted_line(Point { x: x_left, y }, Point { x: x_right, y }, width, color)
+    build_dotted_line(
+        Point { x: x_left, y },
+        Point { x: x_right, y },
+        width,
+        color,
+    )
 }
 
 fn build_dotted_line(from: Point, to: Point, width: f32, color: ColorToken) -> Vec<DrawCommand> {

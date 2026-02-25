@@ -94,7 +94,8 @@ impl Chart {
 
     pub(crate) fn set_pane_y_pan_factor(&mut self, pane_id: &PaneId, factor: f32) {
         let key = pane_zoom_key(pane_id).to_string();
-        self.pane_y_pan_factors.insert(key, factor.clamp(-20.0, 20.0));
+        self.pane_y_pan_factors
+            .insert(key, factor.clamp(-20.0, 20.0));
     }
 }
 

@@ -121,7 +121,8 @@ impl NumericYTickProvider {
         }
 
         let range = (max - min).abs().max(1e-9);
-        let spacing_limited_max_ticks = ((pane_height / self.min_label_spacing_px).floor() as usize)
+        let spacing_limited_max_ticks = ((pane_height / self.min_label_spacing_px).floor()
+            as usize)
             .saturating_add(1)
             .max(2);
         let target_ticks = ((pane_height / self.target_tick_spacing_px).round() as usize)

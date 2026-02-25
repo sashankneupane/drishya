@@ -55,7 +55,11 @@ pub fn paint_canvas2d(
                 }
             }
 
-            DrawCommand::Polygon { points, fill, stroke } => {
+            DrawCommand::Polygon {
+                points,
+                fill,
+                stroke,
+            } => {
                 if points.len() < 2 {
                     continue;
                 }

@@ -4,9 +4,13 @@
 //! by any backend, just like candles and axes.
 
 use crate::{
-    drawings::types::Drawing, layout::ChartLayout, render::primitives::DrawCommand,
-    render::styles::{ColorToken, StrokeStyle, TextAlign, TextStyle}, scale::PriceScale,
-    types::Point, viewport::Viewport,
+    drawings::types::Drawing,
+    layout::ChartLayout,
+    render::primitives::DrawCommand,
+    render::styles::{ColorToken, StrokeStyle, TextAlign, TextStyle},
+    scale::PriceScale,
+    types::Point,
+    viewport::Viewport,
 };
 
 pub fn build_drawing_commands(

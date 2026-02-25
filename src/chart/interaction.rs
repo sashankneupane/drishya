@@ -146,7 +146,11 @@ impl Chart {
         let layout = compute_layout(self.size, &pane_specs);
         let plot = layout.plot;
 
-        if x_pixels < plot.x || x_pixels > plot.right() || y_pixels < plot.y || y_pixels > plot.bottom() {
+        if x_pixels < plot.x
+            || x_pixels > plot.right()
+            || y_pixels < plot.y
+            || y_pixels > plot.bottom()
+        {
             self.crosshair = None;
             return;
         }

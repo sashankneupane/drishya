@@ -11,7 +11,9 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
-    chart::plots::PaneLayoutState, chart::Chart, indicators::api as indicator_api,
+    chart::plots::PaneLayoutState,
+    chart::Chart,
+    indicators::api as indicator_api,
     plots::model::PaneId,
     render::{backends::canvas2d::paint_canvas2d, styles::ThemeId},
     types::Candle,
