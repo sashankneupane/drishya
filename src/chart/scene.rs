@@ -134,7 +134,13 @@ impl Chart {
             price_pane,
             max_vol,
         ));
-        out.extend(build_candle_commands(visible, visible_start, ts_price, ps));
+        out.extend(build_candle_commands(
+            visible,
+            visible_start,
+            ts_price,
+            ps,
+            self.candle_body_style(),
+        ));
         out.push(DrawCommand::PopClip);
 
         let price_range = ValueScaleRange {

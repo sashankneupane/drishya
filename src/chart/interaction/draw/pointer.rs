@@ -99,12 +99,6 @@ impl Chart {
             | crate::chart::tools::DrawingToolMode::Ray
             | crate::chart::tools::DrawingToolMode::LongPosition
             | crate::chart::tools::DrawingToolMode::ShortPosition => {
-                if let Some(start) = self.drawing_interaction.pending_start {
-                    self.finalize_shape_from_points(start, point);
-                    self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
-                    return true;
-                }
-
                 self.drawing_interaction.pointer_down = true;
                 self.drawing_interaction.dragged = false;
                 self.drawing_interaction.pending_start = Some(point);
@@ -171,6 +165,8 @@ impl Chart {
             self.drawing_interaction.pointer_down = false;
             self.drawing_interaction.dragging_drawing_id = None;
             self.drawing_interaction.dragging_resize_target = None;
+            self.drawing_interaction.pending_start = None;
+            self.drawing_interaction.dragged = false;
             self.drawing_interaction.last_pointer = Some(point);
             return true;
         }
@@ -180,14 +176,16 @@ impl Chart {
         }
 
         self.drawing_interaction.pointer_down = false;
+        let start = self.drawing_interaction.pending_start.take();
         if self.drawing_interaction.dragged {
-            if let Some(start) = self.drawing_interaction.pending_start {
+            if let Some(start) = start {
                 self.finalize_shape_from_points(start, point);
                 self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
                 return true;
             }
         }
 
+        self.drawing_interaction.dragged = false;
         self.drawing_interaction.last_pointer = Some(point);
         true
     }

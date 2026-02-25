@@ -9,14 +9,27 @@ use crate::{
     types::{Candle, Point, Rect},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CandleBodyStyle {
+    Solid,
+    Hollow,
+    Bars,
+    Volume,
+}
+
 pub fn build_candle_commands(
     candles: &[Candle],
     visible_start: usize,
     ts: TimeScale,
     ps: PriceScale,
+    body_style: CandleBodyStyle,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let cw = ts.candle_width();
+    let max_volume = candles
+        .iter()
+        .map(|c| c.volume)
+        .fold(0.0_f64, |acc, v| acc.max(v));
 
     for (i, c) in candles.iter().enumerate() {
         let global_idx = visible_start + i;
@@ -29,35 +42,122 @@ pub fn build_candle_commands(
             ColorToken::Bear
         };
 
-        // Wick
-        out.push(DrawCommand::Line {
-            from: Point {
-                x,
-                y: ps.y_for_price(c.high),
-            },
-            to: Point {
-                x,
-                y: ps.y_for_price(c.low),
-            },
-            stroke: StrokeStyle::token(color, 1.0),
-        });
+        let y_high = ps.y_for_price(c.high);
+        let y_low = ps.y_for_price(c.low);
 
         // Body height is clamped to at least 1px so doji candles remain visible.
         let y_open = ps.y_for_price(c.open);
         let y_close = ps.y_for_price(c.close);
         let y = y_open.min(y_close);
         let h = (y_open - y_close).abs().max(1.0);
+        let body_top = y;
+        let body_bottom = y + h;
 
-        out.push(DrawCommand::Rect {
-            rect: Rect {
-                x: x - cw * 0.5,
-                y,
-                w: cw,
-                h,
-            },
-            fill: Some(FillStyle::token(color)),
-            stroke: None,
-        });
+        // Wick / bar spine
+        match body_style {
+            CandleBodyStyle::Solid => {
+                out.push(DrawCommand::Line {
+                    from: Point { x, y: y_high },
+                    to: Point { x, y: y_low },
+                    stroke: StrokeStyle::token(color, 1.0),
+                });
+            }
+            CandleBodyStyle::Hollow => {
+                // Hollow candles keep wick ticks above/below body only.
+                if y_high < body_top {
+                    out.push(DrawCommand::Line {
+                        from: Point { x, y: y_high },
+                        to: Point { x, y: body_top },
+                        stroke: StrokeStyle::token(color, 1.0),
+                    });
+                }
+                if body_bottom < y_low {
+                    out.push(DrawCommand::Line {
+                        from: Point { x, y: body_bottom },
+                        to: Point { x, y: y_low },
+                        stroke: StrokeStyle::token(color, 1.0),
+                    });
+                }
+            }
+            CandleBodyStyle::Bars => {
+                out.push(DrawCommand::Line {
+                    from: Point { x, y: y_high },
+                    to: Point { x, y: y_low },
+                    stroke: StrokeStyle::token(color, 1.0),
+                });
+            }
+            CandleBodyStyle::Volume => {
+                out.push(DrawCommand::Line {
+                    from: Point { x, y: y_high },
+                    to: Point { x, y: y_low },
+                    stroke: StrokeStyle::token(color, 1.0),
+                });
+            }
+        }
+
+        match body_style {
+            CandleBodyStyle::Bars => {
+                // OHLC bars: open tick to the left, close tick to the right.
+                let tick_w = (cw * 0.45).max(1.0);
+                out.push(DrawCommand::Line {
+                    from: Point {
+                        x: x - tick_w,
+                        y: y_open,
+                    },
+                    to: Point { x, y: y_open },
+                    stroke: StrokeStyle::token(color, 1.0),
+                });
+                out.push(DrawCommand::Line {
+                    from: Point { x, y: y_close },
+                    to: Point {
+                        x: x + tick_w,
+                        y: y_close,
+                    },
+                    stroke: StrokeStyle::token(color, 1.0),
+                });
+            }
+            CandleBodyStyle::Solid | CandleBodyStyle::Hollow | CandleBodyStyle::Volume => {
+                let body_w = match body_style {
+                    CandleBodyStyle::Volume => {
+                        let vol_ratio = if max_volume > 0.0 {
+                            (c.volume / max_volume).clamp(0.0, 1.0) as f32
+                        } else {
+                            0.0
+                        };
+                        // Increase perceptual separation for high/low volume candles.
+                        // Lower gamma amplifies differences near the lower end too.
+                        let width_factor = 0.15 + 0.85 * vol_ratio.powf(0.55);
+                        (cw * width_factor).max(1.0)
+                    }
+                    _ => cw,
+                };
+
+                let (fill, stroke) = match body_style {
+                    CandleBodyStyle::Solid => (Some(FillStyle::token(color)), None),
+                    CandleBodyStyle::Hollow => {
+                        let fill = if bull {
+                            None
+                        } else {
+                            Some(FillStyle::token(color))
+                        };
+                        (fill, Some(StrokeStyle::token(color, 1.0)))
+                    }
+                    CandleBodyStyle::Volume => (Some(FillStyle::token(color)), None),
+                    CandleBodyStyle::Bars => unreachable!(),
+                };
+
+                out.push(DrawCommand::Rect {
+                    rect: Rect {
+                        x: x - body_w * 0.5,
+                        y,
+                        w: body_w,
+                        h,
+                    },
+                    fill,
+                    stroke,
+                });
+            }
+        }
     }
 
     out

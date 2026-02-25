@@ -17,7 +17,7 @@ use crate::{
     drawings::hit_test::{HitToleranceProfile, InteractionMode},
     indicators::api as indicator_api,
     plots::model::PaneId,
-    render::{backends::canvas2d::paint_canvas2d, styles::ThemeId},
+    render::{backends::canvas2d::paint_canvas2d, candles::CandleBodyStyle, styles::ThemeId},
     types::Candle,
 };
 use serde::Serialize;
@@ -148,6 +148,28 @@ impl WasmChart {
             "light" => self.chart.set_theme(ThemeId::Light),
             _ => self.chart.set_theme(ThemeId::Dark),
         }
+    }
+
+    /// Sets candle body style (`solid` | `hollow`).
+    pub fn set_candle_style(&mut self, style: &str) {
+        let style = match style.to_ascii_lowercase().as_str() {
+            "hollow" => CandleBodyStyle::Hollow,
+            "bars" => CandleBodyStyle::Bars,
+            "volume" | "volume_candles" => CandleBodyStyle::Volume,
+            _ => CandleBodyStyle::Solid,
+        };
+        self.chart.set_candle_body_style(style);
+    }
+
+    /// Returns current candle body style label.
+    pub fn candle_style(&self) -> String {
+        match self.chart.candle_body_style() {
+            CandleBodyStyle::Solid => "solid",
+            CandleBodyStyle::Hollow => "hollow",
+            CandleBodyStyle::Bars => "bars",
+            CandleBodyStyle::Volume => "volume",
+        }
+        .to_string()
     }
 
     /// Sets native drawing tool mode (`select`, `hline`, `vline`, `rectangle`, `long`, `short`).

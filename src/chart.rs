@@ -20,6 +20,7 @@ use crate::{
     drawings::store::DrawingStore,
     plots::model::PaneId,
     plots::provider::PlotDataProvider,
+    render::candles::CandleBodyStyle,
     render::styles::ThemeId,
     types::{Candle, Point, Size},
     viewport::Viewport,
@@ -45,6 +46,7 @@ pub struct Chart {
     pane_y_pan_factors: HashMap<String, f32>,
     crosshair: Option<Point>,
     theme: ThemeId,
+    candle_body_style: CandleBodyStyle,
     drawing_tool_mode: DrawingToolMode,
     drawing_interaction: DrawingInteractionState,
     // Drawings are intentionally private so all changes can flow through the
@@ -73,6 +75,7 @@ impl Chart {
             pane_y_pan_factors: HashMap::new(),
             crosshair: None,
             theme: ThemeId::Dark,
+            candle_body_style: CandleBodyStyle::Solid,
             drawing_tool_mode: DrawingToolMode::Select,
             drawing_interaction: DrawingInteractionState::default(),
             drawings: DrawingStore::new(),
@@ -85,6 +88,14 @@ impl Chart {
 
     pub fn theme(&self) -> ThemeId {
         self.theme
+    }
+
+    pub fn set_candle_body_style(&mut self, style: CandleBodyStyle) {
+        self.candle_body_style = style;
+    }
+
+    pub fn candle_body_style(&self) -> CandleBodyStyle {
+        self.candle_body_style
     }
 
     pub(crate) fn pane_y_zoom_factor(&self, pane_id: &PaneId) -> f32 {
