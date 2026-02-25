@@ -38,24 +38,23 @@ impl WasmChart {
             .ok_or_else(|| JsValue::from_str("Canvas not found"))?;
 
         let canvas: HtmlCanvasElement = el.dyn_into::<HtmlCanvasElement>()?;
-        canvas.set_width(width);
-        canvas.set_height(height);
 
         let ctx = canvas
             .get_context("2d")?
             .ok_or_else(|| JsValue::from_str("2D context missing"))?
             .dyn_into::<CanvasRenderingContext2d>()?;
 
-        Ok(Self {
+        let chart = Self {
             chart: Chart::new(width as f32, height as f32),
             canvas,
             ctx,
-        })
+        };
+
+        chart.set_cursor_select();
+        Ok(chart)
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.canvas.set_width(width);
-        self.canvas.set_height(height);
         self.chart.set_size(width as f32, height as f32);
     }
 
@@ -77,6 +76,16 @@ impl WasmChart {
         self.chart.zoom_at_x(x, zoom_factor);
     }
 
+    /// zoom_factor < 1.0 => zoom in, > 1.0 => zoom out for the pane under `y`.
+    pub fn zoom_y_axis_at(&mut self, y: f32, zoom_factor: f32) {
+        self.chart.zoom_y_axis_at(y, zoom_factor);
+    }
+
+    /// Resets y-axis zoom factor for a pane id (`price`, `rsi`, etc.).
+    pub fn reset_y_axis_zoom(&mut self, pane_id: &str) {
+        self.chart.reset_y_axis_zoom(pane_id);
+    }
+
     // -------- Drawing tools --------
 
     /// Add a horizontal line at the clicked Y position (CSS pixel space).
@@ -92,6 +101,40 @@ impl WasmChart {
     /// Optional helpers you can use later from JS
     pub fn clear_drawings(&mut self) {
         self.chart.clear_drawings();
+    }
+
+    /// Sets crosshair position in CSS pixel space.
+    pub fn set_crosshair_at(&mut self, x: f32, y: f32) {
+        self.chart.set_crosshair_at(x, y);
+    }
+
+    /// Clears crosshair overlay.
+    pub fn clear_crosshair(&mut self) {
+        self.chart.clear_crosshair();
+    }
+
+    pub fn set_cursor_select(&self) {
+        self.set_canvas_cursor("crosshair");
+    }
+
+    pub fn set_cursor_default(&self) {
+        self.set_canvas_cursor("default");
+    }
+
+    pub fn set_cursor_grabbing(&self) {
+        self.set_canvas_cursor("grabbing");
+    }
+
+    pub fn set_cursor_row_resize(&self) {
+        self.set_canvas_cursor("row-resize");
+    }
+
+    pub fn set_cursor_ns_resize(&self) {
+        self.set_canvas_cursor("ns-resize");
+    }
+
+    pub fn set_cursor_ew_resize(&self) {
+        self.set_canvas_cursor("ew-resize");
     }
 
     /// Adds a Simple Moving Average overlay.
@@ -257,6 +300,12 @@ impl WasmChart {
         // Domain builds a backend-agnostic scene; backend handles paint.
         let cmds = self.chart.build_draw_commands();
         paint_canvas2d(&self.ctx, &self.canvas, &cmds)
+    }
+}
+
+impl WasmChart {
+    fn set_canvas_cursor(&self, cursor: &str) {
+        let _ = self.canvas.style().set_property("cursor", cursor);
     }
 }
 
