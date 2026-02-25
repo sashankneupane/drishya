@@ -50,6 +50,36 @@ pub fn paint_canvas2d(
                 }
             }
 
+            DrawCommand::Polygon {
+                points,
+                fill,
+                stroke,
+                line_width,
+            } => {
+                if points.len() < 2 {
+                    continue;
+                }
+
+                ctx.begin_path();
+                let first = points[0];
+                ctx.move_to(first.x as f64, first.y as f64);
+                for p in &points[1..] {
+                    ctx.line_to(p.x as f64, p.y as f64);
+                }
+                ctx.close_path();
+
+                if let Some(fill_color) = fill {
+                    ctx.set_fill_style_str(fill_color);
+                    ctx.fill();
+                }
+
+                if let Some(stroke_color) = stroke {
+                    ctx.set_stroke_style_str(stroke_color);
+                    ctx.set_line_width(*line_width as f64);
+                    ctx.stroke();
+                }
+            }
+
             DrawCommand::Text {
                 pos,
                 text,

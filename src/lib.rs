@@ -11,3 +11,5 @@ pub mod viewport;
 pub mod web;
 pub mod render;
 pub mod drawings;
+pub mod plots;
+pub mod indicators;

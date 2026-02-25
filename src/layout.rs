@@ -10,19 +10,19 @@ pub struct ChartLayout {
     pub full: Rect,
     pub plot: Rect,
     pub price_pane: Rect,
-    pub volume_pane: Rect,
+    pub indicator_pane: Option<Rect>,
     pub y_axis: Rect,
     pub x_axis: Rect,
 }
 
-pub fn compute_layout(size: Size) -> ChartLayout {
+pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
     let full = Rect { x: 0.0, y: 0.0, w: size.width, h: size.height };
 
     // Fixed axis sizes keep labels stable while data density changes.
     let y_axis_w = 72.0;
     let x_axis_h = 24.0;
     let gap = 4.0;
-    let volume_ratio = 0.22;
+    let indicator_ratio = 0.24;
 
     let plot = Rect {
         x: 0.0,
@@ -31,12 +31,18 @@ pub fn compute_layout(size: Size) -> ChartLayout {
         h: size.height - x_axis_h,
     };
 
-    // Enforce a minimum volume pane so it remains readable on short canvases.
-    let volume_h = (plot.h * volume_ratio).max(60.0);
-    let price_h = plot.h - volume_h - gap;
+    let (price_pane, indicator_pane) = if has_indicator_pane {
+        // Keep a meaningful lower pane size for RSI/MACD-style charts.
+        let indicator_h = (plot.h * indicator_ratio).clamp(90.0, plot.h * 0.45);
+        let price_h = (plot.h - indicator_h - gap).max(80.0);
 
-    let price_pane = Rect { x: plot.x, y: plot.y, w: plot.w, h: price_h };
-    let volume_pane = Rect { x: plot.x, y: plot.y + price_h + gap, w: plot.w, h: volume_h };
+        (
+            Rect { x: plot.x, y: plot.y, w: plot.w, h: price_h },
+            Some(Rect { x: plot.x, y: plot.y + price_h + gap, w: plot.w, h: indicator_h }),
+        )
+    } else {
+        (plot, None)
+    };
 
     let y_axis = Rect { x: plot.right(), y: 0.0, w: y_axis_w, h: plot.h };
     let x_axis = Rect { x: 0.0, y: plot.bottom(), w: size.width, h: x_axis_h };
@@ -45,7 +51,7 @@ pub fn compute_layout(size: Size) -> ChartLayout {
         full,
         plot,
         price_pane,
-        volume_pane,
+        indicator_pane,
         y_axis,
         x_axis,
     }
