@@ -1,6 +1,8 @@
 //! Neutral plotting schema consumed by chart composition.
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaneId {
     Price,
     Named(String),

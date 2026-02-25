@@ -13,6 +13,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::{
     chart::plots::PaneLayoutState,
     chart::Chart,
+    drawings::hit_test::{HitToleranceProfile, InteractionMode},
     indicators::api as indicator_api,
     plots::model::PaneId,
     render::{backends::canvas2d::paint_canvas2d, styles::ThemeId},
@@ -116,6 +117,39 @@ impl WasmChart {
     /// Optional helpers you can use later from JS
     pub fn clear_drawings(&mut self) {
         self.chart.clear_drawings();
+    }
+
+    /// Hit-tests drawings at cursor position and returns structured JSON.
+    /// `mode` must be one of: `hover`, `select`, `drag`.
+    pub fn hit_test_drawings_json(&self, x: f32, y: f32, mode: &str) -> Result<String, JsValue> {
+        let interaction_mode = parse_interaction_mode(mode)?;
+        let hit = self.chart.hit_test_drawings(x, y, interaction_mode);
+        serde_json::to_string(&hit)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize drawing hit: {e}")))
+    }
+
+    /// Hit-tests drawings with custom tolerance profile and returns structured JSON.
+    pub fn hit_test_drawings_with_tolerance_json(
+        &self,
+        x: f32,
+        y: f32,
+        mode: &str,
+        hover_tolerance_px: f32,
+        select_tolerance_px: f32,
+        drag_tolerance_px: f32,
+    ) -> Result<String, JsValue> {
+        let interaction_mode = parse_interaction_mode(mode)?;
+        let profile = HitToleranceProfile {
+            hover_px: hover_tolerance_px,
+            select_px: select_tolerance_px,
+            drag_px: drag_tolerance_px,
+        };
+
+        let hit = self
+            .chart
+            .hit_test_drawings_with_profile(x, y, interaction_mode, profile);
+        serde_json::to_string(&hit)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize drawing hit: {e}")))
     }
 
     /// Sets crosshair position in CSS pixel space.
@@ -328,5 +362,16 @@ fn pane_id_label(pane_id: &PaneId) -> String {
     match pane_id {
         PaneId::Price => "price".to_string(),
         PaneId::Named(name) => name.clone(),
+    }
+}
+
+fn parse_interaction_mode(mode: &str) -> Result<InteractionMode, JsValue> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "hover" => Ok(InteractionMode::Hover),
+        "select" => Ok(InteractionMode::Select),
+        "drag" => Ok(InteractionMode::Drag),
+        other => Err(JsValue::from_str(&format!(
+            "Invalid interaction mode '{other}'. Use one of: hover, select, drag"
+        ))),
     }
 }
