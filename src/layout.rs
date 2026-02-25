@@ -56,3 +56,40 @@ pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
         x_axis,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_without_indicator_pane_uses_single_plot_area() {
+        let size = Size {
+            width: 1200.0,
+            height: 800.0,
+        };
+        let layout = compute_layout(size, false);
+
+        assert!(layout.indicator_pane.is_none());
+        assert_eq!(layout.price_pane.x, layout.plot.x);
+        assert_eq!(layout.price_pane.y, layout.plot.y);
+        assert_eq!(layout.price_pane.w, layout.plot.w);
+        assert_eq!(layout.price_pane.h, layout.plot.h);
+    }
+
+    #[test]
+    fn layout_with_indicator_pane_places_it_below_price_pane() {
+        let size = Size {
+            width: 1200.0,
+            height: 800.0,
+        };
+        let layout = compute_layout(size, true);
+
+        let indicator = layout.indicator_pane.expect("expected indicator pane");
+
+        assert!(layout.price_pane.bottom() < indicator.y);
+        assert_eq!(layout.price_pane.x, indicator.x);
+        assert_eq!(layout.price_pane.w, indicator.w);
+        assert!(layout.price_pane.h > 0.0);
+        assert!(indicator.h >= 90.0);
+    }
+}

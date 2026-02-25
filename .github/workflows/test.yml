@@ -1,0 +1,29 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Minimal test run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Workflow smoke check
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Run tests
+        run: cargo test -q
