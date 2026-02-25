@@ -11,12 +11,8 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
-    chart::Chart,
-    indicators::api as indicator_api,
-    plots::model::PaneId,
-    chart::plots::PaneLayoutState,
-    render::backends::canvas2d::paint_canvas2d,
-    types::Candle,
+    chart::plots::PaneLayoutState, chart::Chart, indicators::api as indicator_api,
+    plots::model::PaneId, render::backends::canvas2d::paint_canvas2d, types::Candle,
 };
 
 #[wasm_bindgen]
@@ -146,6 +142,22 @@ impl WasmChart {
     /// Sets pane visibility (`true` visible, `false` hidden). Price pane cannot be hidden.
     pub fn set_pane_visible(&mut self, pane_id: &str, visible: bool) {
         self.chart.set_pane_visibility(pane_id, visible);
+    }
+
+    /// Explicitly registers a named pane in the engine registry.
+    pub fn register_pane(&mut self, pane_id: &str) {
+        self.chart.register_named_pane(pane_id);
+    }
+
+    /// Unregisters a named pane from the engine registry.
+    pub fn unregister_pane(&mut self, pane_id: &str) {
+        self.chart.unregister_named_pane(pane_id);
+    }
+
+    /// Returns registered named panes as JSON array.
+    pub fn registered_panes_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.registered_named_panes())
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize registered panes: {e}")))
     }
 
     /// Collapses/expands a pane. Collapsed panes keep a small fixed height.
