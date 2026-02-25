@@ -27,7 +27,10 @@ pub fn build_axis_commands(
             line_width: 1.0,
         });
 
-        let pane_scale = pane_scales.iter().find(|(id, _)| id == &pane.id).map(|(_, ps)| ps);
+        let pane_scale = pane_scales
+            .iter()
+            .find(|(id, _)| id == &pane.id)
+            .map(|(_, ps)| ps);
         if let Some(ps) = pane_scale {
             // Horizontal grid + y labels per pane.
             let ticks = 5;
