@@ -19,12 +19,14 @@ use crate::{
     types::{Candle, Size},
     viewport::Viewport,
 };
+use std::collections::HashMap;
 
 pub struct Chart {
     pub size: Size,
     pub candles: Vec<Candle>,
     pub viewport: Option<Viewport>,
     plot_providers: Vec<Box<dyn PlotDataProvider>>,
+    pane_weights: HashMap<String, f32>,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -37,6 +39,7 @@ impl Chart {
             candles: Vec::new(),
             viewport: None,
             plot_providers: Vec::new(),
+            pane_weights: HashMap::new(),
             drawings: DrawingStore::new(),
         }
     }
