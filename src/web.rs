@@ -11,7 +11,10 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
-    chart::Chart, indicators::api as indicator_api, render::backends::canvas2d::paint_canvas2d,
+    chart::Chart,
+    indicators::api as indicator_api,
+    plots::model::PaneId,
+    render::backends::canvas2d::paint_canvas2d,
     types::Candle,
 };
 
@@ -119,11 +122,59 @@ impl WasmChart {
         indicator_api::clear_builtins(&mut self.chart);
     }
 
+    /// Sets pane size ratio weight for layout. Use `price` for the main pane,
+    /// or the named pane id such as `rsi` / `momentum`.
+    pub fn set_pane_weight(&mut self, pane_id: &str, ratio: f32) {
+        self.chart.set_pane_weight(pane_id, ratio);
+    }
+
+    /// Sets many pane weight ratios in one call from a JSON object map.
+    /// Example: {"price": 3.0, "rsi": 1.0, "momentum": 1.0}
+    pub fn set_pane_weights_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let weights: std::collections::BTreeMap<String, f32> = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid pane-weights JSON: {e}")))?;
+        self.chart.set_pane_weights(weights);
+        Ok(())
+    }
+
+    /// Restores default pane sizing ratios.
+    pub fn reset_pane_weights(&mut self) {
+        self.chart.clear_pane_weights();
+    }
+
+    /// Returns current pane layout geometry as JSON for interaction overlays.
+    pub fn pane_layouts_json(&self) -> Result<String, JsValue> {
+        let layout = self.chart.current_layout();
+        let panes = layout
+            .panes
+            .iter()
+            .map(|pane| {
+                serde_json::json!({
+                    "id": pane_id_label(&pane.id),
+                    "x": pane.rect.x,
+                    "y": pane.rect.y,
+                    "w": pane.rect.w,
+                    "h": pane.rect.h,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        serde_json::to_string(&serde_json::json!({ "panes": panes }))
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize pane layout: {e}")))
+    }
+
     // -------- Rendering --------
 
     pub fn draw(&self) -> Result<(), JsValue> {
         // Domain builds a backend-agnostic scene; backend handles paint.
         let cmds = self.chart.build_draw_commands();
         paint_canvas2d(&self.ctx, &self.canvas, &cmds)
+    }
+}
+
+fn pane_id_label(pane_id: &PaneId) -> String {
+    match pane_id {
+        PaneId::Price => "price".to_string(),
+        PaneId::Named(name) => name.clone(),
     }
 }
