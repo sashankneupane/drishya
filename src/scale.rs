@@ -21,7 +21,11 @@ impl TimeScale {
     }
 
     pub fn step(&self) -> f32 {
-        if self.count == 0 { 1.0 } else { self.pane.w / self.count as f32 }
+        if self.count == 0 {
+            1.0
+        } else {
+            self.pane.w / self.count as f32
+        }
     }
 
     pub fn candle_width(&self) -> f32 {

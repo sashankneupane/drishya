@@ -45,10 +45,18 @@ pub fn build_plot_draw_commands(series: &[PlotSeries], ctx: PlotRenderContext) -
                 PlotPrimitive::Line { values, style } => {
                     out.extend(render_line(values, style.width, &style.color, &ctx, step));
                 }
-                PlotPrimitive::Band { upper, lower, style } => {
+                PlotPrimitive::Band {
+                    upper,
+                    lower,
+                    style,
+                } => {
                     out.extend(render_band(upper, lower, &style.fill_color, &ctx, step));
                 }
-                PlotPrimitive::Histogram { values, base, style } => {
+                PlotPrimitive::Histogram {
+                    values,
+                    base,
+                    style,
+                } => {
                     out.extend(render_histogram(values, *base, style, &ctx, step));
                 }
                 PlotPrimitive::Markers { points, style } => {
@@ -117,7 +125,9 @@ fn render_band(
                 run_start = Some(global_idx);
             }
         } else if let Some(start) = run_start {
-            append_band_run(&mut out, upper, lower, fill_color, ctx, step, start, global_idx);
+            append_band_run(
+                &mut out, upper, lower, fill_color, ctx, step, start, global_idx,
+            );
             run_start = None;
         }
     }

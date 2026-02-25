@@ -269,7 +269,11 @@ fn compute_rsi(avg_gain: f64, avg_loss: f64) -> f64 {
     100.0 - (100.0 / (1.0 + rs))
 }
 
-fn build_rsi_series(provider: &RsiProvider, rsi_values: Vec<Option<f64>>, period: usize) -> PlotSeries {
+fn build_rsi_series(
+    provider: &RsiProvider,
+    rsi_values: Vec<Option<f64>>,
+    period: usize,
+) -> PlotSeries {
     let upper = vec![Some(70.0); rsi_values.len()];
     let lower = vec![Some(30.0); rsi_values.len()];
 

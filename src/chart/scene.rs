@@ -12,9 +12,7 @@ use crate::{
         render::{build_plot_draw_commands, PlotRenderContext, ValueScaleRange},
     },
     render::{
-        axes::build_axis_commands,
-        candles::build_candle_commands,
-        primitives::DrawCommand,
+        axes::build_axis_commands, candles::build_candle_commands, primitives::DrawCommand,
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
@@ -75,7 +73,12 @@ impl Chart {
 
         // Core chart primitives
         out.extend(build_axis_commands(layout, visible, ts_price, ps));
-        out.extend(build_volume_commands(visible, ts_price, layout.price_pane, max_vol));
+        out.extend(build_volume_commands(
+            visible,
+            ts_price,
+            layout.price_pane,
+            max_vol,
+        ));
         out.extend(build_candle_commands(visible, ts_price, ps));
 
         let (visible_start, visible_end) = match self.viewport {
@@ -107,25 +110,25 @@ impl Chart {
                     visible_start,
                     visible_end,
                 ) {
-                let pane_scale = PriceScale {
-                    pane: indicator_pane,
-                    min: min_v,
-                    max: max_v,
-                };
+                    let pane_scale = PriceScale {
+                        pane: indicator_pane,
+                        min: min_v,
+                        max: max_v,
+                    };
 
-                out.extend(build_plot_draw_commands(
-                    &plot_series,
-                    PlotRenderContext {
-                        visible_start,
-                        visible_end,
-                        target_pane: target_named_pane,
-                        pane_scale,
-                        value_range: ValueScaleRange {
-                            min: min_v,
-                            max: max_v,
+                    out.extend(build_plot_draw_commands(
+                        &plot_series,
+                        PlotRenderContext {
+                            visible_start,
+                            visible_end,
+                            target_pane: target_named_pane,
+                            pane_scale,
+                            value_range: ValueScaleRange {
+                                min: min_v,
+                                max: max_v,
+                            },
                         },
-                    },
-                ));
+                    ));
                 }
             }
         }

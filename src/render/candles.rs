@@ -8,7 +8,11 @@ use crate::{
     types::{Candle, Point, Rect},
 };
 
-pub fn build_candle_commands(candles: &[Candle], ts: TimeScale, ps: PriceScale) -> Vec<DrawCommand> {
+pub fn build_candle_commands(
+    candles: &[Candle],
+    ts: TimeScale,
+    ps: PriceScale,
+) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let cw = ts.candle_width();
 
@@ -20,8 +24,14 @@ pub fn build_candle_commands(candles: &[Candle], ts: TimeScale, ps: PriceScale) 
 
         // Wick
         out.push(DrawCommand::Line {
-            from: Point { x, y: ps.y_for_price(c.high) },
-            to: Point { x, y: ps.y_for_price(c.low) },
+            from: Point {
+                x,
+                y: ps.y_for_price(c.high),
+            },
+            to: Point {
+                x,
+                y: ps.y_for_price(c.low),
+            },
             width: 1.0,
             color: color.clone(),
         });

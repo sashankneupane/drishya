@@ -16,7 +16,12 @@ pub struct ChartLayout {
 }
 
 pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
-    let full = Rect { x: 0.0, y: 0.0, w: size.width, h: size.height };
+    let full = Rect {
+        x: 0.0,
+        y: 0.0,
+        w: size.width,
+        h: size.height,
+    };
 
     // Fixed axis sizes keep labels stable while data density changes.
     let y_axis_w = 72.0;
@@ -37,15 +42,35 @@ pub fn compute_layout(size: Size, has_indicator_pane: bool) -> ChartLayout {
         let price_h = (plot.h - indicator_h - gap).max(80.0);
 
         (
-            Rect { x: plot.x, y: plot.y, w: plot.w, h: price_h },
-            Some(Rect { x: plot.x, y: plot.y + price_h + gap, w: plot.w, h: indicator_h }),
+            Rect {
+                x: plot.x,
+                y: plot.y,
+                w: plot.w,
+                h: price_h,
+            },
+            Some(Rect {
+                x: plot.x,
+                y: plot.y + price_h + gap,
+                w: plot.w,
+                h: indicator_h,
+            }),
         )
     } else {
         (plot, None)
     };
 
-    let y_axis = Rect { x: plot.right(), y: 0.0, w: y_axis_w, h: plot.h };
-    let x_axis = Rect { x: 0.0, y: plot.bottom(), w: size.width, h: x_axis_h };
+    let y_axis = Rect {
+        x: plot.right(),
+        y: 0.0,
+        w: y_axis_w,
+        h: plot.h,
+    };
+    let x_axis = Rect {
+        x: 0.0,
+        y: plot.bottom(),
+        w: size.width,
+        h: x_axis_h,
+    };
 
     ChartLayout {
         full,
