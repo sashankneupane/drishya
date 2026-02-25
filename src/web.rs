@@ -12,6 +12,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
     chart::plots::PaneLayoutState,
+    chart::tools::DrawingToolMode,
     chart::Chart,
     drawings::hit_test::{HitToleranceProfile, InteractionMode},
     indicators::api as indicator_api,
@@ -102,6 +103,58 @@ impl WasmChart {
         }
     }
 
+    /// Sets native drawing tool mode (`select`, `hline`, `vline`, `rectangle`, `long`, `short`).
+    pub fn set_drawing_tool_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        let mode = parse_drawing_tool_mode(mode)?;
+        self.chart.set_drawing_tool_mode(mode);
+        Ok(())
+    }
+
+    /// Returns current native drawing tool mode label.
+    pub fn drawing_tool_mode(&self) -> String {
+        match self.chart.drawing_tool_mode() {
+            DrawingToolMode::Select => "select",
+            DrawingToolMode::HorizontalLine => "hline",
+            DrawingToolMode::VerticalLine => "vline",
+            DrawingToolMode::Ray => "ray",
+            DrawingToolMode::Rectangle => "rectangle",
+            DrawingToolMode::FibRetracement => "fib",
+            DrawingToolMode::LongPosition => "long",
+            DrawingToolMode::ShortPosition => "short",
+        }
+        .to_string()
+    }
+
+    /// Native drawing pointer lifecycle: down.
+    pub fn drawing_pointer_down(&mut self, x: f32, y: f32) -> bool {
+        self.chart.drawing_pointer_down(x, y)
+    }
+
+    /// Native drawing pointer lifecycle: move.
+    pub fn drawing_pointer_move(&mut self, x: f32, y: f32) -> bool {
+        self.chart.drawing_pointer_move(x, y)
+    }
+
+    /// Native drawing pointer lifecycle: up.
+    pub fn drawing_pointer_up(&mut self, x: f32, y: f32) -> bool {
+        self.chart.drawing_pointer_up(x, y)
+    }
+
+    /// Returns native cursor hint for current drawing mode and hover target.
+    pub fn drawing_cursor_hint(&self, x: f32, y: f32) -> String {
+        self.chart.drawing_cursor_hint_at(x, y).to_string()
+    }
+
+    /// Returns true when the pointer is inside the native object-tree panel.
+    pub fn point_in_object_tree(&self, x: f32, y: f32) -> bool {
+        self.chart.point_in_chart_object_tree(x, y)
+    }
+
+    /// Cancels active native drawing interaction.
+    pub fn cancel_drawing_interaction(&mut self) {
+        self.chart.cancel_drawing_interaction();
+    }
+
     // -------- Drawing tools --------
 
     /// Add a horizontal line at the clicked Y position (CSS pixel space).
@@ -114,9 +167,93 @@ impl WasmChart {
         self.chart.add_vertical_line_at_x(x);
     }
 
+    /// Add a rectangle drawing centered at clicked position.
+    pub fn add_rectangle_at(&mut self, x: f32, y: f32) {
+        self.chart.add_rectangle_at(x, y);
+    }
+
+    /// Add a rectangle drawing from two pixel points.
+    pub fn add_rectangle_from_pixels(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+        self.chart.add_rectangle_from_pixels(x1, y1, x2, y2);
+    }
+
+    /// Add a fib-retracement drawing centered at clicked position.
+    pub fn add_fib_retracement_at(&mut self, x: f32, y: f32) {
+        self.chart.add_fib_retracement_at(x, y);
+    }
+
+    /// Add a fib-retracement drawing from two pixel points.
+    pub fn add_fib_retracement_from_pixels(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+        self.chart.add_fib_retracement_from_pixels(x1, y1, x2, y2);
+    }
+
+    /// Add a long-position drawing centered at clicked position.
+    pub fn add_long_position_at(&mut self, x: f32, y: f32) {
+        self.chart.add_long_position_at(x, y);
+    }
+
+    /// Add a long-position drawing from two pixel points.
+    pub fn add_long_position_from_pixels(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+        self.chart.add_long_position_from_pixels(x1, y1, x2, y2);
+    }
+
+    /// Add a short-position drawing centered at clicked position.
+    pub fn add_short_position_at(&mut self, x: f32, y: f32) {
+        self.chart.add_short_position_at(x, y);
+    }
+
+    /// Add a short-position drawing from two pixel points.
+    pub fn add_short_position_from_pixels(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+        self.chart.add_short_position_from_pixels(x1, y1, x2, y2);
+    }
+
+    /// Moves a drawing by drag deltas in pixel space.
+    pub fn move_drawing_by_pixels(&mut self, drawing_id: u64, dx: f32, dy: f32) -> bool {
+        self.chart.move_drawing_by_pixels(drawing_id, dx, dy)
+    }
+
     /// Optional helpers you can use later from JS
     pub fn clear_drawings(&mut self) {
         self.chart.clear_drawings();
+    }
+
+    /// Assigns a drawing to a layer id. Creates layer if needed.
+    pub fn set_drawing_layer(&mut self, drawing_id: u64, layer_id: &str) -> bool {
+        self.chart.set_drawing_layer(drawing_id, layer_id)
+    }
+
+    /// Assigns or clears a drawing group id.
+    pub fn set_drawing_group(&mut self, drawing_id: u64, group_id: &str) -> bool {
+        let group = if group_id.trim().is_empty() {
+            None
+        } else {
+            Some(group_id)
+        };
+        self.chart.set_drawing_group(drawing_id, group)
+    }
+
+    /// Sets layer visibility (`true` visible, `false` hidden).
+    pub fn set_drawing_layer_visible(&mut self, layer_id: &str, visible: bool) {
+        self.chart.set_drawing_layer_visible(layer_id, visible);
+    }
+
+    /// Sets group visibility (`true` visible, `false` hidden).
+    pub fn set_drawing_group_visible(&mut self, group_id: &str, visible: bool) {
+        self.chart.set_drawing_group_visible(group_id, visible);
+    }
+
+    /// Sets full drawing layer order from JSON array.
+    pub fn set_drawing_layer_order_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let order: Vec<String> = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid drawing-layer-order JSON: {e}")))?;
+        self.chart.set_drawing_layer_order(order);
+        Ok(())
+    }
+
+    /// Returns current drawing layer order as JSON array.
+    pub fn drawing_layer_order_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.drawing_layer_order())
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize drawing layer order: {e}")))
     }
 
     /// Hit-tests drawings at cursor position and returns structured JSON.
@@ -372,6 +509,22 @@ fn parse_interaction_mode(mode: &str) -> Result<InteractionMode, JsValue> {
         "drag" => Ok(InteractionMode::Drag),
         other => Err(JsValue::from_str(&format!(
             "Invalid interaction mode '{other}'. Use one of: hover, select, drag"
+        ))),
+    }
+}
+
+fn parse_drawing_tool_mode(mode: &str) -> Result<DrawingToolMode, JsValue> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "select" => Ok(DrawingToolMode::Select),
+        "hline" => Ok(DrawingToolMode::HorizontalLine),
+        "vline" => Ok(DrawingToolMode::VerticalLine),
+        "ray" => Ok(DrawingToolMode::Ray),
+        "rectangle" => Ok(DrawingToolMode::Rectangle),
+        "fib" => Ok(DrawingToolMode::FibRetracement),
+        "long" => Ok(DrawingToolMode::LongPosition),
+        "short" => Ok(DrawingToolMode::ShortPosition),
+        other => Err(JsValue::from_str(&format!(
+            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, fib, long, short"
         ))),
     }
 }

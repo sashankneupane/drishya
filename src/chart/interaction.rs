@@ -1,14 +1,11 @@
 //! Chart interaction behaviors.
 //!
-//! The methods in this file convert user-space input (mouse pixels, zoom
-//! factors) into chart-domain state updates.
+//! This module keeps pan/zoom/crosshair behavior in one place and delegates
+//! drawing tool logic to focused submodules.
 
-use crate::{
-    drawings::commands::{execute_command, DrawingCommand},
-    layout::compute_layout,
-    plots::model::PaneId,
-    scale::PriceScale,
-};
+mod draw;
+
+use crate::plots::model::PaneId;
 
 use super::Chart;
 
@@ -18,8 +15,7 @@ impl Chart {
             return;
         }
 
-        let pane_specs = self.pane_descriptors();
-        let layout = compute_layout(self.size, &pane_specs);
+        let layout = self.current_layout();
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
         let plot_w = price_pane.w.max(1.0);
 
@@ -38,8 +34,7 @@ impl Chart {
             return;
         }
 
-        let pane_specs = self.pane_descriptors();
-        let layout = compute_layout(self.size, &pane_specs);
+        let layout = self.current_layout();
         let target_pane = layout
             .panes
             .iter()
@@ -63,8 +58,7 @@ impl Chart {
             return;
         }
 
-        let pane_specs = self.pane_descriptors();
-        let layout = compute_layout(self.size, &pane_specs);
+        let layout = self.current_layout();
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
 
         if let Some(vp) = &mut self.viewport {
@@ -78,72 +72,16 @@ impl Chart {
         }
     }
 
-    pub fn add_horizontal_line_at_y(&mut self, y_pixels: f32) {
-        let visible = self.visible_data();
-        if visible.is_empty() {
-            return;
-        }
-
-        let pane_specs = self.pane_descriptors();
-        let layout = compute_layout(self.size, &pane_specs);
-        let price_pane = layout.price_pane().unwrap_or(layout.plot);
-        if y_pixels < price_pane.y || y_pixels > price_pane.bottom() {
-            return;
-        }
-
-        let (min_price, max_price, _) = self.compute_visible_bounds(visible);
-        let ps = PriceScale {
-            pane: price_pane,
-            min: min_price,
-            max: max_price,
-        };
-
-        let price = self.price_from_y(y_pixels, ps);
-        // Dispatch via command layer so mutation policy stays centralized.
-        let _ = execute_command(
-            &mut self.drawings,
-            DrawingCommand::AddHorizontalLine { price },
-        );
-    }
-
-    pub fn add_vertical_line_at_x(&mut self, x_pixels: f32) {
-        if self.candles.is_empty() {
-            return;
-        }
-
-        let pane_specs = self.pane_descriptors();
-        let layout = compute_layout(self.size, &pane_specs);
-        let price_pane = layout.price_pane().unwrap_or(layout.plot);
-        if x_pixels < price_pane.x || x_pixels > price_pane.right() {
-            return;
-        }
-
-        if let Some(vp) = self.viewport {
-            let world_x = vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0));
-            // Store world-space index rather than pixel X so line tracks pan/zoom.
-            let _ = execute_command(
-                &mut self.drawings,
-                DrawingCommand::AddVerticalLine { index: world_x },
-            );
-        }
-    }
-
-    /// Clears all user drawings through the command layer.
-    pub fn clear_drawings(&mut self) {
-        let _ = execute_command(&mut self.drawings, DrawingCommand::ClearAll);
-    }
-
-    /// Removes a drawing by id; returns true if an item was removed.
-    pub fn remove_drawing(&mut self, id: u64) -> bool {
-        match execute_command(&mut self.drawings, DrawingCommand::RemoveById { id }) {
-            crate::drawings::commands::DrawingCommandResult::Removed { removed } => removed,
-            _ => false,
-        }
-    }
-
     pub fn set_crosshair_at(&mut self, x_pixels: f32, y_pixels: f32) {
-        let pane_specs = self.pane_descriptors();
-        let layout = compute_layout(self.size, &pane_specs);
+        if self.point_in_drawing_toolbar(x_pixels, y_pixels)
+            || self.point_in_chart_top_strip(x_pixels, y_pixels)
+            || self.point_in_chart_object_tree(x_pixels, y_pixels)
+        {
+            self.crosshair = None;
+            return;
+        }
+
+        let layout = self.current_layout();
         let plot = layout.plot;
 
         if x_pixels < plot.x
@@ -173,8 +111,7 @@ impl Chart {
             return;
         }
 
-        let pane_specs = self.pane_descriptors();
-        let layout = compute_layout(self.size, &pane_specs);
+        let layout = self.current_layout();
 
         let target_pane = layout
             .panes
@@ -199,10 +136,5 @@ impl Chart {
         };
         self.set_pane_y_zoom_factor(&id, 1.0);
         self.set_pane_y_pan_factor(&id, 0.0);
-    }
-
-    fn price_from_y(&self, y: f32, ps: PriceScale) -> f64 {
-        let t = 1.0 - ((y - ps.pane.y) / ps.pane.h).clamp(0.0, 1.0);
-        ps.min + (ps.max - ps.min) * t as f64
     }
 }

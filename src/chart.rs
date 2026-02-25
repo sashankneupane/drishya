@@ -13,6 +13,7 @@ pub mod interaction;
 pub mod plots;
 pub mod scene;
 pub mod state;
+pub mod tools;
 
 use crate::{
     drawings::store::DrawingStore,
@@ -22,6 +23,7 @@ use crate::{
     types::{Candle, Point, Size},
     viewport::Viewport,
 };
+use self::tools::{DrawingInteractionState, DrawingToolMode};
 use std::collections::{HashMap, HashSet};
 
 pub struct Chart {
@@ -33,6 +35,8 @@ pub struct Chart {
     pane_weights: HashMap<String, f32>,
     pane_order: Vec<String>,
     hidden_panes: HashSet<String>,
+    hidden_series: HashSet<String>,
+    deleted_series: HashSet<String>,
     collapsed_panes: HashSet<String>,
     pane_y_axis_visible: HashMap<String, bool>,
     pane_min_heights: HashMap<String, f32>,
@@ -41,6 +45,8 @@ pub struct Chart {
     pane_y_pan_factors: HashMap<String, f32>,
     crosshair: Option<Point>,
     theme: ThemeId,
+    drawing_tool_mode: DrawingToolMode,
+    drawing_interaction: DrawingInteractionState,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -57,6 +63,8 @@ impl Chart {
             pane_weights: HashMap::new(),
             pane_order: Vec::new(),
             hidden_panes: HashSet::new(),
+            hidden_series: HashSet::new(),
+            deleted_series: HashSet::new(),
             collapsed_panes: HashSet::new(),
             pane_y_axis_visible: HashMap::new(),
             pane_min_heights: HashMap::new(),
@@ -65,6 +73,8 @@ impl Chart {
             pane_y_pan_factors: HashMap::new(),
             crosshair: None,
             theme: ThemeId::Dark,
+            drawing_tool_mode: DrawingToolMode::Select,
+            drawing_interaction: DrawingInteractionState::default(),
             drawings: DrawingStore::new(),
         }
     }
