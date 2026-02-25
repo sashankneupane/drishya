@@ -6,3 +6,4 @@ export * from "./tabs/model";
 export * from "./toolbar/model";
 export * from "./wasm/contracts";
 export * from "./wasm/client";
+export * from "./workspace";

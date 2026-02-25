@@ -1,19 +1,21 @@
 # ui-core
 
-TypeScript + Tailwind workspace library for Drishya product UI.
+TypeScript + Tailwind workspace UI library for Drishya.
 
-Purpose:
+## Purpose
 
-1. Shared workspace layout and tab models
-2. Drawing toolbar definitions and tool ids
-3. Typed WASM chart contract and client wrapper for UI integration
-4. Tailwind preset and base style entry for product chrome
+1. Typed WASM chart contracts and client wrapper
+2. Importable workspace shell API (`createChartWorkspace`)
+3. Modular UI primitives (left drawing rail, right object tree)
+4. Tailwind-based styling tokens/components
 
-For no-build demos, use `ui-core/runtime/drishya-workspace.js`.
+## Source layout
 
-This library is intentionally framework-agnostic and can be used by:
+1. `src/wasm/*` - typed chart bridge
+2. `src/workspace/*` - modular shell implementation
+3. `src/chrome/*` - object tree models/layout types
+4. `src/styles/tailwind.css` - Tailwind component classes
 
-1. Vanilla TypeScript
-2. Next.js/React
-3. Angular
-4. Vue
+## Build output
+
+Source is TypeScript-only under `src/`. JavaScript should come from `dist/` via `npm run build`.
