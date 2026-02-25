@@ -62,7 +62,9 @@ impl Chart {
                 Some(last) if candle.ts == last.ts => *last = candle,
                 Some(last) if candle.ts > last.ts => self.candles.push(candle),
                 Some(_) => {
-                    if let Some(existing) = self.candles.iter_mut().rev().find(|c| c.ts == candle.ts) {
+                    if let Some(existing) =
+                        self.candles.iter_mut().rev().find(|c| c.ts == candle.ts)
+                    {
                         *existing = candle;
                     }
                 }
