@@ -17,8 +17,10 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size, self.has_named_pane_series());
-        let plot_w = layout.price_pane.w.max(1.0);
+        let pane_specs = self.pane_descriptors();
+        let layout = compute_layout(self.size, &pane_specs);
+        let price_pane = layout.price_pane().unwrap_or(layout.plot);
+        let plot_w = price_pane.w.max(1.0);
 
         if let Some(vp) = &mut self.viewport {
             // Convert horizontal pixel drag into fractional-bar movement so
@@ -35,11 +37,13 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size, self.has_named_pane_series());
+        let pane_specs = self.pane_descriptors();
+        let layout = compute_layout(self.size, &pane_specs);
+        let price_pane = layout.price_pane().unwrap_or(layout.plot);
 
         if let Some(vp) = &mut self.viewport {
-            let plot_x = layout.price_pane.x;
-            let plot_w = layout.price_pane.w.max(1.0);
+            let plot_x = price_pane.x;
+            let plot_w = price_pane.w.max(1.0);
 
             // Keep the candle under the cursor visually anchored while zooming.
             let u = ((x_pixels - plot_x) / plot_w).clamp(0.0, 1.0);
@@ -59,14 +63,16 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size, self.has_named_pane_series());
-        if y_pixels < layout.price_pane.y || y_pixels > layout.price_pane.bottom() {
+        let pane_specs = self.pane_descriptors();
+        let layout = compute_layout(self.size, &pane_specs);
+        let price_pane = layout.price_pane().unwrap_or(layout.plot);
+        if y_pixels < price_pane.y || y_pixels > price_pane.bottom() {
             return;
         }
 
         let (min_price, max_price, _) = self.compute_visible_bounds(visible);
         let ps = PriceScale {
-            pane: layout.price_pane,
+            pane: price_pane,
             min: min_price,
             max: max_price,
         };
@@ -84,14 +90,16 @@ impl Chart {
             return;
         }
 
-        let layout = compute_layout(self.size, self.has_named_pane_series());
-        if x_pixels < layout.price_pane.x || x_pixels > layout.price_pane.right() {
+        let pane_specs = self.pane_descriptors();
+        let layout = compute_layout(self.size, &pane_specs);
+        let price_pane = layout.price_pane().unwrap_or(layout.plot);
+        if x_pixels < price_pane.x || x_pixels > price_pane.right() {
             return;
         }
 
         if let Some(vp) = self.viewport {
-            let plot_x = layout.price_pane.x;
-            let plot_w = layout.price_pane.w.max(1.0);
+            let plot_x = price_pane.x;
+            let plot_w = price_pane.w.max(1.0);
             let u = ((x_pixels - plot_x) / plot_w).clamp(0.0, 1.0);
             let idx = vp.offset + vp.bars_visible * u;
             // Store world-space index rather than pixel X so line tracks pan/zoom.

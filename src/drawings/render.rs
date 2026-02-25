@@ -15,19 +15,22 @@ pub fn build_drawing_commands(
     viewport: Option<Viewport>,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
+    let Some(price_pane) = layout.price_pane() else {
+        return out;
+    };
 
     for d in drawings {
         match d {
             Drawing::HorizontalLine(h) => {
                 let y = ps.y_for_price(h.price);
-                if y >= layout.price_pane.y && y <= layout.price_pane.bottom() {
+                if y >= price_pane.y && y <= price_pane.bottom() {
                     out.push(DrawCommand::Line {
                         from: Point {
-                            x: layout.price_pane.x,
+                            x: price_pane.x,
                             y,
                         },
                         to: Point {
-                            x: layout.price_pane.right(),
+                            x: price_pane.right(),
                             y,
                         },
                         width: 1.0,
@@ -51,16 +54,13 @@ pub fn build_drawing_commands(
                     // Convert stored world index into current viewport fraction.
                     let u = (v.index - vp.offset) / vp.bars_visible;
                     if (0.0..=1.0).contains(&u) {
-                        let x = layout.price_pane.x + layout.price_pane.w * u;
-                        let bottom_y = layout
-                            .indicator_pane
-                            .map(|pane| pane.bottom())
-                            .unwrap_or(layout.price_pane.bottom());
+                        let x = price_pane.x + price_pane.w * u;
+                        let bottom_y = layout.plot_bottom();
 
                         out.push(DrawCommand::Line {
                             from: Point {
                                 x,
-                                y: layout.price_pane.y,
+                                y: price_pane.y,
                             },
                             to: Point { x, y: bottom_y },
                             width: 1.0,

@@ -1,6 +1,9 @@
 //! Chart-facing plot provider management.
 
-use crate::plots::{model::PaneId, provider::PlotDataProvider};
+use crate::{
+    layout::{AxisVisibilityPolicy, PaneDescriptor, PaneHeightPolicy},
+    plots::{model::PaneId, provider::PlotDataProvider},
+};
 
 use super::Chart;
 
@@ -20,9 +23,34 @@ impl Chart {
             .collect()
     }
 
-    pub(crate) fn has_named_pane_series(&self) -> bool {
-        self.collect_plot_series()
-            .iter()
-            .any(|series| !matches!(series.pane, PaneId::Price))
+    pub(crate) fn pane_descriptors(&self) -> Vec<PaneDescriptor> {
+        let series = self.collect_plot_series();
+        let mut panes = vec![PaneDescriptor {
+            id: PaneId::Price,
+            height: PaneHeightPolicy::Ratio(3.0),
+            y_axis: AxisVisibilityPolicy::Visible,
+        }];
+
+        for s in series {
+            if matches!(s.pane, PaneId::Price) {
+                continue;
+            }
+
+            if panes.iter().any(|pane| pane.id == s.pane) {
+                continue;
+            }
+
+            panes.push(PaneDescriptor {
+                id: s.pane,
+                height: PaneHeightPolicy::Ratio(1.0),
+                y_axis: AxisVisibilityPolicy::Visible,
+            });
+        }
+
+        if panes.len() == 1 {
+            panes[0].height = PaneHeightPolicy::Auto;
+        }
+
+        panes
     }
 }
