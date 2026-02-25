@@ -26,6 +26,14 @@ const DRAWING_TOOLBAR_PADDING_TOP_PX: f32 = 8.0;
 const DRAWING_TOOLBAR_GAP_PX: f32 = 8.0;
 const DRAWING_TOOLBAR_SIDE_INSET_PX: f32 = 6.0;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopStripAction {
+    Source,
+    Timeframe,
+    Fx,
+    Layout,
+}
+
 pub(crate) const DRAWING_TOOLBAR_MODES: [DrawingToolMode; 8] = [
     DrawingToolMode::Select,
     DrawingToolMode::HorizontalLine,
@@ -48,6 +56,31 @@ pub(crate) struct DrawingInteractionState {
 }
 
 impl crate::chart::Chart {
+    pub fn set_top_strip_labels(&mut self, source: &str, timeframe: &str) {
+        let source = source.trim();
+        let timeframe = timeframe.trim();
+
+        self.top_strip_source_label = if source.is_empty() {
+            "OHLCV".to_string()
+        } else {
+            source.to_string()
+        };
+
+        self.top_strip_timeframe_label = if timeframe.is_empty() {
+            "TF".to_string()
+        } else {
+            timeframe.to_string()
+        };
+    }
+
+    pub(crate) fn top_strip_source_label(&self) -> &str {
+        &self.top_strip_source_label
+    }
+
+    pub(crate) fn top_strip_timeframe_label(&self) -> &str {
+        &self.top_strip_timeframe_label
+    }
+
     pub(crate) fn drawing_toolbar_rect(&self) -> Rect {
         Rect {
             x: 0.0,
@@ -108,6 +141,62 @@ impl crate::chart::Chart {
         x >= rect.x && x <= rect.right() && y >= rect.y && y <= rect.bottom()
     }
 
+    pub(crate) fn top_strip_action_at(&self, x: f32, y: f32) -> Option<TopStripAction> {
+        if !self.point_in_chart_top_strip(x, y) {
+            return None;
+        }
+
+        let (source_rect, tf_rect, fx_rect, layout_rect) = self.chart_top_strip_button_rects();
+
+        if contains(source_rect, x, y) {
+            return Some(TopStripAction::Source);
+        }
+        if contains(tf_rect, x, y) {
+            return Some(TopStripAction::Timeframe);
+        }
+        if contains(fx_rect, x, y) {
+            return Some(TopStripAction::Fx);
+        }
+        if contains(layout_rect, x, y) {
+            return Some(TopStripAction::Layout);
+        }
+
+        None
+    }
+
+    pub(crate) fn chart_top_strip_button_rects(&self) -> (Rect, Rect, Rect, Rect) {
+        let strip = self.chart_top_strip_rect();
+        let row_y = strip.y;
+        let item_h = strip.h.max(18.0);
+
+        let source_rect = Rect {
+            x: strip.x,
+            y: row_y,
+            w: 150.0,
+            h: item_h,
+        };
+        let tf_rect = Rect {
+            x: source_rect.right(),
+            y: row_y,
+            w: 70.0,
+            h: item_h,
+        };
+        let fx_rect = Rect {
+            x: tf_rect.right(),
+            y: row_y,
+            w: 52.0,
+            h: item_h,
+        };
+        let layout_rect = Rect {
+            x: (strip.right() - 110.0).max(fx_rect.right()),
+            y: row_y,
+            w: 110.0,
+            h: item_h,
+        };
+
+        (source_rect, tf_rect, fx_rect, layout_rect)
+    }
+
     pub(crate) fn chart_object_tree_rect(&self) -> Rect {
         let layout = self.current_layout();
         let top = self.chart_top_strip_rect().bottom() + CHART_OBJECT_TREE_MARGIN_PX;
@@ -129,4 +218,8 @@ impl crate::chart::Chart {
         let rect = self.chart_object_tree_rect();
         x >= rect.x && x <= rect.right() && y >= rect.y && y <= rect.bottom()
     }
+}
+
+fn contains(rect: Rect, x: f32, y: f32) -> bool {
+    x >= rect.x && x <= rect.right() && y >= rect.y && y <= rect.bottom()
 }

@@ -24,7 +24,7 @@ use crate::{
 };
 use std::collections::HashSet;
 
-use super::tools::{CHART_TOP_STRIP_HEIGHT_PX, DRAWING_TOOLBAR_MODES};
+use super::tools::DRAWING_TOOLBAR_MODES;
 use super::Chart;
 
 impl Chart {
@@ -212,7 +212,7 @@ impl Chart {
         }
 
         out.extend(self.build_drawing_toolbar_commands());
-        out.extend(self.build_chart_top_strip_commands(&layout));
+        out.extend(self.build_chart_top_strip_commands());
         out.extend(self.build_object_tree_commands(
             &layout,
             &plot_series,
@@ -313,16 +313,9 @@ impl Chart {
         out
     }
 
-    fn build_chart_top_strip_commands(&self, layout: &ChartLayout) -> Vec<DrawCommand> {
+    fn build_chart_top_strip_commands(&self) -> Vec<DrawCommand> {
         let mut out = Vec::new();
-        let plot = layout.plot;
-        let strip_x = self.drawing_toolbar_rect().right().max(plot.x);
-        let strip = crate::types::Rect {
-            x: strip_x,
-            y: plot.y,
-            w: (plot.right() - strip_x).max(1.0),
-            h: CHART_TOP_STRIP_HEIGHT_PX.min(plot.h.max(1.0)),
-        };
+        let strip = self.chart_top_strip_rect();
 
         out.push(DrawCommand::Rect {
             rect: strip,
@@ -330,33 +323,7 @@ impl Chart {
             stroke: Some(StrokeStyle::token(ColorToken::PaneBorder, 1.0)),
         });
 
-        let row_y = strip.y;
-        let item_h = strip.h.max(18.0);
-
-        let source_rect = crate::types::Rect {
-            x: strip.x,
-            y: row_y,
-            w: 150.0,
-            h: item_h,
-        };
-        let tf_rect = crate::types::Rect {
-            x: source_rect.right(),
-            y: row_y,
-            w: 70.0,
-            h: item_h,
-        };
-        let fx_rect = crate::types::Rect {
-            x: tf_rect.right(),
-            y: row_y,
-            w: 52.0,
-            h: item_h,
-        };
-        let layout_rect = crate::types::Rect {
-            x: (strip.right() - 110.0).max(fx_rect.right()),
-            y: row_y,
-            w: 110.0,
-            h: item_h,
-        };
+        let (source_rect, tf_rect, fx_rect, layout_rect) = self.chart_top_strip_button_rects();
 
         out.push(DrawCommand::Rect {
             rect: source_rect,
@@ -368,7 +335,7 @@ impl Chart {
                 x: source_rect.x + source_rect.w * 0.5,
                 y: source_rect.y + source_rect.h * 0.5 + 4.0,
             },
-            text: "OHLCV".to_string(),
+            text: format!("{} ▾", self.top_strip_source_label()),
             style: TextStyle::token(ColorToken::AxisText, 10.0, TextAlign::Center),
         });
 
@@ -382,7 +349,7 @@ impl Chart {
                 x: tf_rect.x + tf_rect.w * 0.5,
                 y: tf_rect.y + tf_rect.h * 0.5 + 4.0,
             },
-            text: "TF ▾".to_string(),
+            text: format!("{} ▾", self.top_strip_timeframe_label()),
             style: TextStyle::token(ColorToken::AxisText, 10.0, TextAlign::Center),
         });
 
