@@ -1,6 +1,6 @@
-import type { DrawingToolId } from "../toolbar/model";
-import type { DrishyaChartClient } from "../wasm/client";
-import type { WasmChartLike } from "../wasm/contracts";
+import type { DrawingToolId } from "../toolbar/model.js";
+import type { DrishyaChartClient } from "../wasm/client.js";
+import type { WasmChartLike } from "../wasm/contracts.js";
 
 export type WorkspaceTheme = "dark" | "light";
 
@@ -15,6 +15,7 @@ export interface CreateChartWorkspaceOptions {
   createWasmChart: (canvasId: string, width: number, height: number) => WasmChartLike;
   initialTheme?: WorkspaceTheme;
   initialTool?: DrawingToolId;
+  injectStyles?: boolean;
 }
 
 export interface ChartWorkspaceHandle {
@@ -32,4 +33,3 @@ export interface ChartWorkspaceHandle {
   refreshObjectTree: () => void;
   destroy: () => void;
 }
-

@@ -1,13 +1,23 @@
-import type { DrawingToolId } from "../toolbar/model";
-import { DrishyaChartClient } from "../wasm/client";
-import { WORKSPACE_DRAW_TOOLS } from "./constants";
-import { bindWorkspaceInteractions } from "./interactions";
-import { createLeftStrip } from "./leftStrip";
-import { createObjectTreePanel } from "./objectTreePanel";
-import type { ChartWorkspaceHandle, CreateChartWorkspaceOptions, WorkspaceTheme } from "./types";
+import type { DrawingToolId } from "../toolbar/model.js";
+import { DrishyaChartClient } from "../wasm/client.js";
+import { WORKSPACE_DRAW_TOOLS } from "./constants.js";
+import { bindWorkspaceInteractions } from "./interactions.js";
+import { createLeftStrip } from "./leftStrip.js";
+import { createObjectTreePanel } from "./objectTreePanel.js";
+import type {
+  ChartWorkspaceHandle,
+  CreateChartWorkspaceOptions,
+  WorkspaceTheme,
+} from "./types.js";
+
+const WORKSPACE_STYLE_LINK_ID = "drishya-workspace-styles";
 
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
   const { host, createWasmChart } = options;
+  if (options.injectStyles !== false) {
+    ensureWorkspaceStyles();
+  }
+  ensureHostHasViewport(host);
   host.innerHTML = "";
 
   const root = document.createElement("div");
@@ -20,6 +30,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const canvasId = `drishya-canvas-${Math.random().toString(36).slice(2, 10)}`;
   canvas.id = canvasId;
   stage.appendChild(canvas);
+
+  // The WASM constructor resolves canvas by id from the live document,
+  // so mount stage/canvas before instantiating the chart.
+  root.appendChild(stage);
+  host.appendChild(root);
 
   let theme: WorkspaceTheme = options.initialTheme === "light" ? "light" : "dark";
   let activeTool: DrawingToolId = options.initialTool ?? "select";
@@ -50,10 +65,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     onMutate: () => draw()
   });
 
-  root.appendChild(stripHandle.root);
-  root.appendChild(stage);
+  root.insertBefore(stripHandle.root, stage);
   root.appendChild(treeHandle.root);
-  host.appendChild(root);
 
   const setupCanvasBackingStore = () => {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -182,3 +195,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 }
 
+function ensureWorkspaceStyles(): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(WORKSPACE_STYLE_LINK_ID)) return;
+
+  const link = document.createElement("link");
+  link.id = WORKSPACE_STYLE_LINK_ID;
+  link.rel = "stylesheet";
+  link.href = new URL("./styles.css", import.meta.url).href;
+  document.head.appendChild(link);
+}
+
+function ensureHostHasViewport(host: HTMLElement): void {
+  const rect = host.getBoundingClientRect();
+  if (rect.width === 0 && !host.style.width) {
+    host.style.width = "100%";
+  }
+  if (rect.height === 0 && !host.style.height) {
+    host.style.height = "100vh";
+  }
+}

@@ -1,11 +1,11 @@
-import type { WasmChartLike } from "../wasm/contracts";
-import { createChartWorkspace } from "./createChartWorkspace";
+import type { WasmChartLike } from "../wasm/contracts.js";
+import { createChartWorkspace } from "./createChartWorkspace.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
   WorkspaceTheme,
 } from "./types";
-import type { DrawingToolId } from "../toolbar/model";
+import type { DrawingToolId } from "../toolbar/model.js";
 
 export interface DrishyaWasmModule {
   default?: () => Promise<unknown> | unknown;
@@ -17,6 +17,7 @@ export interface CreateChartWorkspaceFromModuleOptions {
   loadWasmModule: () => Promise<DrishyaWasmModule>;
   initialTheme?: WorkspaceTheme;
   initialTool?: DrawingToolId;
+  injectStyles?: boolean;
 }
 
 export async function createChartWorkspaceFromModule(
@@ -39,5 +40,6 @@ export async function createChartWorkspaceFromModule(
     createWasmChart,
     initialTheme: options.initialTheme,
     initialTool: options.initialTool,
+    injectStyles: options.injectStyles,
   });
 }
