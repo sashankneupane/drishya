@@ -7,3 +7,5 @@ export * from "./toolbar/model.js";
 export * from "./wasm/contracts.js";
 export * from "./wasm/client.js";
 export * from "./workspace/index.js";
+export * from "./workspace/WorkspaceController.js";
+

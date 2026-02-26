@@ -26,7 +26,9 @@
   "scripts": {
     "build": "tsdown src/index.ts src/workspace/index.ts --format esm,cjs --dts --sourcemap --clean --platform browser --out-dir dist && npm run build:styles",
     "build:styles": "tailwindcss -i ./src/styles/tailwind.css -o ./dist/styles.css --config ./tailwind.config.cjs --minify",
+    "watch:styles": "tailwindcss -i ./src/styles/tailwind.css -o ./dist/styles.css --config ./tailwind.config.cjs --watch",
     "build:watch": "tsdown src/index.ts src/workspace/index.ts --format esm,cjs --dts --sourcemap --platform browser --out-dir dist --watch",
+    "dev": "npm run build:watch & npm run watch:styles",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
