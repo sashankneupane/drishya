@@ -6,21 +6,31 @@ export type WorkspaceIconName =
   | "vline"
   | "ray"
   | "rectangle"
+  | "price_range"
+  | "time_range"
+  | "date_time_range"
+  | "rectangle-filled"
+  | "bars"
+  | "volume-candles"
   | "fib"
   | "long"
   | "short"
   | "trash"
   | "theme"
+  | "theme-off"
   | "eye"
   | "eye-off"
-  | "x";
+  | "close"
+  | "chevron-right"
+  | "delete"
+  | "search";
 
-export function makeSvgIcon(name: WorkspaceIconName, className = "drishya-icon"): SVGSVGElement {
+export function makeSvgIcon(name: WorkspaceIconName | string, className = "drishya-icon"): SVGSVGElement {
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("fill", "none");
   svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-width", "2");
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("aria-hidden", "true");
@@ -31,80 +41,42 @@ export function makeSvgIcon(name: WorkspaceIconName, className = "drishya-icon")
     el.setAttribute("d", d);
     return el;
   };
-  const line = (x1: number, y1: number, x2: number, y2: number) => {
-    const el = document.createElementNS(NS, "line");
-    el.setAttribute("x1", String(x1));
-    el.setAttribute("y1", String(y1));
-    el.setAttribute("x2", String(x2));
-    el.setAttribute("y2", String(y2));
-    return el;
-  };
-  const circle = (cx: number, cy: number, r: number) => {
-    const el = document.createElementNS(NS, "circle");
-    el.setAttribute("cx", String(cx));
-    el.setAttribute("cy", String(cy));
-    el.setAttribute("r", String(r));
-    return el;
-  };
-  const rect = (x: number, y: number, w: number, h: number, rx = 0) => {
-    const el = document.createElementNS(NS, "rect");
-    el.setAttribute("x", String(x));
-    el.setAttribute("y", String(y));
-    el.setAttribute("width", String(w));
-    el.setAttribute("height", String(h));
-    if (rx > 0) el.setAttribute("rx", String(rx));
-    return el;
-  };
-  const poly = (points: string) => {
-    const el = document.createElementNS(NS, "polyline");
-    el.setAttribute("points", points);
-    return el;
+
+  const icons: Record<string, string[]> = {
+    "select": ["M4 4l7.07 16.97 2.51-7.39 7.39-2.51L4 4z", "M13 13l6 6"],
+    "hline": ["M3 12h18"],
+    "vline": ["M12 3v18"],
+    "ray": ["M3 17l14-11", "M13 6h4v4"],
+    "rectangle": ["M3 5h18v14H3z"],
+    "price_range": ["M7 5h10v14H7z", "M3 8h4", "M3 16h4", "M17 8h4", "M17 16h4"],
+    "time_range": ["M5 7h14v10H5z", "M8 3v4", "M16 3v4", "M8 17v4", "M16 17v4"],
+    "date_time_range": ["M3 3h18v18H3z", "M3 12h18", "M12 3v18"],
+    "rectangle-filled": ["M3 5h18v14H3z"], // Use fill attribute in the map
+    "bars": ["M6 5v14", "M3 9h3", "M6 14h3", "M18 5v14", "M15 8h3", "M18 15h3"],
+    "volume-candles": ["M6 3v18", "M4 8h4v8H4z", "M18 3v18", "M14 6h8v12h-8z"],
+    "fib": ["M4 18l16-16", "M8 15h9", "M11 12h9", "M14 9h9"],
+    "long": ["M12 20V4", "M5 11l7-7 7 7"],
+    "short": ["M12 4v16", "M5 13l7 7 7-7"],
+    "trash": ["M3 6h18", "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"],
+    "theme": ["M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0", "M12 2v2", "M12 20v2", "M4.93 4.93l1.41 1.41", "M17.66 17.66l1.41 1.41", "M2 12h2", "M20 12h2", "M6.34 17.66l-1.41 1.41", "M19.07 4.93l-1.41 1.41"],
+    "theme-off": ["M12 3c0.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"],
+    "eye": ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"],
+    "eye-off": ["M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22", "M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"],
+    "close": ["M18 6L6 18", "M6 6l12 12"],
+    "chevron-right": ["M9 18l6-6-6-6"],
+    "delete": ["M3 6h18", "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2", "M10 11v6", "M14 11v6"],
+    "search": ["M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"]
   };
 
-  if (name === "select") {
-    svg.appendChild(poly("6,4 6,19 10,15 13,20 15,19 12,14 17,14"));
-  } else if (name === "hline") {
-    svg.appendChild(line(4, 12, 20, 12));
-  } else if (name === "vline") {
-    svg.appendChild(line(12, 4, 12, 20));
-  } else if (name === "ray") {
-    svg.appendChild(line(5, 17, 18, 6));
-    svg.appendChild(poly("18,6 18,10 14,10"));
-  } else if (name === "rectangle") {
-    svg.appendChild(rect(5, 7, 14, 10, 1.5));
-  } else if (name === "fib") {
-    svg.appendChild(line(6, 18, 18, 6));
-    svg.appendChild(line(7, 15, 14, 15));
-    svg.appendChild(line(9, 12, 16, 12));
-    svg.appendChild(line(11, 9, 18, 9));
-  } else if (name === "long") {
-    svg.appendChild(line(12, 18, 12, 5));
-    svg.appendChild(poly("8,9 12,5 16,9"));
-  } else if (name === "short") {
-    svg.appendChild(line(12, 6, 12, 19));
-    svg.appendChild(poly("8,15 12,19 16,15"));
-  } else if (name === "trash") {
-    svg.appendChild(rect(8, 9, 8, 10, 1.5));
-    svg.appendChild(line(6, 9, 18, 9));
-    svg.appendChild(line(10, 6, 14, 6));
-  } else if (name === "theme") {
-    svg.appendChild(circle(12, 12, 4.5));
-    svg.appendChild(line(12, 2.5, 12, 5));
-    svg.appendChild(line(12, 19, 12, 21.5));
-    svg.appendChild(line(2.5, 12, 5, 12));
-    svg.appendChild(line(19, 12, 21.5, 12));
-  } else if (name === "eye") {
-    svg.appendChild(path("M2 12c2.7-4 6-6 10-6s7.3 2 10 6c-2.7 4-6 6-10 6s-7.3-2-10-6z"));
-    svg.appendChild(circle(12, 12, 2.3));
-  } else if (name === "eye-off") {
-    svg.appendChild(path("M2 12c2.7-4 6-6 10-6 3 0 5.7 1.2 8 3.7"));
-    svg.appendChild(path("M22 12c-2.7 4-6 6-10 6-3 0-5.7-1.2-8-3.7"));
-    svg.appendChild(line(4, 20, 20, 4));
-  } else if (name === "x") {
-    svg.appendChild(line(6, 6, 18, 18));
-    svg.appendChild(line(18, 6, 6, 18));
+  const ds = icons[name] || [];
+  if (name === "rectangle-filled") {
+    svg.setAttribute("fill", "currentColor");
+    svg.setAttribute("stroke", "none");
   }
+
+  ds.forEach(d => {
+    svg.appendChild(path(d));
+  });
 
   return svg;
 }
-

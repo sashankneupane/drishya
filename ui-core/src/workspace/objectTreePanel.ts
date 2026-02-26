@@ -1,135 +1,125 @@
-import {
-  buildObjectTreeNodes,
-  type ObjectTreeAction,
-  type ObjectTreeNode,
-} from "../chrome/objectTree.js";
-import type { DrishyaChartClient } from "../wasm/client.js";
 import { makeSvgIcon } from "./icons.js";
+import type { DrishyaChartClient } from "../wasm/client.js";
+import type { WorkspaceController } from "./WorkspaceController.js";
 
-type ActionableNodeKind = "pane" | "series" | "drawing";
-type ActionableObjectTreeNode = ObjectTreeNode & { kind: ActionableNodeKind };
+interface ObjectTreePanelOptions {
+  chart: DrishyaChartClient;
+  controller: WorkspaceController;
+  onMutate?: () => void;
+}
 
 export interface ObjectTreePanelHandle {
   root: HTMLElement;
   refresh: () => void;
+  destroy: () => void;
 }
 
-interface CreateObjectTreePanelOptions {
-  chart: DrishyaChartClient;
-  onMutate: () => void;
-}
-
-export function createObjectTreePanel(options: CreateObjectTreePanelOptions): ObjectTreePanelHandle {
-  const root = document.createElement("aside");
-  root.className = "drishya-tree";
-  root.setAttribute("aria-label", "Object tree");
+export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTreePanelHandle {
+  const { chart, controller } = options;
+  const root = document.createElement("div");
+  root.className = "w-object-tree h-full bg-workspace-bg border-l border-workspace-border flex flex-col z-20 shrink-0 select-none overflow-hidden";
+  root.style.display = "none";
 
   const header = document.createElement("div");
-  header.className = "drishya-tree-header";
-  header.textContent = "Object Tree";
+  header.className = "h-top-strip flex items-center justify-between px-3 border-b border-workspace-border shrink-0 bg-zinc-950/20";
+
+  const title = document.createElement("span");
+  title.className = "text-[10px] font-bold text-zinc-500 uppercase tracking-wider";
+  title.textContent = "Objects";
+
+  const close = document.createElement("button");
+  close.className = "h-5 w-5 flex items-center justify-center text-zinc-600 hover:text-white transition-colors cursor-pointer rounded hover:bg-zinc-800";
+  close.appendChild(makeSvgIcon("close", "h-3.5 w-3.5"));
+  close.onclick = () => controller.setObjectTreeOpen(false);
+
+  header.append(title, close);
   root.appendChild(header);
 
-  const body = document.createElement("div");
-  body.className = "drishya-tree-body";
-  root.appendChild(body);
+  const container = document.createElement("div");
+  container.className = "flex-1 overflow-y-auto no-scrollbar py-1";
+  root.appendChild(container);
 
-  let signature = "";
+  const refresh = () => {
+    container.innerHTML = "";
+    const state = chart.objectTreeState();
 
-  function refresh(): void {
-    const state = options.chart.objectTreeState();
-    const nextSignature = JSON.stringify(state);
-    if (nextSignature === signature) return;
-    signature = nextSignature;
+    // Categorize and filter
+    const paneItems = state.panes.map(p => ({ id: p.id, label: `Pane: ${p.id}`, visible: p.visible, kind: 'pane' as const }));
+    const seriesItems = state.series
+      .filter(s => !s.deleted)
+      .map(s => ({ id: s.id, label: s.name || s.id, visible: s.visible, kind: 'series' as const }));
+    const drawingItems = state.drawings
+      .map(d => ({ id: String(d.id), label: `${d.kind} #${d.id}`, visible: d.visible, kind: 'drawing' as const }));
 
-    const nodes = buildObjectTreeNodes(state);
-    body.innerHTML = "";
-    for (const node of nodes) {
-      body.appendChild(renderNode(node));
-    }
-  }
+    const allItems = [...paneItems, ...seriesItems, ...drawingItems];
 
-  function renderNode(node: ObjectTreeNode): HTMLElement {
-    const row = document.createElement("div");
-    row.className = node.kind === "header" ? "drishya-tree-row is-header" : "drishya-tree-row";
-    row.style.paddingLeft = `${8 + node.depth * 12}px`;
-
-    const label = document.createElement("span");
-    label.className = "drishya-tree-label";
-    label.textContent = node.label;
-    row.appendChild(label);
-
-    if (!isActionableObjectTreeNode(node)) {
-      return row;
+    if (allItems.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "p-8 text-center text-[10px] text-zinc-700 italic";
+      empty.textContent = "No objects active";
+      container.appendChild(empty);
+      return;
     }
 
-    const actionableNode = node;
+    allItems.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "group h-8 flex items-center px-3 hover:bg-zinc-900/50 transition-colors cursor-default";
 
-    const actions = document.createElement("div");
-    actions.className = "drishya-tree-actions";
+      const label = document.createElement("span");
+      label.className = `flex-1 truncate text-[11px] ${item.visible ? 'text-zinc-500' : 'text-zinc-700 italic line-through'}`;
+      label.textContent = item.label;
 
-    if (typeof actionableNode.visible === "boolean") {
-      const toggleBtn = document.createElement("button");
-      toggleBtn.type = "button";
-      toggleBtn.className = "drishya-tree-btn";
-      toggleBtn.title = actionableNode.visible ? "Hide" : "Show";
-      toggleBtn.disabled = actionableNode.kind === "pane" && actionableNode.id === "price";
-      toggleBtn.appendChild(
-        makeSvgIcon(actionableNode.visible ? "eye" : "eye-off", "drishya-icon-xs"),
-      );
-      toggleBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const action: ObjectTreeAction = {
+      const actions = document.createElement("div");
+      actions.className = "flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity";
+
+      const visibility = document.createElement("button");
+      visibility.className = `p-1 cursor-pointer transition-colors border-none outline-none bg-transparent ${item.visible ? 'text-zinc-600 hover:text-zinc-200' : 'text-zinc-400'}`;
+      visibility.appendChild(makeSvgIcon(item.visible ? "eye" : "eye-off", "h-3.5 w-3.5"));
+      visibility.title = item.visible ? "Hide" : "Show";
+      visibility.onclick = () => {
+        chart.applyObjectTreeAction({
           type: "toggle_visibility",
-          kind: actionableNode.kind,
-          id: actionableNode.id,
-          visible: !actionableNode.visible,
-        };
-        options.chart.applyObjectTreeAction(action);
-        options.onMutate();
-      });
-      actions.appendChild(toggleBtn);
-    }
+          kind: item.kind,
+          id: item.id,
+          visible: !item.visible
+        });
+        refresh();
+        options.onMutate?.();
+      };
 
-    if (actionableNode.deletable) {
-      const deleteKind =
-        actionableNode.kind === "series" || actionableNode.kind === "drawing"
-          ? actionableNode.kind
-          : null;
-      if (!deleteKind) {
-        row.appendChild(actions);
-        return row;
+      actions.appendChild(visibility);
+
+      if (item.kind !== 'pane') {
+        const del = document.createElement("button");
+        del.className = "p-1 text-zinc-700 hover:text-red-500 transition-colors cursor-pointer border-none outline-none bg-transparent";
+        del.appendChild(makeSvgIcon("delete", "h-3.5 w-3.5"));
+        del.title = "Delete";
+        del.onclick = () => {
+          chart.applyObjectTreeAction({
+            type: "delete",
+            kind: item.kind,
+            id: item.id,
+            visible: false
+          });
+          refresh();
+          options.onMutate?.();
+        };
+        actions.appendChild(del);
       }
 
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "drishya-tree-btn danger";
-      deleteBtn.title = "Delete";
-      deleteBtn.appendChild(makeSvgIcon("x", "drishya-icon-xs"));
-      deleteBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const action: ObjectTreeAction = {
-          type: "delete",
-          kind: deleteKind,
-          id: actionableNode.id,
-          visible: false,
-        };
-        options.chart.applyObjectTreeAction(action);
-        options.onMutate();
-      });
-      actions.appendChild(deleteBtn);
-    }
+      row.append(label, actions);
+      container.appendChild(row);
+    });
+  };
 
-    row.appendChild(actions);
-    return row;
-  }
+  const unsubscribe = controller.subscribe((state) => {
+    root.style.display = state.isObjectTreeOpen ? "flex" : "none";
+    if (state.isObjectTreeOpen) refresh();
+  });
 
   return {
     root,
-    refresh
+    refresh,
+    destroy: () => unsubscribe()
   };
 }
-
-function isActionableObjectTreeNode(node: ObjectTreeNode): node is ActionableObjectTreeNode {
-  return node.kind === "pane" || node.kind === "series" || node.kind === "drawing";
-}
-
