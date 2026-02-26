@@ -1,5 +1,4 @@
 use crate::types::Candle;
-use std::collections::HashMap;
 
 pub struct AlignedCompareSeries {
     pub id: String,
@@ -14,22 +13,30 @@ pub fn align_compare_series(
         return Vec::new();
     }
 
-    // Map timestamps to indices for the primary series
-    let ts_to_idx: HashMap<i64, usize> = primary_candles
-        .iter()
-        .enumerate()
-        .map(|(i, c)| (c.ts, i))
-        .collect();
-
     compare_series
         .iter()
         .map(|s| {
             let mut aligned_values = vec![None; primary_candles.len()];
-            for candle in &s.candles {
-                if let Some(&idx) = ts_to_idx.get(&candle.ts) {
-                    aligned_values[idx] = Some(candle.close);
+            let mut p_idx = 0;
+            let mut s_idx = 0;
+
+            // Two-pointer alignment: O(N + K) where N=primary.len(), K=series.len()
+            // Requires both to be sorted by timestamp (primary is always sorted).
+            while p_idx < primary_candles.len() && s_idx < s.candles.len() {
+                let pts = primary_candles[p_idx].ts;
+                let sts = s.candles[s_idx].ts;
+
+                if pts == sts {
+                    aligned_values[p_idx] = Some(s.candles[s_idx].close);
+                    p_idx += 1;
+                    s_idx += 1;
+                } else if pts < sts {
+                    p_idx += 1;
+                } else {
+                    s_idx += 1;
                 }
             }
+
             AlignedCompareSeries {
                 id: s.id.clone(),
                 values: aligned_values,

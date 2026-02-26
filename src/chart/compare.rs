@@ -41,8 +41,9 @@ impl CompareRegistry {
         self.series.len() < len_before
     }
 
-    pub fn set_candles(&mut self, id: &str, candles: Vec<Candle>) -> bool {
+    pub fn set_candles(&mut self, id: &str, mut candles: Vec<Candle>) -> bool {
         if let Some(s) = self.series.iter_mut().find(|s| s.id == id) {
+            candles.sort_by_key(|c| c.ts);
             s.candles = candles;
             true
         } else {
