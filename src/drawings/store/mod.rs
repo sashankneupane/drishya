@@ -28,6 +28,7 @@ pub struct DrawingStore {
     hidden_layers: HashSet<DrawingLayerId>,
     hidden_groups: HashSet<DrawingGroupId>,
     hidden_drawings: HashSet<DrawingId>,
+    x_anchor_timestamps: HashMap<DrawingId, Vec<i64>>,
 }
 
 impl DrawingStore {
@@ -54,6 +55,7 @@ impl DrawingStore {
             hidden_layers: HashSet::new(),
             hidden_groups: HashSet::new(),
             hidden_drawings: HashSet::new(),
+            x_anchor_timestamps: HashMap::new(),
         }
     }
 
@@ -466,17 +468,20 @@ impl DrawingStore {
     }
 
     pub fn drawing_mut(&mut self, id: DrawingId) -> Option<&mut Drawing> {
+        self.x_anchor_timestamps.remove(&id);
         self.items.iter_mut().find(|item| item.id() == id)
     }
 
     pub fn remove(&mut self, id: DrawingId) -> bool {
         let before = self.items.len();
         self.items.retain(|item| item.id() != id);
+        self.x_anchor_timestamps.remove(&id);
         self.items.len() != before
     }
 
     pub fn clear(&mut self) {
         self.items.clear();
+        self.x_anchor_timestamps.clear();
     }
 
     pub fn ensure_layer(&mut self, layer_id: &str) {
@@ -729,7 +734,15 @@ impl DrawingStore {
         }
 
         for drawing in &mut self.items {
-            reproject_drawing_x(drawing, old_candles, new_candles);
+            let id = drawing.id();
+            let anchor_timestamps = if let Some(cached) = self.x_anchor_timestamps.get(&id) {
+                cached.clone()
+            } else {
+                let collected = collect_anchor_timestamps(drawing, old_candles);
+                self.x_anchor_timestamps.insert(id, collected.clone());
+                collected
+            };
+            apply_anchor_timestamps(drawing, &anchor_timestamps, new_candles);
         }
     }
 }
@@ -738,16 +751,39 @@ fn index_to_timestamp(index: f32, candles: &[Candle]) -> Option<i64> {
     if candles.is_empty() {
         return None;
     }
-    let idx = index
-        .round()
-        .clamp(0.0, candles.len().saturating_sub(1) as f32) as usize;
-    candles.get(idx).map(|c| c.ts)
+    let idx = index.round() as i64;
+    let first = candles.first()?;
+    let last = candles.last()?;
+    if idx <= 0 {
+        return Some(first.ts);
+    }
+    let last_idx = candles.len().saturating_sub(1) as i64;
+    if idx <= last_idx {
+        return candles.get(idx as usize).map(|c| c.ts);
+    }
+    let step = inferred_time_step_seconds(candles);
+    let future_steps = idx - last_idx;
+    Some(last.ts.saturating_add(future_steps.saturating_mul(step)))
 }
 
 fn nearest_index_for_timestamp(ts: i64, candles: &[Candle]) -> Option<f32> {
     if candles.is_empty() {
         return None;
     }
+    let first = candles.first()?;
+    let last = candles.last()?;
+    if ts <= first.ts {
+        return Some(0.0);
+    }
+    if ts >= last.ts {
+        let step = inferred_time_step_seconds(candles);
+        if step <= 0 {
+            return Some(candles.len().saturating_sub(1) as f32);
+        }
+        let offset_steps = ((ts - last.ts) as f64 / step as f64).round() as f32;
+        return Some(candles.len().saturating_sub(1) as f32 + offset_steps.max(0.0));
+    }
+
     match candles.binary_search_by_key(&ts, |c| c.ts) {
         Ok(idx) => Some(idx as f32),
         Err(insert) => {
@@ -769,75 +805,221 @@ fn nearest_index_for_timestamp(ts: i64, candles: &[Candle]) -> Option<f32> {
     }
 }
 
-fn remap_index(index: &mut f32, old_candles: &[Candle], new_candles: &[Candle]) {
-    if let Some(ts) = index_to_timestamp(*index, old_candles) {
-        if let Some(mapped) = nearest_index_for_timestamp(ts, new_candles) {
-            *index = mapped;
+fn inferred_time_step_seconds(candles: &[Candle]) -> i64 {
+    for pair in candles.windows(2).rev() {
+        let delta = pair[1].ts - pair[0].ts;
+        if delta > 0 {
+            return delta;
         }
     }
+    60
 }
 
-fn reproject_drawing_x(drawing: &mut Drawing, old_candles: &[Candle], new_candles: &[Candle]) {
+fn collect_anchor_timestamps(drawing: &Drawing, candles: &[Candle]) -> Vec<i64> {
+    let mut out = Vec::new();
+    let mut collect = |index: f32| {
+        if let Some(ts) = index_to_timestamp(index, candles) {
+            out.push(ts);
+        }
+    };
     match drawing {
         Drawing::HorizontalLine(_) => {}
-        Drawing::VerticalLine(item) => remap_index(&mut item.index, old_candles, new_candles),
+        Drawing::VerticalLine(item) => collect(item.index),
         Drawing::Ray(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
         }
         Drawing::Rectangle(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
         }
         Drawing::PriceRange(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
         }
         Drawing::TimeRange(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
         }
         Drawing::DateTimeRange(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
         }
         Drawing::LongPosition(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
-            remap_index(&mut item.entry_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
+            collect(item.entry_index);
         }
         Drawing::ShortPosition(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
-            remap_index(&mut item.entry_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
+            collect(item.entry_index);
         }
         Drawing::FibRetracement(item) => {
-            remap_index(&mut item.start_index, old_candles, new_candles);
-            remap_index(&mut item.end_index, old_candles, new_candles);
+            collect(item.start_index);
+            collect(item.end_index);
         }
         Drawing::Circle(item) => {
-            remap_index(&mut item.center_index, old_candles, new_candles);
-            remap_index(&mut item.radius_index, old_candles, new_candles);
+            collect(item.center_index);
+            collect(item.radius_index);
         }
         Drawing::Triangle(item) => {
-            remap_index(&mut item.p1_index, old_candles, new_candles);
-            remap_index(&mut item.p2_index, old_candles, new_candles);
-            remap_index(&mut item.p3_index, old_candles, new_candles);
+            collect(item.p1_index);
+            collect(item.p2_index);
+            collect(item.p3_index);
         }
         Drawing::Ellipse(item) => {
-            remap_index(&mut item.p1_index, old_candles, new_candles);
-            remap_index(&mut item.p2_index, old_candles, new_candles);
-            remap_index(&mut item.p3_index, old_candles, new_candles);
+            collect(item.p1_index);
+            collect(item.p2_index);
+            collect(item.p3_index);
         }
-        Drawing::Text(item) => remap_index(&mut item.index, old_candles, new_candles),
+        Drawing::Text(item) => collect(item.index),
+        Drawing::BrushStroke(item) => {
+            for p in &item.points {
+                collect(p.index);
+            }
+        }
+        Drawing::HighlightStroke(item) => {
+            for p in &item.points {
+                collect(p.index);
+            }
+        }
+    }
+    out
+}
+
+fn apply_anchor_timestamps(drawing: &mut Drawing, anchor_timestamps: &[i64], candles: &[Candle]) {
+    let mut cursor = 0usize;
+    let mut map_next = || {
+        let ts = *anchor_timestamps.get(cursor)?;
+        cursor += 1;
+        nearest_index_for_timestamp(ts, candles)
+    };
+
+    match drawing {
+        Drawing::HorizontalLine(_) => {}
+        Drawing::VerticalLine(item) => {
+            if let Some(x) = map_next() {
+                item.index = x;
+            }
+        }
+        Drawing::Ray(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::Rectangle(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::PriceRange(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::TimeRange(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::DateTimeRange(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::LongPosition(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.entry_index = x;
+            }
+        }
+        Drawing::ShortPosition(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.entry_index = x;
+            }
+        }
+        Drawing::FibRetracement(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::Circle(item) => {
+            if let Some(x) = map_next() {
+                item.center_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.radius_index = x;
+            }
+        }
+        Drawing::Triangle(item) => {
+            if let Some(x) = map_next() {
+                item.p1_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p2_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p3_index = x;
+            }
+        }
+        Drawing::Ellipse(item) => {
+            if let Some(x) = map_next() {
+                item.p1_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p2_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p3_index = x;
+            }
+        }
+        Drawing::Text(item) => {
+            if let Some(x) = map_next() {
+                item.index = x;
+            }
+        }
         Drawing::BrushStroke(item) => {
             for p in &mut item.points {
-                remap_index(&mut p.index, old_candles, new_candles);
+                if let Some(x) = map_next() {
+                    p.index = x;
+                }
             }
         }
         Drawing::HighlightStroke(item) => {
             for p in &mut item.points {
-                remap_index(&mut p.index, old_candles, new_candles);
+                if let Some(x) = map_next() {
+                    p.index = x;
+                }
             }
         }
     }
@@ -846,6 +1028,40 @@ fn reproject_drawing_x(drawing: &mut Drawing, old_candles: &[Candle], new_candle
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn candle(ts: i64) -> Candle {
+        Candle {
+            ts,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1000.0,
+        }
+    }
+
+    #[test]
+    fn reproject_preserves_future_anchor_indices_across_roundtrip() {
+        let old = vec![candle(0), candle(60), candle(120), candle(180)];
+        let new = vec![
+            candle(0),
+            candle(300),
+            candle(600),
+            candle(900),
+            candle(1200),
+        ];
+
+        let mut store = DrawingStore::new();
+        let id = store.add_rectangle(2.0, 8.0, 110.0, 90.0);
+
+        store.reproject_x_to_timestamps(&old, &new);
+        store.reproject_x_to_timestamps(&new, &old);
+
+        let Some(Drawing::Rectangle(r)) = store.drawing(id) else {
+            panic!("expected rectangle");
+        };
+        assert!((r.start_index - 2.0).abs() < 1e-6);
+        assert!((r.end_index - 8.0).abs() < 1e-6);
+    }
 
     #[test]
     fn layer_visibility_filters_items() {

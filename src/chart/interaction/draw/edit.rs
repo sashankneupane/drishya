@@ -208,8 +208,7 @@ fn snap_drawing_x_to_candles(drawing: &mut Drawing, candles_len: usize) {
     if candles_len == 0 {
         return;
     }
-    let max = candles_len.saturating_sub(1) as f32;
-    let snap = |x: &mut f32| *x = x.round().clamp(0.0, max);
+    let snap = |x: &mut f32| *x = x.round().max(0.0);
 
     match drawing {
         Drawing::VerticalLine(item) => snap(&mut item.index),

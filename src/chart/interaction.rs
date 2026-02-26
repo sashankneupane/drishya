@@ -10,14 +10,6 @@ use crate::plots::model::PaneId;
 use super::Chart;
 
 impl Chart {
-    pub(crate) fn snap_world_x_to_candle_index(&self, world_x: f32) -> Option<f32> {
-        if self.candles.is_empty() {
-            return None;
-        }
-        let max = self.candles.len().saturating_sub(1) as f32;
-        Some(world_x.round().clamp(0.0, max))
-    }
-
     fn snap_world_x_to_time_step(&self, world_x: f32) -> Option<f32> {
         if self.candles.is_empty() {
             return None;
@@ -33,7 +25,7 @@ impl Chart {
     ) -> Option<f32> {
         let vp = self.viewport?;
         let world_x = vp.pixel_x_to_world_x(x_pixels, pane_x, pane_w.max(1.0));
-        self.snap_world_x_to_candle_index(world_x)
+        self.snap_world_x_to_time_step(world_x)
     }
 
     pub fn pan_pixels(&mut self, dx_pixels: f32) {
