@@ -93,25 +93,32 @@ export interface ObjectTreeState {
 export type CursorMode = "crosshair" | "dot" | "normal";
 
 export interface WasmChartLike {
+  // Group A: Data + Viewport
   resize(width: number, height: number): void;
   draw(): void;
   set_ohlcv_json(json: string): void;
   append_ohlcv_json?(json: string): void;
+  append_ohlcv_batch_json?(json: string): void;
+
+  // Group B: Navigation
   pan_pixels(dx: number): void;
   pan_pixels_2d?(dx: number, dy: number, anchorY: number): void;
   zoom_at_x(x: number, zoomFactor: number): void;
   zoom_y_axis_at?(y: number, zoomFactor: number): void;
   reset_y_axis_zoom?(paneId: string): void;
+  set_crosshair_at?(x: number, y: number): void;
+  clear_crosshair?(): void;
+
+  // Group C: Appearance
   set_theme?(theme: string): void;
   set_appearance_config?(json: string): void;
   appearance_config?(): string;
   set_candle_style?(style: "solid" | "hollow" | "bars" | "volume" | string): void;
   candle_style?(): string;
-  set_crosshair_at?(x: number, y: number): void;
-  clear_crosshair?(): void;
   set_cursor_mode?(mode: string): void;
   cursor_mode?(): string;
-  clear_drawings?(): void;
+
+  // Group D: Drawings
   set_drawing_tool_mode?(mode: string): void;
   drawing_tool_mode?(): string;
   drawing_pointer_down?(x: number, y: number): boolean;
@@ -127,11 +134,28 @@ export interface WasmChartLike {
   set_drawing_config?(drawingId: number | bigint, json: string): void;
   selected_drawing_config?(): string;
   selected_text_caret_bounds?(): string;
+
+  set_drawing_visible?(drawingId: number | bigint, visible: boolean): boolean;
+  remove_drawing?(drawingId: number | bigint): boolean;
+  clear_drawings?(): void;
+  hit_test_drawings_json?(x: number, y: number, mode: string): string;
+  hit_test_drawings_with_tolerance_json?(
+    x: number,
+    y: number,
+    mode: string,
+    hoverTolerancePx: number,
+    selectTolerancePx: number,
+    dragTolerancePx: number
+  ): string;
+
+  // Group H: Built-in indicators (transitional)
   add_sma_overlay?(period: number): void;
   add_bbands_overlay?(period: number, stdMult: number): void;
   add_rsi_pane_indicator?(period: number): void;
   add_momentum_histogram_overlay?(): void;
   clear_indicator_overlays?(): void;
+
+  // Group F: Panes + Series
   set_pane_weight?(paneId: string, ratio: number): void;
   set_pane_weights_json?(json: string): void;
   reset_pane_weights?(): void;
@@ -149,7 +173,6 @@ export interface WasmChartLike {
   restore_pane_state_json?(json: string): void;
   reset_pane_layout_state?(): void;
   pane_layouts_json?(): string;
-  object_tree_state_json?(): string;
   set_series_visible?(seriesId: string, visible: boolean): void;
   delete_series?(seriesId: string): void;
   restore_series?(seriesId: string): void;
@@ -157,8 +180,8 @@ export interface WasmChartLike {
   selected_series_id?(): string | undefined;
   clear_selected_series?(): void;
   delete_selected_series?(): boolean;
-  set_drawing_visible?(drawingId: number | bigint, visible: boolean): boolean;
-  remove_drawing?(drawingId: number | bigint): boolean;
+
+  // Group E: Layers + Groups
   create_drawing_layer?(id: string, name: string): void;
   delete_drawing_layer?(id: string): void;
   update_drawing_layer?(id: string, json: string): void;
@@ -174,4 +197,7 @@ export interface WasmChartLike {
   move_drawings_to_group?(idsJson: string, groupId: string | null): void;
   move_drawings_to_layer?(idsJson: string, layerId: string): void;
   delete_drawings?(idsJson: string): void;
+
+  // Group G: Tree Query
+  object_tree_state_json?(): string;
 }
