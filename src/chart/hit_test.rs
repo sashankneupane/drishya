@@ -364,6 +364,96 @@ impl Chart {
                         paint_order: paint_order as u32,
                     }));
                 }
+                Drawing::Triangle(t) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+                    // Compute bounding box of the 3 vertices for a fast hit test
+                    let x1 = vp.world_x_to_pixel_x(t.p1_index, price_pane.x, price_pane.w.max(1.0));
+                    let x2 = vp.world_x_to_pixel_x(t.p2_index, price_pane.x, price_pane.w.max(1.0));
+                    let x3 = vp.world_x_to_pixel_x(t.p3_index, price_pane.x, price_pane.w.max(1.0));
+                    let y1 = ps.y_for_price(t.p1_price);
+                    let y2 = ps.y_for_price(t.p2_price);
+                    let y3 = ps.y_for_price(t.p3_price);
+                    let left_x = x1.min(x2).min(x3);
+                    let right_x = x1.max(x2).max(x3);
+                    let top_y = y1.min(y2).min(y3);
+                    let bottom_y = y1.max(y2).max(y3);
+
+                    primitives.push(HitPrimitive::Rect(RectPrimitive {
+                        primitive_id: t.id,
+                        pane_id: PaneId::Price,
+                        rect: crate::types::Rect {
+                            x: left_x,
+                            y: top_y,
+                            w: (right_x - left_x).abs().max(1.0),
+                            h: (bottom_y - top_y).abs().max(1.0),
+                        },
+                        paint_order: paint_order as u32,
+                    }));
+                }
+                Drawing::Circle(c) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+                    let cx =
+                        vp.world_x_to_pixel_x(c.center_index, price_pane.x, price_pane.w.max(1.0));
+                    let rx =
+                        vp.world_x_to_pixel_x(c.radius_index, price_pane.x, price_pane.w.max(1.0));
+                    let cy = ps.y_for_price(c.center_price);
+                    let ry = ps.y_for_price(c.radius_price);
+                    let r_px = (rx - cx).abs().max((ry - cy).abs()).max(1.0);
+
+                    // Use a Marker primitive so hit is on the circle boundary
+                    primitives.push(HitPrimitive::Marker(
+                        crate::drawings::hit_test::MarkerPrimitive {
+                            primitive_id: c.id,
+                            pane_id: PaneId::Price,
+                            center: crate::types::Point { x: cx, y: cy },
+                            radius_px: r_px,
+                            paint_order: paint_order as u32,
+                        },
+                    ));
+                }
+                Drawing::Ellipse(e) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+                    let x1 = vp.world_x_to_pixel_x(e.p1_index, price_pane.x, price_pane.w.max(1.0));
+                    let x2 = vp.world_x_to_pixel_x(e.p2_index, price_pane.x, price_pane.w.max(1.0));
+                    let x3 = vp.world_x_to_pixel_x(e.p3_index, price_pane.x, price_pane.w.max(1.0));
+                    let y1 = ps.y_for_price(e.p1_price);
+                    let y2 = ps.y_for_price(e.p2_price);
+                    let y3 = ps.y_for_price(e.p3_price);
+                    let cx = (x1 + x2) * 0.5;
+                    let cy = (y1 + y2) * 0.5;
+                    let rx = ((x2 - x1).hypot(y2 - y1) * 0.5).max(1.0);
+                    let ry = ((x3 - cx).hypot(y3 - cy)).max(1.0);
+
+                    primitives.push(HitPrimitive::Rect(RectPrimitive {
+                        primitive_id: e.id,
+                        pane_id: PaneId::Price,
+                        rect: crate::types::Rect {
+                            x: cx - rx,
+                            y: cy - ry,
+                            w: rx * 2.0,
+                            h: ry * 2.0,
+                        },
+                        paint_order: paint_order as u32,
+                    }));
+                }
             }
         }
 

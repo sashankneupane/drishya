@@ -84,6 +84,38 @@ pub fn paint_canvas2d(
                 }
             }
 
+            DrawCommand::Ellipse {
+                cx,
+                cy,
+                rx,
+                ry,
+                rotation,
+                fill,
+                stroke,
+            } => {
+                ctx.begin_path();
+                let _ = ctx.ellipse(
+                    *cx as f64,
+                    *cy as f64,
+                    *rx as f64,
+                    *ry as f64,
+                    *rotation as f64,
+                    0.0,
+                    2.0 * std::f64::consts::PI,
+                );
+
+                if let Some(fill_style) = fill {
+                    ctx.set_fill_style_str(&resolve_color(theme, &fill_style.color));
+                    ctx.fill();
+                }
+
+                if let Some(stroke_style) = stroke {
+                    ctx.set_stroke_style_str(&resolve_color(theme, &stroke_style.color));
+                    ctx.set_line_width(stroke_style.width as f64);
+                    ctx.stroke();
+                }
+            }
+
             DrawCommand::Text { pos, text, style } => {
                 // Keep font policy here so command producers stay backend-agnostic.
                 ctx.set_fill_style_str(&resolve_color(theme, &style.color));

@@ -524,6 +524,92 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PopClip);
                 }
             }
+            Drawing::Circle(c) => {
+                let selected = selected_drawing_id == Some(c.id);
+                if let Some(vp) = viewport {
+                    let cx = vp.world_x_to_pixel_x(c.center_index, price_pane.x, price_pane.w);
+                    let rpx = vp.world_x_to_pixel_x(c.radius_index, price_pane.x, price_pane.w);
+                    let cy = ps.y_for_price(c.center_price);
+                    let rpy = ps.y_for_price(c.radius_price);
+                    let r_px = ((rpx - cx).powi(2) + (rpy - cy).powi(2)).sqrt().max(1.0);
+
+                    out.push(DrawCommand::PushClip { rect: price_pane });
+                    out.push(DrawCommand::Ellipse {
+                        cx,
+                        cy,
+                        rx: r_px,
+                        ry: r_px,
+                        rotation: 0.0,
+                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
+                        stroke: Some(StrokeStyle::token(
+                            ColorToken::DrawingPrimary,
+                            if selected { 2.0 } else { 1.0 },
+                        )),
+                    });
+                    out.push(DrawCommand::PopClip);
+                }
+            }
+            Drawing::Triangle(t) => {
+                let selected = selected_drawing_id == Some(t.id);
+                if let Some(vp) = viewport {
+                    let x1 = vp.world_x_to_pixel_x(t.p1_index, price_pane.x, price_pane.w);
+                    let x2 = vp.world_x_to_pixel_x(t.p2_index, price_pane.x, price_pane.w);
+                    let x3 = vp.world_x_to_pixel_x(t.p3_index, price_pane.x, price_pane.w);
+                    let y1 = ps.y_for_price(t.p1_price);
+                    let y2 = ps.y_for_price(t.p2_price);
+                    let y3 = ps.y_for_price(t.p3_price);
+
+                    out.push(DrawCommand::PushClip { rect: price_pane });
+                    out.push(DrawCommand::Polygon {
+                        points: vec![
+                            Point { x: x1, y: y1 },
+                            Point { x: x2, y: y2 },
+                            Point { x: x3, y: y3 },
+                        ],
+                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
+                        stroke: Some(StrokeStyle::token(
+                            ColorToken::DrawingPrimary,
+                            if selected { 2.0 } else { 1.0 },
+                        )),
+                    });
+                    out.push(DrawCommand::PopClip);
+                }
+            }
+            Drawing::Ellipse(e) => {
+                let selected = selected_drawing_id == Some(e.id);
+                if let Some(vp) = viewport {
+                    // Compute center from midpoint of p1/p2 (diameter 1)
+                    let x1 = vp.world_x_to_pixel_x(e.p1_index, price_pane.x, price_pane.w);
+                    let x2 = vp.world_x_to_pixel_x(e.p2_index, price_pane.x, price_pane.w);
+                    let x3 = vp.world_x_to_pixel_x(e.p3_index, price_pane.x, price_pane.w);
+                    let y1 = ps.y_for_price(e.p1_price);
+                    let y2 = ps.y_for_price(e.p2_price);
+                    let y3 = ps.y_for_price(e.p3_price);
+                    let cx = (x1 + x2) * 0.5;
+                    let cy = (y1 + y2) * 0.5;
+                    // Semi-axis a = half of diameter 1 (major axis)
+                    let rx = ((x2 - x1).hypot(y2 - y1) * 0.5).max(1.0);
+                    // Semi-axis b = perpendicular distance of p3 from center
+                    let ry = ((x3 - cx).hypot(y3 - cy)).max(1.0);
+                    // Angle of the major axis relative to +x screen axis
+                    let rotation = (y2 - y1).atan2(x2 - x1);
+
+                    out.push(DrawCommand::PushClip { rect: price_pane });
+                    out.push(DrawCommand::Ellipse {
+                        cx,
+                        cy,
+                        rx,
+                        ry,
+                        rotation,
+                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
+                        stroke: Some(StrokeStyle::token(
+                            ColorToken::DrawingPrimary,
+                            if selected { 2.0 } else { 1.0 },
+                        )),
+                    });
+                    out.push(DrawCommand::PopClip);
+                }
+            }
         }
     }
 
@@ -613,6 +699,34 @@ pub fn build_preview_drawing_commands(
                 item.end_index,
                 item.start_price,
                 item.end_price,
+            );
+        }
+        Drawing::Circle(item) => {
+            temp.add_circle(
+                item.center_index,
+                item.radius_index,
+                item.center_price,
+                item.radius_price,
+            );
+        }
+        Drawing::Triangle(item) => {
+            temp.add_triangle(
+                item.p1_index,
+                item.p2_index,
+                item.p3_index,
+                item.p1_price,
+                item.p2_price,
+                item.p3_price,
+            );
+        }
+        Drawing::Ellipse(item) => {
+            temp.add_ellipse(
+                item.p1_index,
+                item.p2_index,
+                item.p3_index,
+                item.p1_price,
+                item.p2_price,
+                item.p3_price,
             );
         }
     }
