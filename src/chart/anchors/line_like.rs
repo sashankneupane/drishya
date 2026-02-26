@@ -1,1 +1,1 @@
-// Anchor handler placeholder for incremental extraction.
+// Anchor handler module split target.

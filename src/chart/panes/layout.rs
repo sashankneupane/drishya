@@ -1,1 +1,1 @@
-// Pane submodule placeholder for incremental extraction.
+// Pane submodule module split target.

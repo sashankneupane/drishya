@@ -1,1 +1,1 @@
-// Drawing simulation placeholder for incremental extraction.
+// Drawing simulation module split target.

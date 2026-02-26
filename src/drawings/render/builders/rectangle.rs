@@ -1,1 +1,1 @@
-// Drawing render builder placeholder for incremental extraction.
+// Drawing render builder module split target.

@@ -1,1 +1,1 @@
-// Scene submodule placeholder for incremental extraction.
+// Scene submodule module split target.

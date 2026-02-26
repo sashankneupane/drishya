@@ -1,1 +1,1 @@
-// Drawing render submodule placeholder for incremental extraction.
+// Drawing render submodule module split target.

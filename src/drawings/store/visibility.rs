@@ -1,1 +1,1 @@
-// Drawing store submodule placeholder for incremental extraction.
+// Drawing store submodule module split target.

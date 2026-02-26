@@ -1,1 +1,1 @@
-// Chart hit-test submodule placeholder for incremental extraction.
+// Chart hit-test submodule module split target.

@@ -1,1 +1,1 @@
-// Plot provider submodule placeholder for incremental extraction.
+// Plot provider submodule module split target.

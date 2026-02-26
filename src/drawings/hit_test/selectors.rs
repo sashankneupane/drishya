@@ -1,1 +1,1 @@
-// Drawing hit-test selectors/policy placeholder for incremental extraction.
+// Drawing hit-test selectors/policy module split target.
