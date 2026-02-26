@@ -76,6 +76,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&PaneId::Price),
             self.pane_y_pan_factor(&PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,

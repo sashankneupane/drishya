@@ -20,6 +20,53 @@ pub enum PercentBaselinePolicy {
     // Custom(f64) could be added later
 }
 
+pub fn apply_axis_zoom_pan(
+    min: f64,
+    max: f64,
+    zoom_factor: f32,
+    pan_factor: f32,
+    mode: PriceAxisMode,
+    baseline: Option<f64>,
+) -> (f64, f64) {
+    let zoom = zoom_factor.max(1e-6) as f64;
+    let pan = pan_factor as f64;
+
+    let linear_zoom_pan = |a: f64, b: f64| {
+        let center = (a + b) * 0.5;
+        let half = ((b - a) * 0.5).max(1e-9);
+        let zoomed_half = half / zoom;
+        let pan_delta = zoomed_half * pan;
+        (
+            center - zoomed_half - pan_delta,
+            center + zoomed_half - pan_delta,
+        )
+    };
+
+    match mode {
+        PriceAxisMode::Linear => linear_zoom_pan(min, max),
+        PriceAxisMode::Log => {
+            let epsilon = 1e-9;
+            let log_min = min.max(epsilon).ln();
+            let log_max = max.max(epsilon + 1e-9).ln();
+            let (zmin, zmax) = linear_zoom_pan(log_min, log_max);
+            (zmin.exp(), zmax.exp())
+        }
+        PriceAxisMode::Percent => {
+            let base = baseline.unwrap_or(1.0).max(1e-9);
+            let p_min = (min - base) / base * 100.0;
+            let p_max = (max - base) / base * 100.0;
+            let (zmin, zmax) = linear_zoom_pan(p_min, p_max);
+            let out_min = base + (zmin / 100.0) * base;
+            let out_max = base + (zmax / 100.0) * base;
+            if out_min.is_finite() && out_max.is_finite() {
+                (out_min, out_max)
+            } else {
+                linear_zoom_pan(min, max)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TimeScale {
     pub pane: Rect,

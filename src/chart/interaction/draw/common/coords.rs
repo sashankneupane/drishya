@@ -48,6 +48,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&PaneId::Price),
             self.pane_y_pan_factor(&PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
@@ -62,14 +64,14 @@ impl Chart {
     }
 }
 
-fn apply_price_pane_y_zoom(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
+fn apply_price_pane_y_zoom(
+    min: f64,
+    max: f64,
+    zoom_factor: f32,
+    pan_factor: f32,
+    mode: crate::scale::PriceAxisMode,
+    baseline: Option<f64>,
+) -> (f64, f64) {
     // Keep inverse coordinate mapping identical to the renderer's Y zoom logic.
-    let center = (min + max) * 0.5;
-    let half = ((max - min) * 0.5).max(1e-9);
-    let zoomed_half = half / zoom_factor.max(1e-6) as f64;
-    let pan_delta = zoomed_half * pan_factor as f64;
-    (
-        center - zoomed_half - pan_delta,
-        center + zoomed_half - pan_delta,
-    )
+    crate::scale::apply_axis_zoom_pan(min, max, zoom_factor, pan_factor, mode, baseline)
 }

@@ -200,6 +200,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
@@ -251,6 +253,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
@@ -340,6 +344,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
@@ -418,6 +424,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,

@@ -47,13 +47,38 @@ pub fn align_compare_series(
 
 pub fn normalize_aligned_series(series: &mut [AlignedCompareSeries], basis_idx: usize) {
     for s in series {
-        if let Some(Some(basis_value)) = s.values.get(basis_idx) {
-            let basis = *basis_value;
-            if basis.abs() > 1e-9 {
-                for v in s.values.iter_mut().flatten() {
-                    *v = (*v / basis - 1.0) * 100.0;
-                }
+        let basis = s
+            .values
+            .iter()
+            .enumerate()
+            .skip(basis_idx)
+            .find_map(|(_, v)| *v)
+            .or_else(|| {
+                s.values
+                    .iter()
+                    .enumerate()
+                    .take(basis_idx)
+                    .rev()
+                    .find_map(|(_, v)| *v)
+            });
+        if let Some(basis) = basis.filter(|b| b.abs() > 1e-9) {
+            for v in s.values.iter_mut().flatten() {
+                *v = (*v / basis - 1.0) * 100.0;
             }
+        }
+    }
+}
+
+pub fn rebase_normalized_series_to_primary_price(
+    series: &mut [AlignedCompareSeries],
+    primary_basis_price: f64,
+) {
+    if !primary_basis_price.is_finite() || primary_basis_price.abs() <= 1e-9 {
+        return;
+    }
+    for s in series {
+        for v in s.values.iter_mut().flatten() {
+            *v = primary_basis_price * (1.0 + (*v / 100.0));
         }
     }
 }
@@ -127,5 +152,18 @@ mod tests {
         // (115.5 / 105 - 1) * 100 = (1.1 - 1) * 100 = 10%
         assert!((aligned[0].values[0].unwrap() - 0.0).abs() < 1e-5);
         assert!((aligned[0].values[2].unwrap() - 10.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn rebase_places_compare_on_primary_price_scale() {
+        let mut aligned = vec![AlignedCompareSeries {
+            id: "s1".to_string(),
+            values: vec![Some(0.0), Some(10.0), Some(-5.0)],
+        }];
+        rebase_normalized_series_to_primary_price(&mut aligned, 60_000.0);
+        let v = &aligned[0].values;
+        assert!((v[0].unwrap() - 60_000.0).abs() < 1e-6);
+        assert!((v[1].unwrap() - 66_000.0).abs() < 1e-6);
+        assert!((v[2].unwrap() - 57_000.0).abs() < 1e-6);
     }
 }

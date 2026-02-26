@@ -35,7 +35,9 @@ use self::helpers::{
     compute_pane_value_bounds, nearest_candle_index, series_value_at_index, timestamp_for_world_x,
     world_x_at_pixel,
 };
-use super::compare_alignment::{align_compare_series, normalize_aligned_series};
+use super::compare_alignment::{
+    align_compare_series, normalize_aligned_series, rebase_normalized_series_to_primary_price,
+};
 use super::Chart;
 
 impl Chart {
@@ -113,6 +115,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&PaneId::Price),
             self.pane_y_pan_factor(&PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
 
         let ts_price = match self.viewport {
@@ -149,6 +153,8 @@ impl Chart {
                     max_v,
                     self.pane_y_zoom_factor(&pane.id),
                     self.pane_y_pan_factor(&pane.id),
+                    crate::scale::PriceAxisMode::Linear,
+                    None,
                 );
                 pane_scales.push((
                     pane.id.clone(),
@@ -379,7 +385,12 @@ impl Chart {
         }
 
         if let Some(idx) = readout_index {
-            out.extend(build_compare_readout_commands(&plot_series, &layout, idx));
+            out.extend(build_compare_readout_commands(
+                &plot_series,
+                &layout,
+                idx,
+                self.candles.get(visible_start).map(|c| c.close),
+            ));
             out.extend(build_non_price_pane_readout_commands(
                 &plot_series,
                 &layout,
@@ -418,6 +429,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&PaneId::Price),
             self.pane_y_pan_factor(&PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = crate::scale::PriceScale {
             pane: price_pane,
@@ -454,6 +467,9 @@ impl Chart {
         // Multi-symbol compare always implies percentage normalization relative
         // to the first visible bar in multi-symbol overlay charts.
         normalize_aligned_series(&mut aligned, visible_start);
+        if let Some(primary_basis) = self.candles.get(visible_start).map(|c| c.close) {
+            rebase_normalized_series_to_primary_price(&mut aligned, primary_basis);
+        }
 
         aligned
             .into_iter()
@@ -480,6 +496,7 @@ fn build_compare_readout_commands(
     series: &[PlotSeries],
     layout: &ChartLayout,
     index: usize,
+    primary_basis: Option<f64>,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let registry_prefix = "compare-";
@@ -493,7 +510,12 @@ fn build_compare_readout_commands(
         }
 
         if let Some(value) = series_value_at_index(s, index) {
-            lines.push(format!("{}: {:.2}%", s.name, value));
+            if let Some(basis) = primary_basis.filter(|b| b.abs() > 1e-9) {
+                let pct = ((value / basis) - 1.0) * 100.0;
+                lines.push(format!("{}: {:.2}%", s.name, pct));
+            } else {
+                lines.push(format!("{}: {:.2}", s.name, value));
+            }
             // Extract color from first primitive
             if let Some(PlotPrimitive::Line { style, .. }) = s.primitives.first() {
                 colors.push(style.color.clone());
@@ -732,13 +754,13 @@ fn build_dotted_line(from: Point, to: Point, width: f32, color: ColorToken) -> V
     out
 }
 
-fn apply_y_zoom(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
-    let center = (min + max) * 0.5;
-    let half = ((max - min) * 0.5).max(1e-9);
-    let zoomed_half = half / zoom_factor.max(1e-6) as f64;
-    let pan_delta = zoomed_half * pan_factor as f64;
-    (
-        center - zoomed_half - pan_delta,
-        center + zoomed_half - pan_delta,
-    )
+fn apply_y_zoom(
+    min: f64,
+    max: f64,
+    zoom_factor: f32,
+    pan_factor: f32,
+    mode: crate::scale::PriceAxisMode,
+    baseline: Option<f64>,
+) -> (f64, f64) {
+    crate::scale::apply_axis_zoom_pan(min, max, zoom_factor, pan_factor, mode, baseline)
 }
