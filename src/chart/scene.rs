@@ -15,7 +15,7 @@ use crate::{
         axes::build_axis_commands,
         candles::build_candle_commands,
         primitives::DrawCommand,
-        styles::{ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
+        styles::{ColorRef, ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
         ticks::{HumanTimeFormatter, TimeLabelFormatter},
         volume::build_volume_commands,
     },
@@ -131,9 +131,10 @@ impl Chart {
             }
         }
 
+        let cfg = self.appearance_config();
         out.push(DrawCommand::Rect {
             rect: layout.full,
-            fill: Some(FillStyle::token(ColorToken::CanvasBg)),
+            fill: Some(FillStyle::css(cfg.background.clone())),
             stroke: None,
         });
 
@@ -153,12 +154,16 @@ impl Chart {
             price_pane,
             max_vol,
         ));
+        let bull = ColorRef::Css(cfg.candle_up.clone());
+        let bear = ColorRef::Css(cfg.candle_down.clone());
         out.extend(build_candle_commands(
             visible,
             visible_start,
             ts_price,
             ps,
             self.candle_body_style(),
+            bull,
+            bear,
         ));
         out.push(DrawCommand::PopClip);
 
