@@ -266,4 +266,9 @@ export interface WasmChartLike {
 
   // Group G: Tree Query
   object_tree_state_json?(): string;
+
+  // Group I: Persistence
+  chart_state_snapshot_json?(): string;
+  restore_chart_state_json?(json: string): void;
+  restore_chart_state_partial_json?(json: string, optionsJson: string): void;
 }

@@ -5,5 +5,6 @@ pub mod drawings_layers;
 pub mod indicators;
 pub mod navigation;
 pub mod panes;
+pub mod persistence;
 pub mod selection;
 pub mod series;

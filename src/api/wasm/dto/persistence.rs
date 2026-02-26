@@ -136,3 +136,29 @@ pub struct SelectionSnapshotDto {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_mode: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RestoreChartStateOptionsDto {
+    #[serde(default)]
+    pub appearance: bool,
+    #[serde(default)]
+    pub panes: bool,
+    #[serde(default)]
+    pub viewport: bool,
+    #[serde(default)]
+    pub drawings: bool,
+    #[serde(default)]
+    pub selection: bool,
+}
+
+impl RestoreChartStateOptionsDto {
+    pub fn all_enabled() -> Self {
+        Self {
+            appearance: true,
+            panes: true,
+            viewport: true,
+            drawings: true,
+            selection: true,
+        }
+    }
+}

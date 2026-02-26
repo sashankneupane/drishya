@@ -2,10 +2,15 @@ use std::collections::BTreeMap;
 
 use crate::{
     api::wasm::dto::persistence::{
-        AppearanceSnapshotDto, PaneSnapshotDto, PanesSnapshotDto, ViewportSnapshotDto,
+        AppearanceSnapshotDto, DrawingSnapshotDto, PaneSnapshotDto, PanesSnapshotDto,
+        SelectionSnapshotDto, ViewportSnapshotDto,
     },
-    chart::{appearance::ChartAppearanceConfig, plots::PaneLayoutState, Chart},
+    chart::{
+        appearance::ChartAppearanceConfig, plots::PaneLayoutState, tools::DrawingToolMode, Chart,
+    },
+    drawings::persistence::{export_drawing_snapshots, import_drawing_snapshots},
     render::styles::ThemeId,
+    types::CursorMode,
 };
 
 impl Chart {
@@ -156,5 +161,85 @@ impl Chart {
         config.validate()?;
         self.set_appearance_config(config);
         Ok(())
+    }
+
+    pub fn export_drawing_snapshots(&self) -> Vec<DrawingSnapshotDto> {
+        export_drawing_snapshots(self.drawings())
+    }
+
+    pub fn restore_drawing_snapshots(
+        &mut self,
+        snapshots: &[DrawingSnapshotDto],
+    ) -> Result<(), String> {
+        import_drawing_snapshots(&mut self.drawings, snapshots)
+    }
+
+    pub fn export_selection_snapshot(&self) -> SelectionSnapshotDto {
+        SelectionSnapshotDto {
+            selected_drawing_id: self.selected_drawing_id(),
+            tool_mode: Some(
+                match self.drawing_tool_mode() {
+                    DrawingToolMode::Select => "select",
+                    DrawingToolMode::HorizontalLine => "hline",
+                    DrawingToolMode::VerticalLine => "vline",
+                    DrawingToolMode::Ray => "ray",
+                    DrawingToolMode::Rectangle => "rectangle",
+                    DrawingToolMode::PriceRange => "price_range",
+                    DrawingToolMode::TimeRange => "time_range",
+                    DrawingToolMode::DateTimeRange => "date_time_range",
+                    DrawingToolMode::FibRetracement => "fib",
+                    DrawingToolMode::LongPosition => "long",
+                    DrawingToolMode::ShortPosition => "short",
+                    DrawingToolMode::Triangle => "triangle",
+                    DrawingToolMode::Circle => "circle",
+                    DrawingToolMode::Ellipse => "ellipse",
+                    DrawingToolMode::Text => "text",
+                    DrawingToolMode::Brush => "brush",
+                    DrawingToolMode::Highlighter => "highlighter",
+                }
+                .to_string(),
+            ),
+            cursor_mode: Some(
+                match self.cursor_mode() {
+                    CursorMode::Crosshair => "crosshair",
+                    CursorMode::Dot => "dot",
+                    CursorMode::Normal => "normal",
+                }
+                .to_string(),
+            ),
+        }
+    }
+
+    pub fn restore_selection_snapshot(&mut self, snapshot: &SelectionSnapshotDto) {
+        if let Some(tool_mode) = snapshot.tool_mode.as_deref() {
+            let mode = match tool_mode.trim().to_ascii_lowercase().as_str() {
+                "hline" => DrawingToolMode::HorizontalLine,
+                "vline" => DrawingToolMode::VerticalLine,
+                "ray" => DrawingToolMode::Ray,
+                "rectangle" => DrawingToolMode::Rectangle,
+                "price_range" => DrawingToolMode::PriceRange,
+                "time_range" => DrawingToolMode::TimeRange,
+                "date_time_range" => DrawingToolMode::DateTimeRange,
+                "fib" => DrawingToolMode::FibRetracement,
+                "long" => DrawingToolMode::LongPosition,
+                "short" => DrawingToolMode::ShortPosition,
+                "triangle" => DrawingToolMode::Triangle,
+                "circle" => DrawingToolMode::Circle,
+                "ellipse" => DrawingToolMode::Ellipse,
+                "text" => DrawingToolMode::Text,
+                "brush" => DrawingToolMode::Brush,
+                "highlighter" => DrawingToolMode::Highlighter,
+                _ => DrawingToolMode::Select,
+            };
+            self.set_drawing_tool_mode(mode);
+        }
+        if let Some(cursor_mode) = snapshot.cursor_mode.as_deref() {
+            let mode = match cursor_mode.trim().to_ascii_lowercase().as_str() {
+                "dot" => CursorMode::Dot,
+                "normal" => CursorMode::Normal,
+                _ => CursorMode::Crosshair,
+            };
+            self.set_cursor_mode(mode);
+        }
     }
 }
