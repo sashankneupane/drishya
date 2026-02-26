@@ -1,6 +1,20 @@
 use super::Chart;
 
 impl Chart {
+    pub(crate) fn replay_visible_end(&self, total: usize) -> usize {
+        if total == 0 {
+            return 0;
+        }
+        let Some(cursor_ts) = self.replay.cursor_ts else {
+            return total;
+        };
+        let mut end = 0usize;
+        while end < total && self.candles[end].ts <= cursor_ts {
+            end += 1;
+        }
+        end
+    }
+
     pub fn replay_play(&mut self) {
         if self.replay.cursor_ts.is_none() {
             self.replay.cursor_ts = self.candles.first().map(|c| c.ts);
