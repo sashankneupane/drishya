@@ -36,7 +36,11 @@ pub fn build_volume_commands(
         let h = (band_bottom - y).max(1.0);
 
         let bull = c.close >= c.open;
-        let color = if bull { bull_color.clone() } else { bear_color.clone() };
+        let color = if bull {
+            bull_color.clone()
+        } else {
+            bear_color.clone()
+        };
 
         out.push(DrawCommand::Rect {
             rect: Rect {

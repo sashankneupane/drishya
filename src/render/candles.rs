@@ -38,7 +38,11 @@ pub fn build_candle_commands(
         let x = ts.x_for_global_index(global_idx);
 
         let bull = c.close >= c.open;
-        let color = if bull { bull_color.clone() } else { bear_color.clone() };
+        let color = if bull {
+            bull_color.clone()
+        } else {
+            bear_color.clone()
+        };
 
         let y_high = ps.y_for_price(c.high);
         let y_low = ps.y_for_price(c.low);
