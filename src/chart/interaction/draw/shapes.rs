@@ -1,6 +1,8 @@
+mod brush;
 mod circle;
 mod ellipse;
 mod fib;
+mod highlighter;
 mod line;
 mod position;
 mod preview;

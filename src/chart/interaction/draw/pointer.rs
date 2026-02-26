@@ -164,6 +164,15 @@ impl Chart {
                 self.drawing_interaction.last_pointer = Some(point);
                 true
             }
+            crate::chart::tools::DrawingToolMode::Brush
+            | crate::chart::tools::DrawingToolMode::Highlighter => {
+                self.drawing_interaction.pointer_down = true;
+                self.drawing_interaction.dragged = false;
+                self.drawing_interaction.pending_points.clear();
+                self.drawing_interaction.pending_points.push(point);
+                self.drawing_interaction.last_pointer = Some(point);
+                true
+            }
         }
     }
 
@@ -190,10 +199,8 @@ impl Chart {
                     let dy = point.y - last.y;
                     if dx != 0.0 || dy != 0.0 {
                         if let Some(anchor_idx) = self.drawing_interaction.dragging_anchor_index {
-                            // Move only the dragged anchor to the current pointer position
                             self.move_anchor_to_pixel(drawing_id, anchor_idx, point.x, point.y);
                         } else {
-                            // Move the whole shape
                             self.move_drawing_by_pixels(drawing_id, dx, dy);
                         }
                         self.drawing_interaction.last_pointer = Some(point);
@@ -204,7 +211,23 @@ impl Chart {
             return true;
         }
 
-        if let Some(start) = self.drawing_interaction.pending_start {
+        if matches!(
+            self.drawing_tool_mode,
+            crate::chart::tools::DrawingToolMode::Brush
+                | crate::chart::tools::DrawingToolMode::Highlighter
+        ) {
+            if self.drawing_interaction.pointer_down {
+                if let Some(last) = self.drawing_interaction.pending_points.last() {
+                    let dist_sq = (point.x - last.x).powi(2) + (point.y - last.y).powi(2);
+                    if dist_sq >= 4.0 {
+                        self.drawing_interaction.pending_points.push(point);
+                        self.drawing_interaction.dragged = true;
+                    }
+                }
+                self.drawing_interaction.last_pointer = Some(point);
+                return true;
+            }
+        } else if let Some(start) = self.drawing_interaction.pending_start {
             if self.drawing_interaction.pointer_down {
                 let dist = ((point.x - start.x).powi(2) + (point.y - start.y).powi(2)).sqrt();
                 if dist >= DRAW_SHAPE_DRAG_THRESHOLD_PX {
@@ -278,6 +301,44 @@ impl Chart {
                 self.drawing_interaction.dragged = false;
                 self.drawing_interaction.last_pointer = Some(point);
             }
+            return true;
+        }
+
+        if matches!(
+            self.drawing_tool_mode,
+            crate::chart::tools::DrawingToolMode::Brush
+                | crate::chart::tools::DrawingToolMode::Highlighter
+        ) {
+            // Commit the freehand stroke
+            let pts: Vec<_> = self
+                .drawing_interaction
+                .pending_points
+                .iter()
+                .filter_map(|p| {
+                    let (idx, pr) = self.drawing_world_price_at(p.x, p.y)?;
+                    Some(crate::drawings::types::StrokePoint {
+                        index: idx,
+                        price: pr,
+                    })
+                })
+                .collect();
+
+            if pts.len() >= 2 {
+                match self.drawing_tool_mode {
+                    crate::chart::tools::DrawingToolMode::Brush => {
+                        self.add_brush_stroke_from_world_points(pts);
+                    }
+                    crate::chart::tools::DrawingToolMode::Highlighter => {
+                        self.add_highlight_stroke_from_world_points(pts);
+                    }
+                    _ => {}
+                }
+            }
+
+            self.drawing_interaction.pending_points.clear();
+            self.drawing_interaction.dragged = false;
+            self.drawing_interaction.last_pointer = Some(point);
+            self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
             return true;
         }
 

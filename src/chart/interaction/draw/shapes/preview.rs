@@ -123,6 +123,44 @@ impl Chart {
                     }
                 }
             }
+            crate::chart::tools::DrawingToolMode::Brush => {
+                let pts: Vec<_> = self
+                    .drawing_interaction
+                    .pending_points
+                    .iter()
+                    .filter_map(|p| {
+                        let (idx, pr) = self.drawing_world_price_at(p.x, p.y)?;
+                        Some(crate::drawings::types::StrokePoint {
+                            index: idx,
+                            price: pr,
+                        })
+                    })
+                    .collect();
+                if pts.len() >= 2 {
+                    Some(crate::drawings::shape::brush::preview(pts))
+                } else {
+                    None
+                }
+            }
+            crate::chart::tools::DrawingToolMode::Highlighter => {
+                let pts: Vec<_> = self
+                    .drawing_interaction
+                    .pending_points
+                    .iter()
+                    .filter_map(|p| {
+                        let (idx, pr) = self.drawing_world_price_at(p.x, p.y)?;
+                        Some(crate::drawings::types::StrokePoint {
+                            index: idx,
+                            price: pr,
+                        })
+                    })
+                    .collect();
+                if pts.len() >= 2 {
+                    Some(crate::drawings::shape::highlighter::preview(pts))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }

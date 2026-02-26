@@ -20,6 +20,8 @@ pub enum DrawingToolMode {
     Circle,
     Ellipse,
     Text,
+    Brush,
+    Highlighter,
 }
 
 #[derive(Debug, Clone, Default)]
