@@ -16,6 +16,7 @@ pub fn price_range_from_points(
         end_index,
         top_price: start_price.max(end_price),
         bottom_price: start_price.min(end_price),
+        is_up: end_price >= start_price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
         style: DrawingStyle::default(),
@@ -34,6 +35,7 @@ pub fn time_range_from_points(
         end_index: start_index.max(end_index),
         top_price: start_price.max(end_price),
         bottom_price: start_price.min(end_price),
+        is_up: end_price >= start_price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
         style: DrawingStyle::default(),
@@ -52,6 +54,7 @@ pub fn date_time_range_from_points(
         end_index,
         top_price: start_price.max(end_price),
         bottom_price: start_price.min(end_price),
+        is_up: end_price >= start_price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
         style: DrawingStyle::default(),
@@ -112,6 +115,7 @@ pub fn add_price_range_command_from_points(
         end_index: range.end_index,
         top_price: range.top_price,
         bottom_price: range.bottom_price,
+        is_up: range.is_up,
     }
 }
 
@@ -127,6 +131,7 @@ pub fn add_time_range_command_from_points(
         end_index: range.end_index,
         top_price: range.top_price,
         bottom_price: range.bottom_price,
+        is_up: range.is_up,
     }
 }
 
@@ -142,6 +147,7 @@ pub fn add_date_time_range_command_from_points(
         end_index: range.end_index,
         top_price: range.top_price,
         bottom_price: range.bottom_price,
+        is_up: range.is_up,
     }
 }
 

@@ -28,6 +28,10 @@ pub enum DrawCommand {
         fill: Option<FillStyle>,
         stroke: Option<StrokeStyle>,
     },
+    Polyline {
+        points: Vec<Point>,
+        stroke: StrokeStyle,
+    },
     Ellipse {
         /// Center of the ellipse in pixel space.
         cx: f32,

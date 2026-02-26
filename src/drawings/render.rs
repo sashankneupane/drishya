@@ -36,17 +36,14 @@ fn color_with_opacity(hex: &str, opacity: f32) -> String {
 }
 
 fn stroke_dash_from_drawing(d: &Drawing) -> Option<Vec<f64>> {
-    d.style()
-        .stroke_type
-        .and_then(|t| t.dash_array().map(|a| a.iter().map(|&f| f as f64).collect()))
+    d.style().stroke_type.and_then(|t| {
+        t.dash_array()
+            .map(|a| a.iter().map(|&f| f as f64).collect())
+    })
 }
 
 /// Resolve stroke style: drawing override or token fallback.
-fn stroke_for_drawing(
-    d: &Drawing,
-    fallback: ColorToken,
-    default_width: f32,
-) -> StrokeStyle {
+fn stroke_for_drawing(d: &Drawing, fallback: ColorToken, default_width: f32) -> StrokeStyle {
     let width = d.style().stroke_width.unwrap_or(default_width);
     let dash = stroke_dash_from_drawing(d);
     if let Some(ref c) = d.style().stroke_color {
@@ -265,26 +262,29 @@ pub fn build_drawing_commands(
             }
             Drawing::PriceRange(r) => {
                 let selected = selected_drawing_id == Some(r.id);
-                let fill = fill_for_drawing(d);
                 let stroke = stroke_for_drawing(
                     d,
                     ColorToken::DrawingSecondary,
                     if selected { 2.0 } else { 1.0 },
                 );
                 if let Some(vp) = viewport {
+                    let (candle_up, candle_down) = appearance_config
+                        .map(|c| (c.candle_up.as_str(), c.candle_down.as_str()))
+                        .unwrap_or(("#22c55e", "#ef4444"));
+                    let semantic_fill = Some(FillStyle {
+                        color: ColorRef::Css(color_with_opacity(
+                            if r.is_up { candle_up } else { candle_down },
+                            0.22,
+                        )),
+                    });
+                    let fill = fill_for_drawing(d).or(semantic_fill);
+                    let border = selected.then(|| stroke.clone());
+
                     let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w);
                     let top_y = ps.y_for_price(r.top_price);
                     let bottom_y = ps.y_for_price(r.bottom_price);
                     let rect = rect_from_edges(left_x, right_x, top_y, bottom_y);
-
-                    out.push(DrawCommand::PushClip { rect: price_pane });
-                    out.push(DrawCommand::Rect {
-                        rect,
-                        fill,
-                        stroke: Some(stroke),
-                    });
-                    out.push(DrawCommand::PopClip);
 
                     let price_span = (r.top_price - r.bottom_price).abs();
                     let percent = if r.bottom_price.abs() > 1e-9 {
@@ -292,13 +292,31 @@ pub fn build_drawing_commands(
                     } else {
                         0.0
                     };
+                    let bars = (r.end_index - r.start_index).abs().round() as usize;
+                    let duration =
+                        format_time_duration_from_indices(r.start_index, r.end_index, candles);
+
+                    out.push(DrawCommand::PushClip { rect: price_pane });
+                    out.push(DrawCommand::Rect {
+                        rect,
+                        fill,
+                        stroke: border,
+                    });
+                    out.push(DrawCommand::PopClip);
+
+                    let signed_span = if r.is_up { price_span } else { -price_span };
+                    let signed_pct = if r.is_up { percent } else { -percent };
+                    let label = format!(
+                        "PRICE | {:+.2} ({:+.2}%) | {bars} bars {duration}",
+                        signed_span, signed_pct
+                    );
                     out.push(DrawCommand::Text {
                         pos: Point {
                             x: rect.x + 4.0,
-                            y: (rect.y + 12.0)
-                                .clamp(price_pane.y + 12.0, price_pane.bottom() - 2.0),
+                            y: (rect.center().y - 6.0)
+                                .clamp(price_pane.y + 4.0, price_pane.bottom() - 14.0),
                         },
-                        text: format!("Range {:.2} ({:.2}%)", price_span, percent),
+                        text: label,
                         style: TextStyle::token(
                             ColorToken::DrawingSecondaryText,
                             10.0,
@@ -309,37 +327,50 @@ pub fn build_drawing_commands(
             }
             Drawing::TimeRange(r) => {
                 let selected = selected_drawing_id == Some(r.id);
-                let fill = fill_for_drawing(d);
                 let stroke = stroke_for_drawing(
                     d,
                     ColorToken::DrawingSecondary,
                     if selected { 2.0 } else { 1.0 },
                 );
                 if let Some(vp) = viewport {
+                    let (candle_up, candle_down) = appearance_config
+                        .map(|c| (c.candle_up.as_str(), c.candle_down.as_str()))
+                        .unwrap_or(("#22c55e", "#ef4444"));
+                    let semantic_fill = Some(FillStyle {
+                        color: ColorRef::Css(color_with_opacity(
+                            if r.is_up { candle_up } else { candle_down },
+                            0.22,
+                        )),
+                    });
+                    let fill = fill_for_drawing(d).or(semantic_fill);
+                    let border = selected.then(|| stroke.clone());
+
                     let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w);
                     let top_y = ps.y_for_price(r.top_price);
                     let bottom_y = ps.y_for_price(r.bottom_price);
                     let rect = rect_from_edges(left_x, right_x, top_y, bottom_y);
 
+                    let bars = (r.end_index - r.start_index).abs().round() as usize;
+                    let duration =
+                        format_time_duration_from_indices(r.start_index, r.end_index, candles);
+
                     out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Rect {
                         rect,
                         fill,
-                        stroke: Some(stroke),
+                        stroke: border,
                     });
                     out.push(DrawCommand::PopClip);
 
-                    let bars = (r.end_index - r.start_index).abs().round() as usize;
-                    let duration =
-                        format_time_duration_from_indices(r.start_index, r.end_index, candles);
+                    let label = format!("TIME | {bars} bars {duration}");
                     out.push(DrawCommand::Text {
                         pos: Point {
                             x: rect.x + 4.0,
-                            y: (rect.y + 12.0)
-                                .clamp(price_pane.y + 12.0, price_pane.bottom() - 2.0),
+                            y: (rect.center().y - 6.0)
+                                .clamp(price_pane.y + 4.0, price_pane.bottom() - 14.0),
                         },
-                        text: format!("{bars} bars {duration}"),
+                        text: label,
                         style: TextStyle::token(
                             ColorToken::DrawingSecondaryText,
                             10.0,
@@ -350,26 +381,29 @@ pub fn build_drawing_commands(
             }
             Drawing::DateTimeRange(r) => {
                 let selected = selected_drawing_id == Some(r.id);
-                let fill = fill_for_drawing(d);
                 let stroke = stroke_for_drawing(
                     d,
                     ColorToken::DrawingSecondary,
                     if selected { 2.0 } else { 1.0 },
                 );
                 if let Some(vp) = viewport {
+                    let (candle_up, candle_down) = appearance_config
+                        .map(|c| (c.candle_up.as_str(), c.candle_down.as_str()))
+                        .unwrap_or(("#22c55e", "#ef4444"));
+                    let semantic_fill = Some(FillStyle {
+                        color: ColorRef::Css(color_with_opacity(
+                            if r.is_up { candle_up } else { candle_down },
+                            0.22,
+                        )),
+                    });
+                    let fill = fill_for_drawing(d).or(semantic_fill);
+                    let border = selected.then(|| stroke.clone());
+
                     let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w);
                     let top_y = ps.y_for_price(r.top_price);
                     let bottom_y = ps.y_for_price(r.bottom_price);
                     let rect = rect_from_edges(left_x, right_x, top_y, bottom_y);
-
-                    out.push(DrawCommand::PushClip { rect: price_pane });
-                    out.push(DrawCommand::Rect {
-                        rect,
-                        fill,
-                        stroke: Some(stroke),
-                    });
-                    out.push(DrawCommand::PopClip);
 
                     let price_span = (r.top_price - r.bottom_price).abs();
                     let percent = if r.bottom_price.abs() > 1e-9 {
@@ -380,16 +414,28 @@ pub fn build_drawing_commands(
                     let bars = (r.end_index - r.start_index).abs().round() as usize;
                     let duration =
                         format_time_duration_from_indices(r.start_index, r.end_index, candles);
+
+                    out.push(DrawCommand::PushClip { rect: price_pane });
+                    out.push(DrawCommand::Rect {
+                        rect,
+                        fill,
+                        stroke: border,
+                    });
+                    out.push(DrawCommand::PopClip);
+
+                    let signed_span = if r.is_up { price_span } else { -price_span };
+                    let signed_pct = if r.is_up { percent } else { -percent };
+                    let label = format!(
+                        "DT | {bars} bars {duration} | {:+.2} ({:+.2}%)",
+                        signed_span, signed_pct
+                    );
                     out.push(DrawCommand::Text {
                         pos: Point {
                             x: rect.x + 4.0,
-                            y: (rect.y + 12.0)
-                                .clamp(price_pane.y + 12.0, price_pane.bottom() - 2.0),
+                            y: (rect.center().y - 6.0)
+                                .clamp(price_pane.y + 4.0, price_pane.bottom() - 14.0),
                         },
-                        text: format!(
-                            "{bars} bars {duration} | {:.2} ({:.2}%)",
-                            price_span, percent
-                        ),
+                        text: label,
                         style: TextStyle::token(
                             ColorToken::DrawingSecondaryText,
                             10.0,
@@ -439,18 +485,27 @@ pub fn build_drawing_commands(
                         0.0
                     };
 
-                    let end_idx = p.end_index.floor().max(0.0) as usize;
-                    let exited = end_idx < candles.len();
-                    let exit_price = exited.then(|| candles[end_idx].close);
-                    let time_held = format_time_duration_from_indices(p.start_index, p.end_index, candles);
+                    let lifecycle = simulate_long_position(
+                        candles,
+                        p.start_index,
+                        p.end_index,
+                        p.entry_price,
+                        p.stop_price,
+                        p.target_price,
+                    );
 
                     let reward_rect = rect_from_edges(left_x, right_x, target_y, entry_y);
                     let risk_rect = rect_from_edges(left_x, right_x, entry_y, stop_y);
                     out.push(DrawCommand::PushClip { rect: price_pane });
 
-                    if let Some(exit_p) = exit_price {
+                    if let Some(lc) = lifecycle {
+                        let exit_p = lc.exit_price;
                         let exit_y = ps.y_for_price(exit_p);
-                        let exited_rect = rect_from_edges(left_x, right_x, entry_y, exit_y);
+                        let entry_x =
+                            vp.world_x_to_pixel_x(lc.entry_idx as f32, price_pane.x, price_pane.w);
+                        let exit_x =
+                            vp.world_x_to_pixel_x(lc.exit_idx as f32, price_pane.x, price_pane.w);
+                        let exited_rect = rect_from_edges(entry_x, exit_x, entry_y, exit_y);
                         let darker = Some(FillStyle {
                             color: ColorRef::Css(color_with_opacity(
                                 if exit_p >= p.entry_price {
@@ -492,11 +547,18 @@ pub fn build_drawing_commands(
                     let rr_text = format!(
                         "LONG | RR {:.1}{}",
                         rr,
-                        if exited {
-                            format!(" | {}", time_held)
-                        } else {
-                            String::new()
-                        }
+                        lifecycle
+                            .map(|lc| {
+                                format!(
+                                    " | {}",
+                                    format_time_duration_from_indices(
+                                        lc.entry_idx as f32,
+                                        lc.exit_idx as f32,
+                                        candles
+                                    )
+                                )
+                            })
+                            .unwrap_or_else(|| " | pending".to_string())
                     );
                     out.push(DrawCommand::Text {
                         pos: Point {
@@ -517,11 +579,7 @@ pub fn build_drawing_commands(
                             y: reward_rect.center().y - 5.0,
                         },
                         text: reward_label,
-                        style: TextStyle::css(
-                            candle_up.to_string(),
-                            9.0,
-                            TextAlign::Left,
-                        ),
+                        style: TextStyle::css(candle_up.to_string(), 9.0, TextAlign::Left),
                     });
                     let risk_label = format!("-{:.2} ({:.2}%)", risk_amount, risk_pct);
                     out.push(DrawCommand::Text {
@@ -530,11 +588,7 @@ pub fn build_drawing_commands(
                             y: risk_rect.center().y - 5.0,
                         },
                         text: risk_label,
-                        style: TextStyle::css(
-                            candle_down.to_string(),
-                            9.0,
-                            TextAlign::Left,
-                        ),
+                        style: TextStyle::css(candle_down.to_string(), 9.0, TextAlign::Left),
                     });
                     out.push(DrawCommand::PopClip);
                 }
@@ -580,18 +634,27 @@ pub fn build_drawing_commands(
                         0.0
                     };
 
-                    let end_idx = p.end_index.floor().max(0.0) as usize;
-                    let exited = end_idx < candles.len();
-                    let exit_price = exited.then(|| candles[end_idx].close);
-                    let time_held = format_time_duration_from_indices(p.start_index, p.end_index, candles);
+                    let lifecycle = simulate_short_position(
+                        candles,
+                        p.start_index,
+                        p.end_index,
+                        p.entry_price,
+                        p.stop_price,
+                        p.target_price,
+                    );
 
                     let reward_rect = rect_from_edges(left_x, right_x, entry_y, target_y);
                     let risk_rect = rect_from_edges(left_x, right_x, stop_y, entry_y);
                     out.push(DrawCommand::PushClip { rect: price_pane });
 
-                    if let Some(exit_p) = exit_price {
+                    if let Some(lc) = lifecycle {
+                        let exit_p = lc.exit_price;
                         let exit_y = ps.y_for_price(exit_p);
-                        let exited_rect = rect_from_edges(left_x, right_x, entry_y, exit_y);
+                        let entry_x =
+                            vp.world_x_to_pixel_x(lc.entry_idx as f32, price_pane.x, price_pane.w);
+                        let exit_x =
+                            vp.world_x_to_pixel_x(lc.exit_idx as f32, price_pane.x, price_pane.w);
+                        let exited_rect = rect_from_edges(entry_x, exit_x, entry_y, exit_y);
                         let darker = Some(FillStyle {
                             color: ColorRef::Css(color_with_opacity(
                                 if exit_p <= p.entry_price {
@@ -633,11 +696,18 @@ pub fn build_drawing_commands(
                     let rr_text = format!(
                         "SHORT | RR {:.1}{}",
                         rr,
-                        if exited {
-                            format!(" | {}", time_held)
-                        } else {
-                            String::new()
-                        }
+                        lifecycle
+                            .map(|lc| {
+                                format!(
+                                    " | {}",
+                                    format_time_duration_from_indices(
+                                        lc.entry_idx as f32,
+                                        lc.exit_idx as f32,
+                                        candles
+                                    )
+                                )
+                            })
+                            .unwrap_or_else(|| " | pending".to_string())
                     );
                     out.push(DrawCommand::Text {
                         pos: Point {
@@ -658,11 +728,7 @@ pub fn build_drawing_commands(
                             y: reward_rect.center().y - 5.0,
                         },
                         text: reward_label,
-                        style: TextStyle::css(
-                            candle_down.to_string(),
-                            9.0,
-                            TextAlign::Left,
-                        ),
+                        style: TextStyle::css(candle_down.to_string(), 9.0, TextAlign::Left),
                     });
                     let risk_label = format!("-{:.2} ({:.2}%)", risk_amount, risk_pct);
                     out.push(DrawCommand::Text {
@@ -671,11 +737,7 @@ pub fn build_drawing_commands(
                             y: risk_rect.center().y - 5.0,
                         },
                         text: risk_label,
-                        style: TextStyle::css(
-                            candle_up.to_string(),
-                            9.0,
-                            TextAlign::Left,
-                        ),
+                        style: TextStyle::css(candle_up.to_string(), 9.0, TextAlign::Left),
                     });
                     out.push(DrawCommand::PopClip);
                 }
@@ -684,8 +746,10 @@ pub fn build_drawing_commands(
                 if let Some(vp) = viewport {
                     let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w);
                     let y = ps.y_for_price(t.price);
-                    if x >= price_pane.x && x <= price_pane.right()
-                        && y >= price_pane.y && y <= price_pane.bottom()
+                    if x >= price_pane.x
+                        && x <= price_pane.right()
+                        && y >= price_pane.y
+                        && y <= price_pane.bottom()
                     {
                         let text_color = d.style().stroke_color.as_deref().unwrap_or("#e5e7eb");
                         let size = d.style().font_size.unwrap_or(14.0);
@@ -711,7 +775,10 @@ pub fn build_drawing_commands(
                             });
                         }
                         out.push(DrawCommand::Text {
-                            pos: Point { x: x + 4.0, y: y + size * 0.35 },
+                            pos: Point {
+                                x: x + 4.0,
+                                y: y + size * 0.35,
+                            },
                             text: t.text.clone(),
                             style: TextStyle::css(text_color.to_string(), size, TextAlign::Left),
                         });
@@ -721,7 +788,11 @@ pub fn build_drawing_commands(
             }
             Drawing::FibRetracement(fib) => {
                 let selected = selected_drawing_id == Some(fib.id);
-                let band_fill_override = d.style().fill_color.as_ref().map(|c| FillStyle::css(c.clone()));
+                let band_fill_override = d
+                    .style()
+                    .fill_color
+                    .as_ref()
+                    .map(|c| FillStyle::css(c.clone()));
                 let edge_stroke_width = if selected { 2.0 } else { 1.25 };
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(fib.start_index, price_pane.x, price_pane.w);
@@ -923,6 +994,74 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PopClip);
                 }
             }
+            Drawing::BrushStroke(s) => {
+                let selected = selected_drawing_id == Some(s.id);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingPrimary,
+                    if selected { 2.0 } else { 1.0 },
+                );
+                if let Some(vp) = viewport {
+                    let pts: Vec<_> = s
+                        .points
+                        .iter()
+                        .map(|p| {
+                            let x = vp.world_x_to_pixel_x(p.index, price_pane.x, price_pane.w);
+                            let y = ps.y_for_price(p.price);
+                            Point { x, y }
+                        })
+                        .collect();
+                    if pts.len() >= 2 {
+                        out.push(DrawCommand::PushClip { rect: price_pane });
+                        out.push(DrawCommand::Polyline {
+                            points: pts,
+                            stroke,
+                        });
+                        out.push(DrawCommand::PopClip);
+                    }
+                }
+            }
+            Drawing::HighlightStroke(s) => {
+                let selected = selected_drawing_id == Some(s.id);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingSecondary,
+                    if selected { 2.0 } else { 1.0 },
+                );
+                let opacity = d.style().fill_opacity.unwrap_or(0.35);
+                let stroke = match stroke.color {
+                    ColorRef::Css(ref c) => {
+                        let mut s = stroke.clone();
+                        s.color = ColorRef::Css(color_with_opacity(c, opacity));
+                        s
+                    }
+                    ColorRef::Token(_) => {
+                        let mut s = stroke.clone();
+                        // Fallback to a clear default if it's just a token
+                        s.color = ColorRef::Css(color_with_opacity("#38bdf8", opacity));
+                        s
+                    }
+                };
+                if let Some(vp) = viewport {
+                    let pts: Vec<_> = s
+                        .points
+                        .iter()
+                        .map(|p| {
+                            let x = vp.world_x_to_pixel_x(p.index, price_pane.x, price_pane.w);
+                            let y = ps.y_for_price(p.price);
+                            Point { x, y }
+                        })
+                        .collect();
+                    if pts.len() >= 2 {
+                        out.push(DrawCommand::PushClip { rect: price_pane });
+                        out.push(DrawCommand::Polyline {
+                            points: pts,
+                            stroke,
+                        });
+                        out.push(DrawCommand::PopClip);
+                    }
+                }
+            }
         }
     }
 
@@ -970,6 +1109,7 @@ pub fn build_preview_drawing_commands(
                 item.end_index,
                 item.top_price,
                 item.bottom_price,
+                item.is_up,
             );
         }
         Drawing::TimeRange(item) => {
@@ -978,6 +1118,7 @@ pub fn build_preview_drawing_commands(
                 item.end_index,
                 item.top_price,
                 item.bottom_price,
+                item.is_up,
             );
         }
         Drawing::DateTimeRange(item) => {
@@ -986,12 +1127,14 @@ pub fn build_preview_drawing_commands(
                 item.end_index,
                 item.top_price,
                 item.bottom_price,
+                item.is_up,
             );
         }
         Drawing::LongPosition(item) => {
             temp.add_long_position(
                 item.start_index,
                 item.end_index,
+                item.entry_index,
                 item.entry_price,
                 item.stop_price,
                 item.target_price,
@@ -1001,6 +1144,7 @@ pub fn build_preview_drawing_commands(
             temp.add_short_position(
                 item.start_index,
                 item.end_index,
+                item.entry_index,
                 item.entry_price,
                 item.stop_price,
                 item.target_price,
@@ -1044,6 +1188,12 @@ pub fn build_preview_drawing_commands(
         }
         Drawing::Text(item) => {
             temp.add_text(item.index, item.price, item.text.clone());
+        }
+        Drawing::BrushStroke(item) => {
+            temp.add_brush_stroke(item.points.clone());
+        }
+        Drawing::HighlightStroke(item) => {
+            temp.add_highlight_stroke(item.points.clone());
         }
     }
 
@@ -1108,4 +1258,126 @@ fn timestamp_for_world_index(index: f32, candles: &[Candle]) -> i64 {
     let idx = index.floor().max(0.0) as usize;
     let idx = idx.min(candles.len().saturating_sub(1));
     candles[idx].ts
+}
+
+#[derive(Clone, Copy)]
+struct PositionLifecycle {
+    entry_idx: usize,
+    exit_idx: usize,
+    exit_price: f64,
+}
+
+fn index_window(start_index: f32, end_index: f32, len: usize) -> Option<(usize, usize)> {
+    if len == 0 {
+        return None;
+    }
+    let lo = start_index.min(end_index).floor().max(0.0) as usize;
+    let hi = end_index.max(start_index).floor().max(0.0) as usize;
+    let start = lo.min(len.saturating_sub(1));
+    let end = hi.min(len.saturating_sub(1));
+    if start > end {
+        None
+    } else {
+        Some((start, end))
+    }
+}
+
+fn simulate_long_position(
+    candles: &[Candle],
+    start_index: f32,
+    end_index: f32,
+    entry_price: f64,
+    stop_price: f64,
+    target_price: f64,
+) -> Option<PositionLifecycle> {
+    let (start, end) = index_window(start_index, end_index, candles.len())?;
+
+    let mut entry_idx: Option<usize> = None;
+    for (i, c) in candles.iter().enumerate().take(end + 1).skip(start) {
+        if c.low <= entry_price && c.high >= entry_price {
+            entry_idx = Some(i);
+            break;
+        }
+    }
+    let entry_idx = entry_idx?;
+
+    for (i, c) in candles
+        .iter()
+        .enumerate()
+        .take(end + 1)
+        .skip(entry_idx.saturating_add(1))
+    {
+        let hit_stop = c.low <= stop_price;
+        let hit_target = c.high >= target_price;
+        if hit_stop {
+            return Some(PositionLifecycle {
+                entry_idx,
+                exit_idx: i,
+                exit_price: stop_price,
+            });
+        }
+        if hit_target {
+            return Some(PositionLifecycle {
+                entry_idx,
+                exit_idx: i,
+                exit_price: target_price,
+            });
+        }
+    }
+
+    Some(PositionLifecycle {
+        entry_idx,
+        exit_idx: end,
+        exit_price: candles[end].close,
+    })
+}
+
+fn simulate_short_position(
+    candles: &[Candle],
+    start_index: f32,
+    end_index: f32,
+    entry_price: f64,
+    stop_price: f64,
+    target_price: f64,
+) -> Option<PositionLifecycle> {
+    let (start, end) = index_window(start_index, end_index, candles.len())?;
+
+    let mut entry_idx: Option<usize> = None;
+    for (i, c) in candles.iter().enumerate().take(end + 1).skip(start) {
+        if c.low <= entry_price && c.high >= entry_price {
+            entry_idx = Some(i);
+            break;
+        }
+    }
+    let entry_idx = entry_idx?;
+
+    for (i, c) in candles
+        .iter()
+        .enumerate()
+        .take(end + 1)
+        .skip(entry_idx.saturating_add(1))
+    {
+        let hit_stop = c.high >= stop_price;
+        let hit_target = c.low <= target_price;
+        if hit_stop {
+            return Some(PositionLifecycle {
+                entry_idx,
+                exit_idx: i,
+                exit_price: stop_price,
+            });
+        }
+        if hit_target {
+            return Some(PositionLifecycle {
+                entry_idx,
+                exit_idx: i,
+                exit_price: target_price,
+            });
+        }
+    }
+
+    Some(PositionLifecycle {
+        entry_idx,
+        exit_idx: end,
+        exit_price: candles[end].close,
+    })
 }

@@ -26,7 +26,11 @@ fn set_line_dash(ctx: &CanvasRenderingContext2d, dash: Option<&[f64]>) -> Result
     ctx.set_line_dash(&arr)
 }
 
-fn apply_stroke_style(ctx: &CanvasRenderingContext2d, stroke: &crate::render::styles::StrokeStyle, theme: crate::render::styles::ThemeId) -> Result<(), JsValue> {
+fn apply_stroke_style(
+    ctx: &CanvasRenderingContext2d,
+    stroke: &crate::render::styles::StrokeStyle,
+    theme: crate::render::styles::ThemeId,
+) -> Result<(), JsValue> {
     ctx.set_stroke_style_str(&crate::render::styles::resolve_color(theme, &stroke.color));
     ctx.set_line_width(stroke.width as f64);
     set_line_dash(ctx, stroke.dash.as_deref())?;
@@ -104,6 +108,23 @@ pub fn paint_canvas2d(
                     ctx.stroke();
                     set_line_dash(ctx, None)?;
                 }
+            }
+
+            DrawCommand::Polyline { points, stroke } => {
+                if points.len() < 2 {
+                    continue;
+                }
+
+                ctx.begin_path();
+                let first = points[0];
+                ctx.move_to(first.x as f64, first.y as f64);
+                for p in &points[1..] {
+                    ctx.line_to(p.x as f64, p.y as f64);
+                }
+
+                apply_stroke_style(ctx, stroke, theme)?;
+                ctx.stroke();
+                set_line_dash(ctx, None)?;
             }
 
             DrawCommand::Ellipse {
