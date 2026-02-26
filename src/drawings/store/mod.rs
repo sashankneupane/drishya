@@ -484,6 +484,26 @@ impl DrawingStore {
         self.x_anchor_timestamps.clear();
     }
 
+    pub(crate) fn replace_persisted_drawings(
+        &mut self,
+        drawings: Vec<Drawing>,
+        hidden_drawings: HashSet<DrawingId>,
+    ) {
+        self.items = drawings;
+        self.hidden_drawings = hidden_drawings
+            .into_iter()
+            .filter(|id| self.items.iter().any(|item| item.id() == *id))
+            .collect();
+        self.x_anchor_timestamps.clear();
+        self.next_id = self.items.iter().map(Drawing::id).max().unwrap_or(0) + 1;
+        let layer_order = self
+            .items
+            .iter()
+            .map(|item| item.layer_id().to_string())
+            .collect::<Vec<_>>();
+        self.set_layer_order(layer_order);
+    }
+
     pub fn ensure_layer(&mut self, layer_id: &str) {
         if layer_id.trim().is_empty() {
             return;

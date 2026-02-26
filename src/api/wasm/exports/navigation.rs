@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::WasmChart;
+use crate::api::wasm::dto::persistence::ViewportSnapshotDto;
+use crate::api::wasm::parse::json::parse_json;
 
 #[wasm_bindgen]
 impl WasmChart {
@@ -34,5 +36,18 @@ impl WasmChart {
     /// Clears crosshair overlay.
     pub fn clear_crosshair(&mut self) {
         self.chart.clear_crosshair();
+    }
+
+    /// Exports viewport/navigation state as JSON.
+    pub fn viewport_state_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.export_viewport_snapshot())
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize viewport state: {e}")))
+    }
+
+    /// Restores viewport/navigation state from JSON.
+    pub fn restore_viewport_state_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let snapshot: ViewportSnapshotDto = parse_json(json, "viewport-state JSON")?;
+        self.chart.restore_viewport_snapshot(&snapshot);
+        Ok(())
     }
 }

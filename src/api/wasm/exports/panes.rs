@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::{pane_id_label, WasmChart};
+use crate::api::wasm::dto::persistence::PanesSnapshotDto;
 use crate::api::wasm::parse::json::parse_json;
 use crate::chart::plots::PaneLayoutState;
 
@@ -135,5 +136,18 @@ impl WasmChart {
 
         serde_json::to_string(&serde_json::json!({ "panes": panes }))
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize pane layout: {e}")))
+    }
+
+    /// Exports pane persistence snapshot state as JSON.
+    pub fn panes_snapshot_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.export_panes_snapshot())
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize pane snapshot: {e}")))
+    }
+
+    /// Restores pane persistence snapshot state from JSON.
+    pub fn restore_panes_snapshot_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let snapshot: PanesSnapshotDto = parse_json(json, "panes-snapshot JSON")?;
+        self.chart.restore_panes_snapshot(&snapshot);
+        Ok(())
     }
 }

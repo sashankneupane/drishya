@@ -1,10 +1,12 @@
 import type {
   Candle,
+  ChartStateSnapshot,
   ChartAppearanceConfig,
   DrawingConfig,
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
+  RestoreChartStateOptions,
   WasmChartLike
 } from "./contracts";
 
@@ -199,6 +201,37 @@ export class DrishyaChartClient {
 
   restorePaneStateJson(json: string): void {
     this.wasm.restore_pane_state_json?.(json);
+  }
+
+  exportChartState(): ChartStateSnapshot {
+    // Consumer usage:
+    // const snapshot = client.exportChartState()
+    // localStorage.setItem("chart:snapshot", JSON.stringify(snapshot))
+    const raw = this.wasm.chart_state_snapshot_json?.();
+    const parsed = raw ? safeJsonParse<ChartStateSnapshot>(raw) : null;
+    if (!parsed) {
+      throw new Error("WASM persistence export is unavailable or returned invalid JSON");
+    }
+    return parsed;
+  }
+
+  importChartState(snapshot: ChartStateSnapshot): void {
+    // Consumer usage:
+    // const raw = localStorage.getItem("chart:snapshot")
+    // if (raw) client.importChartState(JSON.parse(raw))
+    this.wasm.restore_chart_state_json?.(JSON.stringify(snapshot));
+  }
+
+  importChartStateJson(json: string): void {
+    this.wasm.restore_chart_state_json?.(json);
+  }
+
+  importChartStatePartial(snapshot: ChartStateSnapshot, options: RestoreChartStateOptions): void {
+    this.wasm.restore_chart_state_partial_json?.(JSON.stringify(snapshot), JSON.stringify(options));
+  }
+
+  importChartStatePartialJson(json: string, options: RestoreChartStateOptions): void {
+    this.wasm.restore_chart_state_partial_json?.(json, JSON.stringify(options));
   }
 
   paneLayouts(): PaneLayout[] {

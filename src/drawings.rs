@@ -6,6 +6,7 @@
 pub mod commands;
 pub mod hit_test;
 pub mod model;
+pub mod persistence;
 pub mod render;
 pub mod shape;
 pub mod store;

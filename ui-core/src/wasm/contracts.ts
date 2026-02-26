@@ -90,6 +90,80 @@ export interface ObjectTreeState {
   drawings: DrawingTreeState[];
 }
 
+/**
+ * Beta chart state snapshot contract.
+ *
+ * Compatibility policy for beta:
+ * - Existing field names are stable.
+ * - New optional fields can be added.
+ * - Removing/renaming existing fields is breaking.
+ */
+export interface ChartStateSnapshot {
+  saved_at_unix_ms: number;
+  chart_state: ChartStateContract;
+}
+
+export interface ChartStateContract {
+  viewport: ViewportSnapshot;
+  panes: PanesSnapshot;
+  appearance: AppearanceSnapshot;
+  drawings: DrawingSnapshot[];
+  object_tree: ObjectTreeState;
+  selection?: SelectionSnapshot | null;
+}
+
+export interface ViewportSnapshot {
+  world_start_x: number;
+  world_end_x: number;
+  y_zoom_factor?: number | null;
+  y_pan_offset?: number | null;
+}
+
+export interface PanesSnapshot {
+  order: string[];
+  panes: PaneSnapshot[];
+}
+
+export interface PaneSnapshot {
+  id: string;
+  visible: boolean;
+  weight: number;
+  collapsed: boolean;
+  y_axis_visible: boolean;
+  min_height_px?: number | null;
+  max_height_px?: number | null;
+}
+
+export interface AppearanceSnapshot {
+  theme: string;
+  config: Record<string, unknown>;
+}
+
+export interface DrawingSnapshot {
+  id: number;
+  kind: string;
+  geometry: Record<string, unknown>;
+  style: Record<string, unknown>;
+  layer_id: string;
+  group_id?: string | null;
+  visible: boolean;
+  locked: boolean;
+}
+
+export interface SelectionSnapshot {
+  selected_drawing_id?: number | null;
+  tool_mode?: string | null;
+  cursor_mode?: string | null;
+}
+
+export interface RestoreChartStateOptions {
+  appearance?: boolean;
+  panes?: boolean;
+  viewport?: boolean;
+  drawings?: boolean;
+  selection?: boolean;
+}
+
 export type CursorMode = "crosshair" | "dot" | "normal";
 
 export interface WasmChartLike {
@@ -200,4 +274,9 @@ export interface WasmChartLike {
 
   // Group G: Tree Query
   object_tree_state_json?(): string;
+
+  // Group I: Persistence
+  chart_state_snapshot_json?(): string;
+  restore_chart_state_json?(json: string): void;
+  restore_chart_state_partial_json?(json: string, optionsJson: string): void;
 }
