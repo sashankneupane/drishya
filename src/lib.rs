@@ -13,5 +13,3 @@ pub mod render;
 pub mod scale;
 pub mod types;
 pub mod viewport;
-
-pub use api::wasm::WasmChart;
