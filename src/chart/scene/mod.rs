@@ -24,7 +24,10 @@ use crate::{
         candles::build_candle_commands,
         primitives::DrawCommand,
         styles::{ColorRef, ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
-        ticks::{HumanTimeFormatter, TimeLabelFormatter},
+        ticks::{
+            HumanTimeFormatter, PercentFormatter, PriceFormatter, TimeLabelFormatter,
+            ValueLabelFormatter,
+        },
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
@@ -255,7 +258,11 @@ impl Chart {
                         y: (live_y + 4.0)
                             .clamp(layout.y_axis.y + 12.0, layout.y_axis.bottom() - 2.0),
                     },
-                    text: format!("{:.2}", last.close),
+                    text: format_axis_value_label(
+                        last.close,
+                        self.price_axis_mode,
+                        self.derived_percent_baseline_price(),
+                    ),
                     style: TextStyle::token(live_color, 11.0, TextAlign::Right),
                 });
             }
@@ -614,7 +621,7 @@ fn build_crosshair_readout_commands(
             x: layout.y_axis.right() - 4.0,
             y: price_label_y + 12.0,
         },
-        text: format!("{:.2}", price_at_cursor),
+        text: format_axis_value_label(price_at_cursor, ps.mode, ps.baseline),
         style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Right),
     });
 
@@ -647,6 +654,21 @@ fn build_crosshair_readout_commands(
     });
 
     Some(out)
+}
+
+fn format_axis_value_label(
+    value: f64,
+    mode: crate::scale::PriceAxisMode,
+    baseline: Option<f64>,
+) -> String {
+    match mode {
+        crate::scale::PriceAxisMode::Percent => {
+            let base = baseline.unwrap_or(1.0).max(1e-9);
+            let pct = ((value / base) - 1.0) * 100.0;
+            PercentFormatter { decimals: 2 }.format_value(pct)
+        }
+        _ => PriceFormatter { decimals: 2 }.format_value(value),
+    }
 }
 
 fn build_non_price_pane_readout_commands(
