@@ -79,6 +79,14 @@ export class DrishyaChartClient {
     return this.wasm.cursor_mode?.() ?? "crosshair";
   }
 
+  setPriceAxisMode(mode: "linear" | "log" | "percent"): void {
+    this.wasm.set_price_axis_mode?.(mode);
+  }
+
+  priceAxisMode(): string {
+    return this.wasm.price_axis_mode?.() ?? "linear";
+  }
+
   setTheme(theme: string): void {
     this.wasm.set_theme?.(theme);
   }
@@ -394,10 +402,19 @@ export class DrishyaChartClient {
     }
 
     if (action.kind === "series") {
+      const isCompare = action.id.startsWith("compare-");
       if (action.type === "delete") {
-        this.wasm.delete_series?.(action.id);
+        if (isCompare) {
+          this.wasm.remove_compare_series?.(action.id);
+        } else {
+          this.wasm.delete_series?.(action.id);
+        }
       } else {
-        this.wasm.set_series_visible?.(action.id, action.visible);
+        if (isCompare) {
+          this.wasm.set_compare_series_visible?.(action.id, action.visible);
+        } else {
+          this.wasm.set_series_visible?.(action.id, action.visible);
+        }
       }
       return;
     }
@@ -433,6 +450,22 @@ export class DrishyaChartClient {
       }
       return;
     }
+  }
+
+  registerCompareSeries(symbol: string, name: string, color: string): string {
+    return this.wasm.register_compare_series?.(symbol, name, color) ?? "";
+  }
+
+  removeCompareSeries(id: string): boolean {
+    return this.wasm.remove_compare_series?.(id) ?? false;
+  }
+
+  setCompareSeriesVisible(id: string, visible: boolean): boolean {
+    return this.wasm.set_compare_series_visible?.(id, visible) ?? false;
+  }
+
+  setCompareSeriesCandles(seriesId: string, candles: Candle[]): void {
+    this.wasm.set_compare_series_ohlcv_json?.(seriesId, JSON.stringify(candles));
   }
 }
 

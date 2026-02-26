@@ -182,6 +182,8 @@ export interface WasmChartLike {
   reset_y_axis_zoom?(paneId: string): void;
   set_crosshair_at?(x: number, y: number): void;
   clear_crosshair?(): void;
+  set_price_axis_mode?(mode: string): void;
+  price_axis_mode?(): string;
 
   // Group C: Appearance
   set_theme?(theme: string): void;
@@ -279,4 +281,10 @@ export interface WasmChartLike {
   chart_state_snapshot_json?(): string;
   restore_chart_state_json?(json: string): void;
   restore_chart_state_partial_json?(json: string, optionsJson: string): void;
+
+  // Group J: Multi-Symbol Compare
+  register_compare_series?(symbol: string, name: string, color: string): string;
+  remove_compare_series?(id: string): boolean;
+  set_compare_series_visible?(id: string, visible: boolean): boolean;
+  set_compare_series_ohlcv_json?(seriesId: string, json: string): void;
 }

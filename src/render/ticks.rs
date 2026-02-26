@@ -115,11 +115,30 @@ impl NumericYTickProvider {
         pane_top: f32,
         pane_height: f32,
         formatter: &dyn ValueLabelFormatter,
+        mode: crate::scale::PriceAxisMode,
     ) -> Vec<YTick> {
+        use crate::scale::PriceAxisMode;
+
         if pane_height <= 1.0 || !min.is_finite() || !max.is_finite() {
             return Vec::new();
         }
 
+        match mode {
+            PriceAxisMode::Linear | PriceAxisMode::Percent => {
+                self.generate_linear(min, max, pane_top, pane_height, formatter)
+            }
+            PriceAxisMode::Log => self.generate_log(min, max, pane_top, pane_height, formatter),
+        }
+    }
+
+    fn generate_linear(
+        &self,
+        min: f64,
+        max: f64,
+        pane_top: f32,
+        pane_height: f32,
+        formatter: &dyn ValueLabelFormatter,
+    ) -> Vec<YTick> {
         let range = (max - min).abs().max(1e-9);
         let spacing_limited_max_ticks = ((pane_height / self.min_label_spacing_px).floor()
             as usize)
@@ -153,6 +172,88 @@ impl NumericYTickProvider {
             value += step;
             if ticks.len() > self.max_ticks.saturating_mul(2) {
                 break;
+            }
+        }
+
+        ticks
+    }
+
+    fn generate_log(
+        &self,
+        min: f64,
+        max: f64,
+        pane_top: f32,
+        pane_height: f32,
+        formatter: &dyn ValueLabelFormatter,
+    ) -> Vec<YTick> {
+        let epsilon = 1e-9;
+        let min_v = min.max(epsilon);
+        let max_v = max.max(epsilon + 1e-9);
+
+        let log_min = min_v.ln();
+        let log_max = max_v.ln();
+        let log_range = log_max - log_min;
+
+        let target_ticks = ((pane_height / self.target_tick_spacing_px).round() as usize)
+            .saturating_add(1)
+            .clamp(2, self.max_ticks);
+
+        let mut ticks = Vec::new();
+        let mut last_y = f32::NEG_INFINITY;
+
+        let ratio = max_v / min_v;
+        if ratio > 5.0 {
+            let mut candidates = Vec::new();
+            let start_exp = min_v.log10().floor() as i32;
+            let end_exp = max_v.log10().ceil() as i32;
+
+            for exp in start_exp..=end_exp {
+                let base = 10.0f64.powi(exp);
+                for &mult in &[1.0, 2.0, 5.0] {
+                    let v = base * mult;
+                    if v >= min_v && v <= max_v {
+                        candidates.push(v);
+                    }
+                }
+            }
+            candidates.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+            for val in candidates {
+                let t = (val.ln() - log_min) / log_range;
+                let y = pane_top + pane_height * (1.0 - t as f32);
+
+                if (y - last_y).abs() >= self.min_label_spacing_px - 0.5 {
+                    ticks.push(YTick {
+                        y,
+                        value: val,
+                        label: formatter.format_value(val),
+                    });
+                    last_y = y;
+                }
+            }
+        } else {
+            let raw_linear_step = (max_v - min_v) / (target_ticks as f64).max(1.0);
+            let linear_step = nice_step(raw_linear_step);
+
+            let mut val = (min_v / linear_step).floor() * linear_step;
+            while val <= max_v + linear_step {
+                if val >= min_v && val <= max_v {
+                    let t = (val.ln() - log_min) / log_range;
+                    let y = pane_top + pane_height * (1.0 - t as f32);
+
+                    if (y - last_y).abs() >= self.min_label_spacing_px - 0.5 {
+                        ticks.push(YTick {
+                            y,
+                            value: val,
+                            label: formatter.format_value(val),
+                        });
+                        last_y = y;
+                    }
+                }
+                val += linear_step;
+                if ticks.len() > self.max_ticks * 2 {
+                    break;
+                }
             }
         }
 
@@ -370,8 +471,22 @@ mod tests {
         let provider = NumericYTickProvider::default();
         let formatter = PriceFormatter { decimals: 2 };
 
-        let short = provider.generate(10.0, 110.0, 0.0, 120.0, &formatter);
-        let tall = provider.generate(10.0, 110.0, 0.0, 480.0, &formatter);
+        let short = provider.generate(
+            10.0,
+            110.0,
+            0.0,
+            120.0,
+            &formatter,
+            crate::scale::PriceAxisMode::Linear,
+        );
+        let tall = provider.generate(
+            10.0,
+            110.0,
+            0.0,
+            480.0,
+            &formatter,
+            crate::scale::PriceAxisMode::Linear,
+        );
 
         assert!(tall.len() >= short.len());
         assert!(short.len() >= 2);
@@ -385,7 +500,14 @@ mod tests {
         };
         let formatter = PriceFormatter { decimals: 2 };
 
-        let ticks = provider.generate(0.0, 100.0, 0.0, 360.0, &formatter);
+        let ticks = provider.generate(
+            0.0,
+            100.0,
+            0.0,
+            360.0,
+            &formatter,
+            crate::scale::PriceAxisMode::Linear,
+        );
         for pair in ticks.windows(2) {
             let dy = (pair[1].y - pair[0].y).abs();
             assert!(dy >= 23.0);

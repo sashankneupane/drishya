@@ -10,10 +10,25 @@ use crate::{
     render::styles::{ColorToken, StrokeStyle, TextAlign, TextStyle},
     render::ticks::{
         default_axis_formatters, AxisFormatters, DensityXTickProvider, NumericYTickProvider,
+        PriceFormatter, ValueLabelFormatter,
     },
     scale::{PriceScale, TimeScale},
     types::{Candle, Point},
 };
+
+#[derive(Debug, Clone, Copy)]
+struct AxisPercentFormatter {
+    decimals: usize,
+    baseline: f64,
+}
+
+impl ValueLabelFormatter for AxisPercentFormatter {
+    fn format_value(&self, value: f64) -> String {
+        let base = self.baseline.max(1e-9);
+        let pct = ((value / base) - 1.0) * 100.0;
+        format!("{pct:.prec$}%", prec = self.decimals)
+    }
+}
 
 pub fn build_axis_commands(
     layout: &ChartLayout,
@@ -57,9 +72,26 @@ pub fn build_axis_commands_with_formatters(
             .find(|(id, _)| id == &pane.id)
             .map(|(_, ps)| ps);
         if let Some(ps) = pane_scale {
+            let percent_formatter = AxisPercentFormatter {
+                decimals: 2,
+                baseline: ps.baseline.unwrap_or(1.0),
+            };
+            let price_formatter = PriceFormatter { decimals: 2 };
+            let y_formatter: &dyn ValueLabelFormatter =
+                if ps.mode == crate::scale::PriceAxisMode::Percent {
+                    &percent_formatter
+                } else {
+                    &price_formatter
+                };
             // Horizontal grid + y labels per pane, driven by pluggable provider.
-            let y_ticks =
-                y_provider.generate(ps.min, ps.max, pane.rect.y, pane.rect.h, formatters.y);
+            let y_ticks = y_provider.generate(
+                ps.min,
+                ps.max,
+                pane.rect.y,
+                pane.rect.h,
+                y_formatter,
+                ps.mode,
+            );
             for tick in y_ticks {
                 let y = tick.y;
 

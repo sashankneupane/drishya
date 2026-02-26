@@ -14,6 +14,7 @@ interface TopStripOptions {
   selectedTimeframe?: string;
   onSymbolChange?: (symbol: string) => void | Promise<void>;
   onTimeframeChange?: (timeframe: string) => void | Promise<void>;
+  onCompareSymbol?: (symbol: string) => void | Promise<void>;
   onCandleTypeChange?: (type: "solid" | "hollow" | "bars" | "volume") => void;
   onLayout: () => void;
   onMutate?: () => void;
@@ -113,6 +114,25 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
     });
   };
   leftSide.appendChild(tfBtn);
+
+  // 3. Compare Button
+  const compareBtn = document.createElement("button");
+  compareBtn.className = BTN_MINIMAL;
+  compareBtn.appendChild(makeSvgIcon("plus", "h-3.5 w-3.5 mr-1.5"));
+  const compareLabel = document.createElement("span");
+  compareLabel.textContent = "Compare";
+  compareBtn.appendChild(compareLabel);
+  compareBtn.onclick = (e) => {
+    e.stopPropagation();
+    createSymbolSearchModal({
+      symbols: options.symbols || [],
+      onSelect: (val) => {
+        options.onCompareSymbol?.(val);
+      },
+      onClose: () => { }
+    });
+  };
+  leftSide.appendChild(compareBtn);
   // 3. Candle Selector
   const candleBtn = document.createElement("button");
   candleBtn.className = BTN_MINIMAL;
@@ -133,6 +153,28 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   };
   leftSide.appendChild(candleBtn);
 
+  // 4. Axis Mode Selector
+  const axisBtn = document.createElement("button");
+  axisBtn.className = BTN_MINIMAL;
+  const updateAxisLabel = () => {
+    const mode = controller.getState().priceAxisMode;
+    axisBtn.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+  };
+  updateAxisLabel();
+  axisBtn.onclick = (e) => {
+    e.stopPropagation();
+    const modes: { label: string, value: "linear" | "log" | "percent" }[] = [
+      { label: "Linear", value: "linear" },
+      { label: "Log", value: "log" },
+      { label: "Percent", value: "percent" }
+    ];
+    createDropdown(axisBtn, modes, (val) => {
+      controller.setPriceAxisMode(val as any);
+      updateAxisLabel();
+    });
+  };
+  leftSide.appendChild(axisBtn);
+
   // Config (appearance)
   const configBtn = document.createElement("button");
   configBtn.className = BTN_MINIMAL;
@@ -152,7 +194,7 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
         options.applyAppearanceConfig?.(cfg);
         options.onMutate?.();
       },
-      onClose: () => {}
+      onClose: () => { }
     });
   };
   leftSide.appendChild(configBtn);
@@ -192,6 +234,7 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
     } else {
       objectsBtn.classList.remove("text-zinc-100", "bg-zinc-900");
     }
+    updateAxisLabel();
   });
 
   const globalClick = () => closePopup();

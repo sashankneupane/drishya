@@ -10,6 +10,8 @@
 
 pub mod anchors;
 pub mod appearance;
+pub mod compare;
+pub mod compare_alignment;
 pub mod hit_test;
 pub mod interaction;
 pub mod panes;
@@ -20,6 +22,7 @@ pub mod state;
 pub mod tools;
 
 use self::appearance::ChartAppearanceConfig;
+use self::compare::CompareRegistry;
 use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
@@ -58,9 +61,13 @@ pub struct Chart {
     selected_drawing_id: Option<u64>,
     selected_series_id: Option<String>,
     appearance_config: ChartAppearanceConfig,
+    pub price_axis_mode: crate::scale::PriceAxisMode,
+    pub percent_baseline_policy: crate::scale::PercentBaselinePolicy,
+    pub(crate) derived_percent_baseline_price: std::cell::RefCell<Option<f64>>,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
+    compare_registry: CompareRegistry,
 }
 
 impl Chart {
@@ -91,7 +98,11 @@ impl Chart {
             selected_drawing_id: None,
             selected_series_id: None,
             appearance_config: ChartAppearanceConfig::default(),
+            price_axis_mode: crate::scale::PriceAxisMode::Linear,
+            percent_baseline_policy: crate::scale::PercentBaselinePolicy::default(),
+            derived_percent_baseline_price: std::cell::RefCell::new(None),
             drawings: DrawingStore::new(),
+            compare_registry: CompareRegistry::new(),
         }
     }
 
@@ -147,12 +158,51 @@ impl Chart {
 
     pub(crate) fn set_pane_y_pan_factor(&mut self, pane_id: &PaneId, factor: f32) {
         let key = pane_zoom_key(pane_id).to_string();
-        self.pane_y_pan_factors
-            .insert(key, factor.clamp(-20.0, 20.0));
+        self.pane_y_pan_factors.insert(key, factor.clamp(-6.0, 6.0));
     }
 
     pub fn drawings(&self) -> &DrawingStore {
         &self.drawings
+    }
+
+    pub fn price_axis_mode(&self) -> crate::scale::PriceAxisMode {
+        self.price_axis_mode
+    }
+
+    pub fn set_price_axis_mode(&mut self, mode: crate::scale::PriceAxisMode) {
+        self.price_axis_mode = mode;
+    }
+
+    pub fn percent_baseline_policy(&self) -> crate::scale::PercentBaselinePolicy {
+        self.percent_baseline_policy
+    }
+
+    pub fn set_percent_baseline_policy(&mut self, policy: crate::scale::PercentBaselinePolicy) {
+        self.percent_baseline_policy = policy;
+    }
+
+    pub fn derived_percent_baseline_price(&self) -> Option<f64> {
+        *self.derived_percent_baseline_price.borrow()
+    }
+
+    pub fn register_compare_series(&mut self, symbol: &str, name: &str, color: &str) -> String {
+        self.compare_registry.register(symbol, name, color)
+    }
+
+    pub fn remove_compare_series(&mut self, id: &str) -> bool {
+        self.compare_registry.remove(id)
+    }
+
+    pub fn set_compare_series_candles(&mut self, id: &str, candles: Vec<Candle>) -> bool {
+        self.compare_registry.set_candles(id, candles)
+    }
+
+    pub fn set_compare_series_visible(&mut self, id: &str, visible: bool) -> bool {
+        self.compare_registry.set_visible(id, visible)
+    }
+
+    pub(crate) fn compare_registry(&self) -> &CompareRegistry {
+        &self.compare_registry
     }
 }
 
@@ -160,5 +210,64 @@ fn pane_zoom_key(pane_id: &PaneId) -> &str {
     match pane_id {
         PaneId::Price => "price",
         PaneId::Named(name) => name.as_str(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Candle;
+
+    #[test]
+    fn chart_percent_baseline_derivation() {
+        let mut chart = Chart::new(1000.0, 500.0);
+        chart.candles = vec![
+            Candle {
+                ts: 100,
+                open: 10.0,
+                high: 12.0,
+                low: 9.0,
+                close: 11.0,
+                volume: 100.0,
+            },
+            Candle {
+                ts: 200,
+                open: 11.0,
+                high: 15.0,
+                low: 10.0,
+                close: 14.0,
+                volume: 100.0,
+            },
+            Candle {
+                ts: 300,
+                open: 14.0,
+                high: 20.0,
+                low: 13.0,
+                close: 18.0,
+                volume: 100.0,
+            },
+        ];
+
+        // Initial state: Linear, no baseline
+        assert_eq!(chart.derived_percent_baseline_price(), None);
+
+        // Switch to Percent mode
+        chart.set_price_axis_mode(crate::scale::PriceAxisMode::Percent);
+
+        // Setup viewport to see all candles
+        chart.set_viewport_world_range(0.0, 10.0); // very wide to see all
+
+        // Trigger build_draw_commands (this is where baseline is calculated in scene/mod.rs)
+        let _ = chart.build_draw_commands();
+
+        // First candle close is 11.0
+        assert_eq!(chart.derived_percent_baseline_price(), Some(11.0));
+
+        // Pan viewport so first visible candle is the second one
+        chart.set_viewport_world_range(1.0, 10.0);
+        let _ = chart.build_draw_commands();
+
+        // Second candle close is 14.0
+        assert_eq!(chart.derived_percent_baseline_price(), Some(14.0));
     }
 }

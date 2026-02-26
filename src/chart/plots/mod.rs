@@ -132,11 +132,15 @@ impl Chart {
                 max_v,
                 self.pane_y_zoom_factor(&PaneId::Price),
                 self.pane_y_pan_factor(&PaneId::Price),
+                self.price_axis_mode,
+                self.derived_percent_baseline_price(),
             );
             Some(PriceScale {
                 pane: pane_rect,
                 min: min_v,
                 max: max_v,
+                mode: self.price_axis_mode,
+                baseline: self.derived_percent_baseline_price(),
             })
         } else {
             let (min_v, max_v) = compute_pane_value_bounds_for_hit_test(
@@ -150,11 +154,15 @@ impl Chart {
                 max_v,
                 self.pane_y_zoom_factor(&target_pane),
                 self.pane_y_pan_factor(&target_pane),
+                crate::scale::PriceAxisMode::Linear,
+                None,
             );
             Some(PriceScale {
                 pane: pane_rect,
                 min: min_v,
                 max: max_v,
+                mode: self.price_axis_mode,
+                baseline: self.derived_percent_baseline_price(),
             })
         }?;
 
@@ -626,15 +634,15 @@ fn nearest_candle_index_at_x(
     Some(clamped as usize)
 }
 
-fn apply_y_zoom_for_hit_test(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
-    let center = (min + max) * 0.5;
-    let half = ((max - min) * 0.5).max(1e-9);
-    let zoomed_half = half / zoom_factor.max(1e-6) as f64;
-    let pan_delta = zoomed_half * pan_factor as f64;
-    (
-        center - zoomed_half - pan_delta,
-        center + zoomed_half - pan_delta,
-    )
+fn apply_y_zoom_for_hit_test(
+    min: f64,
+    max: f64,
+    zoom_factor: f32,
+    pan_factor: f32,
+    mode: crate::scale::PriceAxisMode,
+    baseline: Option<f64>,
+) -> (f64, f64) {
+    crate::scale::apply_axis_zoom_pan(min, max, zoom_factor, pan_factor, mode, baseline)
 }
 
 fn compute_pane_value_bounds_for_hit_test(

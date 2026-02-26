@@ -38,4 +38,16 @@ impl WasmChart {
     pub fn restore_series(&mut self, series_id: &str) {
         self.chart.restore_series(series_id);
     }
+
+    pub fn register_compare_series(&mut self, symbol: &str, name: &str, color: &str) -> String {
+        self.chart.register_compare_series(symbol, name, color)
+    }
+
+    pub fn remove_compare_series(&mut self, id: &str) -> bool {
+        self.chart.remove_compare_series(id)
+    }
+
+    pub fn set_compare_series_visible(&mut self, id: &str, visible: bool) -> bool {
+        self.chart.set_compare_series_visible(id, visible)
+    }
 }

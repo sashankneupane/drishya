@@ -200,11 +200,15 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let mut out = Vec::new();
@@ -249,11 +253,15 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
         let anchors = anchor_positions(drawing, &vp, price_pane, ps);
         hit_anchor(&anchors, Point { x, y })
@@ -336,11 +344,15 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let (cx_px, cy_px, r_px) = {
@@ -412,11 +424,15 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&crate::plots::model::PaneId::Price),
             self.pane_y_pan_factor(&crate::plots::model::PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = PriceScale {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         // Snapshot pixel coords

@@ -24,6 +24,7 @@ interface PersistedWorkspaceState {
   cursorMode?: string;
   isObjectTreeOpen?: boolean;
   isLeftStripOpen?: boolean;
+  priceAxisMode?: "linear" | "log" | "percent";
 }
 
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
@@ -110,6 +111,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         }
         if (saved.isObjectTreeOpen !== undefined) controller.setObjectTreeOpen(saved.isObjectTreeOpen);
         if (saved.isLeftStripOpen !== undefined) controller.setLeftStripOpen(saved.isLeftStripOpen);
+        if (saved.priceAxisMode) {
+          controller.setPriceAxisMode(saved.priceAxisMode);
+          chart.setPriceAxisMode(saved.priceAxisMode);
+        }
         if (saved.appearance) applyAppearance(saved.appearance);
         const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
         if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
@@ -137,6 +142,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             cursorMode: controller.getState().cursorMode,
             isObjectTreeOpen: controller.getState().isObjectTreeOpen,
             isLeftStripOpen: controller.getState().isLeftStripOpen,
+            priceAxisMode: controller.getState().priceAxisMode,
             candleStyle: chart.candleStyle(),
             appearance: chart.getAppearanceConfig() ?? undefined,
             paneState: chart.getPaneStateJson()
@@ -164,6 +170,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     selectedTimeframe: options.marketControls?.selectedTimeframe,
     onSymbolChange: options.marketControls?.onSymbolChange,
     onTimeframeChange: options.marketControls?.onTimeframeChange,
+    onCompareSymbol: options.marketControls?.onCompareSymbol,
     onCandleTypeChange: (mode) => {
       chart.setCandleStyle(mode);
       chart.draw();
@@ -293,6 +300,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chart.setTheme(state.theme);
     chart.setDrawingTool(state.activeTool);
     chart.setCursorMode(state.cursorMode);
+    chart.setPriceAxisMode(state.priceAxisMode);
     draw();
     savePersistedState();
   });
@@ -386,7 +394,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       }
       chart.clearSelectedDrawing();
       chart.clearSelectedSeries();
-        controller.setActiveTool("select", { force: true });
+      controller.setActiveTool("select", { force: true });
       draw();
       return;
     }

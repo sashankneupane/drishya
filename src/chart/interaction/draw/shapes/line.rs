@@ -22,9 +22,10 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
-
-        let price = self.price_from_y(y_pixels, ps);
+        let price = ps.price_for_y(y_pixels);
         let _ = execute_command(
             &mut self.drawings,
             line_shape::add_horizontal_command(price),

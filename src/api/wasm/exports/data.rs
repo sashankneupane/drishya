@@ -28,4 +28,14 @@ impl WasmChart {
         self.chart.upsert_candles(candles);
         Ok(())
     }
+
+    pub fn set_compare_series_ohlcv_json(
+        &mut self,
+        series_id: &str,
+        json: &str,
+    ) -> Result<(), JsValue> {
+        let candles: Vec<Candle> = parse_json(json, "Compare Series OHLCV JSON")?;
+        self.chart.set_compare_series_candles(series_id, candles);
+        Ok(())
+    }
 }

@@ -16,7 +16,7 @@ use crate::{
     drawings::render::{build_drawing_commands, build_preview_drawing_commands},
     layout::ChartLayout,
     plots::{
-        model::{PaneId, PlotPrimitive, PlotSeries},
+        model::{LinePattern, PaneId, PlotPrimitive, PlotSeries},
         render::{build_plot_draw_commands, PlotRenderContext, ValueScaleRange},
     },
     render::{
@@ -24,7 +24,10 @@ use crate::{
         candles::build_candle_commands,
         primitives::DrawCommand,
         styles::{ColorRef, ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
-        ticks::{HumanTimeFormatter, TimeLabelFormatter},
+        ticks::{
+            HumanTimeFormatter, PercentFormatter, PriceFormatter, TimeLabelFormatter,
+            ValueLabelFormatter,
+        },
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
@@ -32,8 +35,11 @@ use crate::{
 };
 
 use self::helpers::{
-    compute_pane_value_bounds, nearest_candle_index, price_at_y, series_value_at_index,
-    timestamp_for_world_x, world_x_at_pixel,
+    compute_pane_value_bounds, nearest_candle_index, series_value_at_index, timestamp_for_world_x,
+    world_x_at_pixel,
+};
+use super::compare_alignment::{
+    align_compare_series, normalize_aligned_series, rebase_normalized_series_to_primary_price,
 };
 use super::Chart;
 
@@ -55,6 +61,19 @@ impl Chart {
 
     pub fn build_draw_commands(&self) -> Vec<DrawCommand> {
         let mut out = Vec::new();
+        let _layout: ChartLayout = self.current_layout(); // Moved up for `ts` and `baseline_price` calculation
+                                                          // Calculate percent baseline if needed.
+        let mut baseline_price = None;
+        if self.price_axis_mode == crate::scale::PriceAxisMode::Percent {
+            match self.percent_baseline_policy {
+                crate::scale::PercentBaselinePolicy::FirstVisibleBar => {
+                    if let Some(candle) = self.visible_data().first() {
+                        baseline_price = Some(candle.close);
+                    }
+                }
+            }
+        }
+        *self.derived_percent_baseline_price.borrow_mut() = baseline_price;
         if self.candles.is_empty() {
             return out;
         }
@@ -66,6 +85,8 @@ impl Chart {
         let visible = &self.candles[visible_start..visible_end];
 
         let mut plot_series = self.collect_plot_series();
+        let compare_series = self.collect_compare_series(visible_start);
+        plot_series.extend(compare_series);
         if let Some(selected_series_id) = self.selected_series_id() {
             for s in &mut plot_series {
                 if s.id != selected_series_id {
@@ -97,6 +118,8 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&PaneId::Price),
             self.pane_y_pan_factor(&PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
 
         let ts_price = match self.viewport {
@@ -115,6 +138,8 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let mut pane_scales: Vec<(PaneId, PriceScale)> = vec![(PaneId::Price, ps)];
@@ -131,6 +156,8 @@ impl Chart {
                     max_v,
                     self.pane_y_zoom_factor(&pane.id),
                     self.pane_y_pan_factor(&pane.id),
+                    crate::scale::PriceAxisMode::Linear,
+                    None,
                 );
                 pane_scales.push((
                     pane.id.clone(),
@@ -138,6 +165,16 @@ impl Chart {
                         pane: pane.rect,
                         min: min_v,
                         max: max_v,
+                        mode: if pane.id == PaneId::Price {
+                            self.price_axis_mode
+                        } else {
+                            crate::scale::PriceAxisMode::Linear
+                        },
+                        baseline: if pane.id == PaneId::Price {
+                            self.derived_percent_baseline_price()
+                        } else {
+                            None
+                        },
                     },
                 ));
             }
@@ -221,7 +258,11 @@ impl Chart {
                         y: (live_y + 4.0)
                             .clamp(layout.y_axis.y + 12.0, layout.y_axis.bottom() - 2.0),
                     },
-                    text: format!("{:.2}", last.close),
+                    text: format_axis_value_label(
+                        last.close,
+                        self.price_axis_mode,
+                        self.derived_percent_baseline_price(),
+                    ),
                     style: TextStyle::token(live_color, 11.0, TextAlign::Right),
                 });
             }
@@ -351,6 +392,12 @@ impl Chart {
         }
 
         if let Some(idx) = readout_index {
+            out.extend(build_compare_readout_commands(
+                &plot_series,
+                &layout,
+                idx,
+                self.candles.get(visible_start).map(|c| c.close),
+            ));
             out.extend(build_non_price_pane_readout_commands(
                 &plot_series,
                 &layout,
@@ -389,11 +436,15 @@ impl Chart {
             max_price,
             self.pane_y_zoom_factor(&PaneId::Price),
             self.pane_y_pan_factor(&PaneId::Price),
+            self.price_axis_mode,
+            self.derived_percent_baseline_price(),
         );
         let ps = crate::scale::PriceScale {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w);
@@ -411,6 +462,88 @@ impl Chart {
 
         Some((caret_x, caret_y, size, color))
     }
+
+    pub(crate) fn collect_compare_series(&self, visible_start: usize) -> Vec<PlotSeries> {
+        let registry = self.compare_registry();
+        if registry.series.is_empty() {
+            return Vec::new();
+        }
+
+        let mut aligned = align_compare_series(&self.candles, &registry.series);
+
+        // Multi-symbol compare always implies percentage normalization relative
+        // to the first visible bar in multi-symbol overlay charts.
+        normalize_aligned_series(&mut aligned, visible_start);
+        if let Some(primary_basis) = self.candles.get(visible_start).map(|c| c.close) {
+            rebase_normalized_series_to_primary_price(&mut aligned, primary_basis);
+        }
+
+        aligned
+            .into_iter()
+            .zip(&registry.series)
+            .map(|(a, s)| PlotSeries {
+                id: s.id.clone(),
+                name: s.name.clone(),
+                pane: PaneId::Price,
+                visible: s.visible,
+                primitives: vec![PlotPrimitive::Line {
+                    values: a.values,
+                    style: crate::plots::model::LineStyle {
+                        color: s.color.clone(),
+                        width: 1.5,
+                        pattern: LinePattern::Solid,
+                    },
+                }],
+            })
+            .collect()
+    }
+}
+
+fn build_compare_readout_commands(
+    series: &[PlotSeries],
+    layout: &ChartLayout,
+    index: usize,
+    primary_basis: Option<f64>,
+) -> Vec<DrawCommand> {
+    let mut out = Vec::new();
+    let registry_prefix = "compare-";
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut colors: Vec<String> = Vec::new();
+
+    for s in series {
+        if !s.visible || s.pane != PaneId::Price || !s.id.starts_with(registry_prefix) {
+            continue;
+        }
+
+        if let Some(value) = series_value_at_index(s, index) {
+            if let Some(basis) = primary_basis.filter(|b| b.abs() > 1e-9) {
+                let pct = ((value / basis) - 1.0) * 100.0;
+                lines.push(format!("{}: {:.2}%", s.name, pct));
+            } else {
+                lines.push(format!("{}: {:.2}", s.name, value));
+            }
+            // Extract color from first primitive
+            if let Some(PlotPrimitive::Line { style, .. }) = s.primitives.first() {
+                colors.push(style.color.clone());
+            } else {
+                colors.push("#ffffff".to_string());
+            }
+        }
+    }
+
+    for (i, (text, color)) in lines.into_iter().zip(colors).enumerate() {
+        out.push(DrawCommand::Text {
+            pos: Point {
+                x: layout.plot.x + 8.0,
+                y: layout.plot.y + 28.0 + i as f32 * 12.0,
+            },
+            text,
+            style: TextStyle::css(color, 11.0, TextAlign::Left),
+        });
+    }
+
+    out
 }
 
 fn build_last_close_readout_commands(
@@ -469,7 +602,7 @@ fn build_crosshair_readout_commands(
         style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
     });
 
-    let price_at_cursor = price_at_y(crosshair.y, ps);
+    let price_at_cursor = ps.price_for_y(crosshair.y);
     let price_label_h = 16.0f32;
     let price_label_y = (crosshair.y - price_label_h * 0.5)
         .clamp(layout.y_axis.y, layout.y_axis.bottom() - price_label_h);
@@ -488,7 +621,7 @@ fn build_crosshair_readout_commands(
             x: layout.y_axis.right() - 4.0,
             y: price_label_y + 12.0,
         },
-        text: format!("{:.2}", price_at_cursor),
+        text: format_axis_value_label(price_at_cursor, ps.mode, ps.baseline),
         style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Right),
     });
 
@@ -521,6 +654,21 @@ fn build_crosshair_readout_commands(
     });
 
     Some(out)
+}
+
+fn format_axis_value_label(
+    value: f64,
+    mode: crate::scale::PriceAxisMode,
+    baseline: Option<f64>,
+) -> String {
+    match mode {
+        crate::scale::PriceAxisMode::Percent => {
+            let base = baseline.unwrap_or(1.0).max(1e-9);
+            let pct = ((value / base) - 1.0) * 100.0;
+            PercentFormatter { decimals: 2 }.format_value(pct)
+        }
+        _ => PriceFormatter { decimals: 2 }.format_value(value),
+    }
 }
 
 fn build_non_price_pane_readout_commands(
@@ -628,13 +776,13 @@ fn build_dotted_line(from: Point, to: Point, width: f32, color: ColorToken) -> V
     out
 }
 
-fn apply_y_zoom(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
-    let center = (min + max) * 0.5;
-    let half = ((max - min) * 0.5).max(1e-9);
-    let zoomed_half = half / zoom_factor.max(1e-6) as f64;
-    let pan_delta = zoomed_half * pan_factor as f64;
-    (
-        center - zoomed_half - pan_delta,
-        center + zoomed_half - pan_delta,
-    )
+fn apply_y_zoom(
+    min: f64,
+    max: f64,
+    zoom_factor: f32,
+    pan_factor: f32,
+    mode: crate::scale::PriceAxisMode,
+    baseline: Option<f64>,
+) -> (f64, f64) {
+    crate::scale::apply_axis_zoom_pan(min, max, zoom_factor, pan_factor, mode, baseline)
 }

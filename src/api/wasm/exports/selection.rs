@@ -23,7 +23,7 @@ impl WasmChart {
                 }),
         );
 
-        let series = self
+        let mut series: Vec<SeriesTreeState> = self
             .chart
             .plot_series_state()
             .into_iter()
@@ -35,6 +35,20 @@ impl WasmChart {
                 deleted: item.deleted,
             })
             .collect();
+
+        series.extend(
+            self.chart
+                .compare_registry()
+                .series
+                .iter()
+                .map(|s| SeriesTreeState {
+                    id: s.id.clone(),
+                    name: s.name.clone(),
+                    pane_id: "price".to_string(),
+                    visible: s.visible,
+                    deleted: false,
+                }),
+        );
 
         let drawings = self
             .chart
