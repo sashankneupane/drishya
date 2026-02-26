@@ -58,6 +58,8 @@ impl WasmChart {
     ) -> Result<(), JsValue> {
         validate_snapshot(&snapshot, &options).map_err(|e| JsValue::from_str(&e))?;
         let state = snapshot.chart_state;
+        // Deterministic restore order prevents visual/state mismatches:
+        // appearance -> panes/layout -> viewport -> drawings -> selection.
         if options.appearance {
             self.chart
                 .restore_appearance_snapshot(&state.appearance)

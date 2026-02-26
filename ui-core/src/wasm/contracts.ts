@@ -156,6 +156,14 @@ export interface SelectionSnapshot {
   cursor_mode?: string | null;
 }
 
+export interface RestoreChartStateOptions {
+  appearance?: boolean;
+  panes?: boolean;
+  viewport?: boolean;
+  drawings?: boolean;
+  selection?: boolean;
+}
+
 export type CursorMode = "crosshair" | "dot" | "normal";
 
 export interface WasmChartLike {

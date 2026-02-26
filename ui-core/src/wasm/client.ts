@@ -6,6 +6,7 @@ import type {
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
+  RestoreChartStateOptions,
   WasmChartLike
 } from "./contracts";
 
@@ -223,6 +224,14 @@ export class DrishyaChartClient {
 
   importChartStateJson(json: string): void {
     this.wasm.restore_chart_state_json?.(json);
+  }
+
+  importChartStatePartial(snapshot: ChartStateSnapshot, options: RestoreChartStateOptions): void {
+    this.wasm.restore_chart_state_partial_json?.(JSON.stringify(snapshot), JSON.stringify(options));
+  }
+
+  importChartStatePartialJson(json: string, options: RestoreChartStateOptions): void {
+    this.wasm.restore_chart_state_partial_json?.(json, JSON.stringify(options));
   }
 
   paneLayouts(): PaneLayout[] {
