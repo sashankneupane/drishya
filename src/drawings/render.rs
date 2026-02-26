@@ -753,9 +753,9 @@ pub fn build_drawing_commands(
                     {
                         let text_color = d.style().stroke_color.as_deref().unwrap_or("#e5e7eb");
                         let size = d.style().font_size.unwrap_or(14.0);
-                        let bg_color = d.style().fill_color.as_ref().and_then(|c| {
+                        let bg_color = d.style().fill_color.as_ref().map(|c| {
                             let alpha = d.style().fill_opacity.unwrap_or(0.9);
-                            Some(color_with_opacity(c, alpha))
+                            color_with_opacity(c, alpha)
                         });
                         out.push(DrawCommand::PushClip { rect: price_pane });
                         if let Some(ref bg) = bg_color {

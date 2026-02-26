@@ -390,14 +390,14 @@ impl WasmChart {
             self.chart.set_drawing_stroke_width(drawing_id, v);
         }
         if obj.contains_key("stroke_type") {
-            let v = obj
-                .get("stroke_type")
-                .and_then(|x| x.as_str())
-                .and_then(|s| match s.trim().to_ascii_lowercase().as_str() {
-                    "dotted" => Some(StrokeType::Dotted),
-                    "dashed" => Some(StrokeType::Dashed),
-                    "solid" | _ => Some(StrokeType::Solid),
-                });
+            let v = obj.get("stroke_type").and_then(|x| x.as_str()).map(|s| {
+                match s.trim().to_ascii_lowercase().as_str() {
+                    "dotted" => StrokeType::Dotted,
+                    "dashed" => StrokeType::Dashed,
+                    "solid" => StrokeType::Solid,
+                    _ => StrokeType::Solid,
+                }
+            });
             self.chart.set_drawing_stroke_type(drawing_id, v);
         }
         if obj.contains_key("locked") {

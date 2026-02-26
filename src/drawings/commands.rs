@@ -412,10 +412,8 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             DrawingCommandResult::Updated
         }
         DrawingCommand::SetDrawingTextContent { id, text } => {
-            if let Some(d) = store.drawing_mut(id) {
-                if let crate::drawings::types::Drawing::Text(t) = d {
-                    t.text = text;
-                }
+            if let Some(crate::drawings::types::Drawing::Text(t)) = store.drawing_mut(id) {
+                t.text = text;
             }
             DrawingCommandResult::Updated
         }
