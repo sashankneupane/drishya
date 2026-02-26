@@ -38,7 +38,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const controller = new WorkspaceController({
     theme: options.initialTheme,
-    activeTool: options.initialTool
+    activeTool: "select"
   });
 
   // root element fills host completely and hides any overflow
@@ -104,10 +104,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           controller.setTheme(saved.theme);
           chart.setTheme(saved.theme);
         }
-        if (saved.activeTool) {
-          controller.setActiveTool(saved.activeTool as DrawingToolId);
-          chart.setDrawingTool(saved.activeTool);
-        }
         if (saved.cursorMode) {
           controller.setCursorMode(saved.cursorMode as "crosshair" | "dot" | "normal");
           chart.setCursorMode(saved.cursorMode);
@@ -137,7 +133,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         try {
           const state: PersistedWorkspaceState = {
             theme: controller.getState().theme,
-            activeTool: controller.getState().activeTool,
+            // Do not persist activeTool for the demo app; always restore as "select"
             cursorMode: controller.getState().cursorMode,
             isObjectTreeOpen: controller.getState().isObjectTreeOpen,
             isLeftStripOpen: controller.getState().isLeftStripOpen,
@@ -373,7 +369,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         controller.setCursorMode(m as any);
         if (m === "normal") controller.setActiveTool("select");
       } else {
-        controller.setActiveTool(mode);
+        controller.setActiveTool(mode, { force: true });
       }
       return;
     }
@@ -390,7 +386,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       }
       chart.clearSelectedDrawing();
       chart.clearSelectedSeries();
-      controller.setActiveTool("select");
+        controller.setActiveTool("select", { force: true });
       draw();
       return;
     }

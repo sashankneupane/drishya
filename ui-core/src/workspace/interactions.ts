@@ -328,7 +328,11 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     event.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    chart.zoomX(x, event.deltaY > 0 ? 1.1 : 0.9);
+    // Dampen wheel/trackpad zoom so pinch is less aggressive on high-resolution touchpads.
+    const delta = Math.max(-120, Math.min(120, event.deltaY));
+    const sensitivity = event.ctrlKey ? 0.00065 : 0.00095;
+    const factor = Math.exp(delta * sensitivity);
+    chart.zoomX(x, Math.max(0.96, Math.min(1.04, factor)));
     redraw();
   };
 

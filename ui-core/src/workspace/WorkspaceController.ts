@@ -57,8 +57,9 @@ export class WorkspaceController {
         return nextTheme;
     }
 
-    setActiveTool(tool: DrawingToolId): void {
-        if (this.state.activeTool === tool) return;
+    setActiveTool(tool: DrawingToolId, options?: { force?: boolean }): void {
+        const force = options?.force === true;
+        if (!force && this.state.activeTool === tool) return;
         this.state.activeTool = tool;
         this.notify();
     }
