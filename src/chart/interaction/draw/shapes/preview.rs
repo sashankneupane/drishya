@@ -1,7 +1,7 @@
 use crate::{
     drawings::shape::fib as fib_shape, drawings::shape::position as position_shape,
-    drawings::shape::ray as ray_shape, drawings::shape::rectangle as rectangle_shape,
-    drawings::types::Drawing, types::Point,
+    drawings::shape::range as range_shape, drawings::shape::ray as ray_shape,
+    drawings::shape::rectangle as rectangle_shape, drawings::types::Drawing, types::Point,
 };
 
 use crate::chart::Chart;
@@ -21,6 +21,20 @@ impl Chart {
                 end_index,
                 end_price,
             )),
+            crate::chart::tools::DrawingToolMode::PriceRange => Some(
+                range_shape::price_range_preview(start_index, start_price, end_index, end_price),
+            ),
+            crate::chart::tools::DrawingToolMode::TimeRange => Some(
+                range_shape::time_range_preview(start_index, start_price, end_index, end_price),
+            ),
+            crate::chart::tools::DrawingToolMode::DateTimeRange => {
+                Some(range_shape::date_time_range_preview(
+                    start_index,
+                    start_price,
+                    end_index,
+                    end_price,
+                ))
+            }
             crate::chart::tools::DrawingToolMode::FibRetracement => Some(fib_shape::preview(
                 start_index,
                 start_price,
@@ -47,6 +61,15 @@ impl Chart {
         match self.drawing_tool_mode {
             crate::chart::tools::DrawingToolMode::Rectangle => {
                 self.add_rectangle_from_pixels(start.x, start.y, end.x, end.y)
+            }
+            crate::chart::tools::DrawingToolMode::PriceRange => {
+                self.add_price_range_from_pixels(start.x, start.y, end.x, end.y)
+            }
+            crate::chart::tools::DrawingToolMode::TimeRange => {
+                self.add_time_range_from_pixels(start.x, start.y, end.x, end.y)
+            }
+            crate::chart::tools::DrawingToolMode::DateTimeRange => {
+                self.add_date_time_range_from_pixels(start.x, start.y, end.x, end.y)
             }
             crate::chart::tools::DrawingToolMode::FibRetracement => {
                 self.add_fib_retracement_from_pixels(start.x, start.y, end.x, end.y)

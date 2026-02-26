@@ -202,6 +202,87 @@ impl Chart {
                         paint_order: paint_order as u32,
                     }));
                 }
+                Drawing::PriceRange(r) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+                    let left_x =
+                        vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let right_x =
+                        vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w.max(1.0));
+                    let top_y = ps.y_for_price(r.top_price);
+                    let bottom_y = ps.y_for_price(r.bottom_price);
+
+                    primitives.push(HitPrimitive::Rect(RectPrimitive {
+                        primitive_id: r.id,
+                        pane_id: PaneId::Price,
+                        rect: crate::types::Rect {
+                            x: left_x.min(right_x),
+                            y: top_y.min(bottom_y),
+                            w: (right_x - left_x).abs().max(1.0),
+                            h: (bottom_y - top_y).abs().max(1.0),
+                        },
+                        paint_order: paint_order as u32,
+                    }));
+                }
+                Drawing::TimeRange(r) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+                    let left_x =
+                        vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let right_x =
+                        vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w.max(1.0));
+                    let top_y = ps.y_for_price(r.top_price);
+                    let bottom_y = ps.y_for_price(r.bottom_price);
+
+                    primitives.push(HitPrimitive::Rect(RectPrimitive {
+                        primitive_id: r.id,
+                        pane_id: PaneId::Price,
+                        rect: crate::types::Rect {
+                            x: left_x.min(right_x),
+                            y: top_y.min(bottom_y),
+                            w: (right_x - left_x).abs().max(1.0),
+                            h: (bottom_y - top_y).abs().max(1.0),
+                        },
+                        paint_order: paint_order as u32,
+                    }));
+                }
+                Drawing::DateTimeRange(r) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+                    let left_x =
+                        vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w.max(1.0));
+                    let right_x =
+                        vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w.max(1.0));
+                    let top_y = ps.y_for_price(r.top_price);
+                    let bottom_y = ps.y_for_price(r.bottom_price);
+
+                    primitives.push(HitPrimitive::Rect(RectPrimitive {
+                        primitive_id: r.id,
+                        pane_id: PaneId::Price,
+                        rect: crate::types::Rect {
+                            x: left_x.min(right_x),
+                            y: top_y.min(bottom_y),
+                            w: (right_x - left_x).abs().max(1.0),
+                            h: (bottom_y - top_y).abs().max(1.0),
+                        },
+                        paint_order: paint_order as u32,
+                    }));
+                }
                 Drawing::LongPosition(p) => {
                     if !matches!(target_pane, PaneId::Price) {
                         continue;
