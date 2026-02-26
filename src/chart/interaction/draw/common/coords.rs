@@ -62,9 +62,13 @@ impl Chart {
 }
 
 fn apply_price_pane_y_zoom(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
-    let span = (max - min).abs().max(1e-9);
-    let zoomed_span = span * zoom_factor.max(0.01) as f64;
-    let center = (max + min) * 0.5 + pan_factor as f64 * zoomed_span;
-    let half = zoomed_span * 0.5;
-    (center - half, center + half)
+    // Keep inverse coordinate mapping identical to the renderer's Y zoom logic.
+    let center = (min + max) * 0.5;
+    let half = ((max - min) * 0.5).max(1e-9);
+    let zoomed_half = half / zoom_factor.max(1e-6) as f64;
+    let pan_delta = zoomed_half * pan_factor as f64;
+    (
+        center - zoomed_half - pan_delta,
+        center + zoomed_half - pan_delta,
+    )
 }

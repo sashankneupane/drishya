@@ -89,6 +89,10 @@ impl Chart {
             .into_iter()
             .enumerate()
         {
+            if self.drawings.drawing_effective_locked(drawing.id()) {
+                continue;
+            }
+
             match drawing {
                 Drawing::HorizontalLine(h) => {
                     if !matches!(target_pane, PaneId::Price) {
@@ -479,6 +483,64 @@ impl Chart {
                         paint_order: paint_order as u32,
                     }));
                 }
+                Drawing::BrushStroke(s) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+
+                    for i in 0..s.points.len().saturating_sub(1) {
+                        let p1 = &s.points[i];
+                        let p2 = &s.points[i + 1];
+
+                        let x1 =
+                            vp.world_x_to_pixel_x(p1.index, price_pane.x, price_pane.w.max(1.0));
+                        let y1 = ps.y_for_price(p1.price);
+                        let x2 =
+                            vp.world_x_to_pixel_x(p2.index, price_pane.x, price_pane.w.max(1.0));
+                        let y2 = ps.y_for_price(p2.price);
+
+                        primitives.push(HitPrimitive::Line(LinePrimitive {
+                            primitive_id: s.id,
+                            pane_id: PaneId::Price,
+                            from: Point { x: x1, y: y1 },
+                            to: Point { x: x2, y: y2 },
+                            paint_order: paint_order as u32,
+                            segment_id: i as u32,
+                        }));
+                    }
+                }
+                Drawing::HighlightStroke(s) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+
+                    for i in 0..s.points.len().saturating_sub(1) {
+                        let p1 = &s.points[i];
+                        let p2 = &s.points[i + 1];
+
+                        let x1 =
+                            vp.world_x_to_pixel_x(p1.index, price_pane.x, price_pane.w.max(1.0));
+                        let y1 = ps.y_for_price(p1.price);
+                        let x2 =
+                            vp.world_x_to_pixel_x(p2.index, price_pane.x, price_pane.w.max(1.0));
+                        let y2 = ps.y_for_price(p2.price);
+
+                        primitives.push(HitPrimitive::Line(LinePrimitive {
+                            primitive_id: s.id,
+                            pane_id: PaneId::Price,
+                            from: Point { x: x1, y: y1 },
+                            to: Point { x: x2, y: y2 },
+                            paint_order: paint_order as u32,
+                            segment_id: i as u32,
+                        }));
+                    }
+                }
             }
         }
 
@@ -495,9 +557,12 @@ impl Chart {
 }
 
 fn apply_y_zoom(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
-    let span = (max - min).abs().max(1e-9);
-    let zoomed_span = span * zoom_factor.max(0.01) as f64;
-    let center = (max + min) * 0.5 + pan_factor as f64 * zoomed_span;
-    let half = zoomed_span * 0.5;
-    (center - half, center + half)
+    let center = (min + max) * 0.5;
+    let half = ((max - min) * 0.5).max(1e-9);
+    let zoomed_half = half / zoom_factor.max(1e-6) as f64;
+    let pan_delta = zoomed_half * pan_factor as f64;
+    (
+        center - zoomed_half - pan_delta,
+        center + zoomed_half - pan_delta,
+    )
 }
