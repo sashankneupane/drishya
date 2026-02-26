@@ -101,7 +101,7 @@ impl Default for NumericYTickProvider {
     fn default() -> Self {
         Self {
             min_label_spacing_px: 22.0,
-            target_tick_spacing_px: 64.0,
+            target_tick_spacing_px: 56.0,
             max_ticks: 12,
         }
     }
@@ -168,7 +168,7 @@ pub struct DensityXTickProvider {
 impl Default for DensityXTickProvider {
     fn default() -> Self {
         Self {
-            min_label_spacing_px: 82.0,
+            min_label_spacing_px: 72.0,
         }
     }
 }
@@ -186,25 +186,31 @@ impl DensityXTickProvider {
         }
 
         let n = candles.len();
-        let max_labels = ((ts.pane.w / self.min_label_spacing_px).floor() as usize)
+        // Scale minimum spacing with viewport width to avoid sparse labels on large panes
+        // and overcrowding on narrow panes.
+        let adaptive_spacing = (ts.pane.w / 14.0).clamp(self.min_label_spacing_px, 110.0);
+        let max_labels = ((ts.pane.w / adaptive_spacing).floor() as usize)
             .max(2)
             .min(n);
 
-        let step = if n <= max_labels {
-            1
+        let raw_step = if n <= max_labels {
+            1.0
         } else {
-            ((n - 1) as f32 / (max_labels - 1) as f32).ceil() as usize
-        }
-        .max(1);
+            (n - 1) as f32 / (max_labels - 1) as f32
+        };
+        let step = nice_index_step(raw_step).max(1);
+
+        // Align to global index modulo to keep tick/grid positions stable while panning.
+        let local_start = (step - (visible_start % step)) % step;
 
         let mut ticks = Vec::new();
-        let mut idx = 0usize;
+        let mut idx = local_start;
         let mut last_x = f32::NEG_INFINITY;
 
         while idx < n {
             let global_idx = visible_start + idx;
             let x = ts.x_for_global_index(global_idx);
-            if (x - last_x).abs() >= self.min_label_spacing_px - 0.5 {
+            if (x - last_x).abs() >= adaptive_spacing - 0.5 {
                 let timestamp = candles[idx].ts;
                 ticks.push(XTick {
                     x,
@@ -221,13 +227,30 @@ impl DensityXTickProvider {
         if ticks.last().map(|t| t.index) != Some(last_global) {
             let x = ts.x_for_global_index(last_global);
             let timestamp = candles[n - 1].ts;
-            if (x - last_x).abs() >= self.min_label_spacing_px * 0.45 {
+            if (x - last_x).abs() >= adaptive_spacing * 0.45 {
                 ticks.push(XTick {
                     x,
                     index: last_global,
                     timestamp,
                     label: formatter.format_time(timestamp),
                 });
+            }
+        }
+
+        let first_global = visible_start;
+        if ticks.first().map(|t| t.index) != Some(first_global) {
+            let x = ts.x_for_global_index(first_global);
+            let timestamp = candles[0].ts;
+            if ticks.is_empty() || (ticks[0].x - x).abs() >= adaptive_spacing * 0.45 {
+                ticks.insert(
+                    0,
+                    XTick {
+                        x,
+                        index: first_global,
+                        timestamp,
+                        label: formatter.format_time(timestamp),
+                    },
+                );
             }
         }
 
@@ -255,6 +278,25 @@ fn nice_step(raw_step: f64) -> f64 {
     };
 
     nice_fraction * scale
+}
+
+fn nice_index_step(raw_step: f32) -> usize {
+    if !raw_step.is_finite() || raw_step <= 1.0 {
+        return 1;
+    }
+
+    const STEPS: &[usize] = &[
+        1, 2, 3, 5, 8, 10, 12, 15, 20, 24, 30, 40, 50, 60, 80, 100, 120, 160, 200, 250, 320, 400,
+        500,
+    ];
+
+    let needed = raw_step.ceil() as usize;
+    for step in STEPS {
+        if *step >= needed {
+            return *step;
+        }
+    }
+    needed
 }
 
 fn unix_to_utc_components(timestamp: i64) -> (i32, u32, u32, u32, u32) {
