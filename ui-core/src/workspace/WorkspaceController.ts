@@ -8,6 +8,7 @@ export interface WorkspaceState {
     isObjectTreeOpen: boolean;
     isLeftStripOpen: boolean;
     cursorMode: CursorMode;
+    priceAxisMode: "linear" | "log" | "percent";
 }
 
 export type WorkspaceListener = (state: WorkspaceState) => void;
@@ -27,7 +28,8 @@ export class WorkspaceController {
             activeTool: initial.activeTool ?? "select",
             isObjectTreeOpen: initial.isObjectTreeOpen ?? true,
             isLeftStripOpen: initial.isLeftStripOpen ?? true,
-            cursorMode: initial.cursorMode ?? "crosshair"
+            cursorMode: initial.cursorMode ?? "crosshair",
+            priceAxisMode: initial.priceAxisMode ?? "linear"
         };
     }
 
@@ -79,6 +81,12 @@ export class WorkspaceController {
     setCursorMode(mode: CursorMode): void {
         if (this.state.cursorMode === mode) return;
         this.state.cursorMode = mode;
+        this.notify();
+    }
+
+    setPriceAxisMode(mode: "linear" | "log" | "percent"): void {
+        if (this.state.priceAxisMode === mode) return;
+        this.state.priceAxisMode = mode;
         this.notify();
     }
 }

@@ -31,6 +31,7 @@ export interface CreateChartWorkspaceOptions {
     selectedTimeframe?: string;
     onSymbolChange?: (symbol: string) => void | Promise<void>;
     onTimeframeChange?: (timeframe: string) => void | Promise<void>;
+    onCompareSymbol?: (symbol: string) => void | Promise<void>;
   };
 }
 

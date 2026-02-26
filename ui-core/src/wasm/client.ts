@@ -402,10 +402,19 @@ export class DrishyaChartClient {
     }
 
     if (action.kind === "series") {
+      const isCompare = action.id.startsWith("compare-");
       if (action.type === "delete") {
-        this.wasm.delete_series?.(action.id);
+        if (isCompare) {
+          this.wasm.remove_compare_series?.(action.id);
+        } else {
+          this.wasm.delete_series?.(action.id);
+        }
       } else {
-        this.wasm.set_series_visible?.(action.id, action.visible);
+        if (isCompare) {
+          this.wasm.set_compare_series_visible?.(action.id, action.visible);
+        } else {
+          this.wasm.set_series_visible?.(action.id, action.visible);
+        }
       }
       return;
     }
