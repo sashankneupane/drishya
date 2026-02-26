@@ -1,9 +1,7 @@
-use crate::{
-    drawings::commands::execute_command,
-    drawings::shape::text as text_shape,
-    scale::PriceScale,
-};
 use crate::chart::Chart;
+use crate::{
+    drawings::commands::execute_command, drawings::shape::text as text_shape, scale::PriceScale,
+};
 
 impl Chart {
     pub fn add_text_at(&mut self, x_pixels: f32, y_pixels: f32) {

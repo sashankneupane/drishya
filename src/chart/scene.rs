@@ -366,7 +366,7 @@ impl Chart {
         if visible.is_empty() {
             return None;
         }
-        let (min_price, max_price, _) = self.compute_visible_bounds(&visible);
+        let (min_price, max_price, _) = self.compute_visible_bounds(visible);
         let (min_price, max_price) = apply_y_zoom(
             min_price,
             max_price,
@@ -385,7 +385,12 @@ impl Chart {
         let text_width = (t.text.chars().count() as f32 * size * 0.6).max(0.0);
         let caret_x = x + 4.0 + text_width;
         let caret_y = y - size * 0.5;
-        let color = t.style.stroke_color.as_deref().unwrap_or("#e5e7eb").to_string();
+        let color = t
+            .style
+            .stroke_color
+            .as_deref()
+            .unwrap_or("#e5e7eb")
+            .to_string();
 
         Some((caret_x, caret_y, size, color))
     }

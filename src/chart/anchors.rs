@@ -117,10 +117,22 @@ pub(crate) fn anchor_positions(
             let theta = (y2 - y1).atan2(x2 - x1);
             let (sin_t, cos_t) = theta.sin_cos();
             vec![
-                Point { x: cx - ry * sin_t, y: cy + ry * cos_t }, // 0 minor+
-                Point { x: cx + rx * cos_t, y: cy + rx * sin_t }, // 1 major+ (p2 side)
-                Point { x: cx + ry * sin_t, y: cy - ry * cos_t }, // 2 minor-
-                Point { x: cx - rx * cos_t, y: cy - rx * sin_t }, // 3 major- (p1 side)
+                Point {
+                    x: cx - ry * sin_t,
+                    y: cy + ry * cos_t,
+                }, // 0 minor+
+                Point {
+                    x: cx + rx * cos_t,
+                    y: cy + rx * sin_t,
+                }, // 1 major+ (p2 side)
+                Point {
+                    x: cx + ry * sin_t,
+                    y: cy - ry * cos_t,
+                }, // 2 minor-
+                Point {
+                    x: cx - rx * cos_t,
+                    y: cy - rx * sin_t,
+                }, // 3 major- (p1 side)
             ]
         }
 
@@ -413,8 +425,12 @@ impl Chart {
                 // Snap p3 onto the correct perpendicular direction (-sin t, cos t)
                 let new_x3 = cx - new_ry * sin_t;
                 let new_y3 = cy + new_ry * cos_t;
-                let Some((nx, np)) = self.drawing_world_price_at(new_x3, new_y3) else { return; };
-                let Some(Drawing::Ellipse(e)) = self.drawings.drawing_mut(id) else { return; };
+                let Some((nx, np)) = self.drawing_world_price_at(new_x3, new_y3) else {
+                    return;
+                };
+                let Some(Drawing::Ellipse(e)) = self.drawings.drawing_mut(id) else {
+                    return;
+                };
                 e.p3_index = nx;
                 e.p3_price = np;
             }
