@@ -1,6 +1,8 @@
 import type { DrawingToolId } from "../toolbar/model.js";
+import type { ChartAppearanceConfig } from "../wasm/contracts.js";
 import { DrishyaChartClient } from "../wasm/client.js";
 import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "./constants.js";
+import { createDrawingConfigPanel } from "./components/DrawingConfigPanel.js";
 import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
@@ -13,6 +15,17 @@ import type {
 
 const WORKSPACE_STYLE_LINK_ID = "drishya-workspace-styles";
 
+interface PersistedWorkspaceState {
+  theme?: "dark" | "light";
+  appearance?: ChartAppearanceConfig;
+  paneState?: string | null;
+  candleStyle?: string;
+  activeTool?: string;
+  cursorMode?: string;
+  isObjectTreeOpen?: boolean;
+  isLeftStripOpen?: boolean;
+}
+
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
   const { host, createWasmChart } = options;
   if (options.injectStyles !== false) {
@@ -20,6 +33,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
   ensureHostHasViewport(host);
   host.innerHTML = "";
+
+  const persistKey = options.persistKey ?? null;
 
   const controller = new WorkspaceController({
     theme: options.initialTheme,
@@ -43,6 +58,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   canvas.id = canvasId;
   stage.appendChild(canvas);
 
+  const configPanelOverlay = document.createElement("div");
+  configPanelOverlay.className = "absolute inset-0 pointer-events-none z-40";
+  stage.appendChild(configPanelOverlay);
+
   // Mount elements to documented DOM before WASM initialization
   mainRow.appendChild(stage);
   root.appendChild(mainRow);
@@ -62,12 +81,74 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
   applyAppearance(DEFAULT_APPEARANCE_CONFIG);
 
+  // Restore persisted state before building UI
+  if (persistKey && typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(persistKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as PersistedWorkspaceState;
+        if (saved.theme) {
+          controller.setTheme(saved.theme);
+          chart.setTheme(saved.theme);
+        }
+        if (saved.activeTool) {
+          controller.setActiveTool(saved.activeTool as DrawingToolId);
+          chart.setDrawingTool(saved.activeTool);
+        }
+        if (saved.cursorMode) {
+          controller.setCursorMode(saved.cursorMode as "crosshair" | "dot" | "normal");
+          chart.setCursorMode(saved.cursorMode);
+        }
+        if (saved.isObjectTreeOpen !== undefined) controller.setObjectTreeOpen(saved.isObjectTreeOpen);
+        if (saved.isLeftStripOpen !== undefined) controller.setLeftStripOpen(saved.isLeftStripOpen);
+        if (saved.appearance) applyAppearance(saved.appearance);
+        const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
+        if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
+          chart.setCandleStyle(validStyle);
+        }
+        if (saved.paneState) chart.restorePaneStateJson(saved.paneState);
+      }
+    } catch {
+      // ignore corrupt or incompatible persisted data
+    }
+  }
+
+  const savePersistedState = (() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const DEBOUNCE_MS = 400;
+    return () => {
+      if (!persistKey || typeof localStorage === "undefined") return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        try {
+          const state: PersistedWorkspaceState = {
+            theme: controller.getState().theme,
+            activeTool: controller.getState().activeTool,
+            cursorMode: controller.getState().cursorMode,
+            isObjectTreeOpen: controller.getState().isObjectTreeOpen,
+            isLeftStripOpen: controller.getState().isLeftStripOpen,
+            candleStyle: chart.candleStyle(),
+            appearance: chart.getAppearanceConfig() ?? undefined,
+            paneState: chart.getPaneStateJson()
+          };
+          localStorage.setItem(persistKey, JSON.stringify(state));
+        } catch {
+          // ignore quota or parse errors
+        }
+      }, DEBOUNCE_MS);
+    };
+  })();
+
   // top control strip
   const topHandle = createTopStrip({
     chart,
     controller,
     getAppearanceConfig: () => chart.getAppearanceConfig(),
-    applyAppearanceConfig: (cfg) => applyAppearanceConfig(cfg),
+    applyAppearanceConfig: (cfg) => {
+      applyAppearanceConfig(cfg);
+      savePersistedState();
+    },
     symbols: options.marketControls?.symbols ?? [],
     timeframes: options.marketControls?.timeframes ?? [],
     selectedSymbol: options.marketControls?.selectedSymbol,
@@ -77,6 +158,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     onCandleTypeChange: (mode) => {
       chart.setCandleStyle(mode);
       chart.draw();
+      savePersistedState();
     },
     onLayout: () => { },
     onMutate: () => draw()
@@ -123,9 +205,49 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     controller.setActiveTool("select");
   };
 
+  let configPanelEl: HTMLElement | null = null;
+  let configPanelDrawingId: number | null = null;
+
+  const refreshConfigPanel = () => {
+    const id = chart.selectedDrawingId();
+    if (id === null) {
+      if (configPanelEl) {
+        configPanelEl.remove();
+        configPanelEl = null;
+        configPanelDrawingId = null;
+      }
+      return;
+    }
+    const config = chart.getSelectedDrawingConfig();
+    if (!config) {
+      if (configPanelEl) {
+        configPanelEl.remove();
+        configPanelEl = null;
+        configPanelDrawingId = null;
+      }
+      return;
+    }
+    if (configPanelEl && configPanelDrawingId === id) return;
+    if (configPanelEl) configPanelEl.remove();
+    configPanelEl = createDrawingConfigPanel({
+      chart,
+      drawingId: id,
+      config,
+      onMutate: draw,
+      onClose: () => {
+        chart.clearSelectedDrawing();
+        draw();
+      }
+    });
+    configPanelDrawingId = id;
+    configPanelOverlay.appendChild(configPanelEl);
+  };
+
   const draw = () => {
     chart.draw();
     treeHandle.refresh();
+    refreshConfigPanel();
+    savePersistedState();
   };
 
   const unbindInteractions = bindWorkspaceInteractions({
@@ -142,6 +264,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chart.setDrawingTool(state.activeTool);
     chart.setCursorMode(state.cursorMode);
     draw();
+    savePersistedState();
   });
 
   // hotkeyToolMap
@@ -258,6 +381,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     toggleTheme: () => controller.toggleTheme(),
     refreshObjectTree: treeHandle.refresh,
     destroy: () => {
+      if (configPanelEl) configPanelEl.remove();
       unsubscribe();
       topHandle.destroy();
       stripHandle.destroy();

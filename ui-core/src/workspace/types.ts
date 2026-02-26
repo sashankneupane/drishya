@@ -1,6 +1,6 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
-import type { ChartAppearanceConfig, WasmChartLike } from "../wasm/contracts.js";
+import type { ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../wasm/contracts.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 
 export type WorkspaceTheme = "dark" | "light";
@@ -22,6 +22,8 @@ export interface CreateChartWorkspaceOptions {
   initialTheme?: WorkspaceTheme;
   initialTool?: DrawingToolId;
   injectStyles?: boolean;
+  /** When set, workspace state (theme, appearance, pane layout, candle style, UI state) is saved to localStorage and restored on load */
+  persistKey?: string;
   marketControls?: {
     symbols: readonly string[];
     timeframes: readonly string[];
@@ -35,6 +37,12 @@ export interface CreateChartWorkspaceOptions {
 /** Workspace appearance config state (mirrors wasm). */
 export interface WorkspaceAppearanceState {
   config: ChartAppearanceConfig;
+}
+
+/** Selected drawing config state (shown in floating panel when a drawing is selected). */
+export interface SelectedDrawingConfigState {
+  drawingId: number;
+  config: DrawingConfig;
 }
 
 export interface ChartWorkspaceHandle {
