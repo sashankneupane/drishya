@@ -203,6 +203,9 @@ export class DrishyaChartClient {
   }
 
   exportChartState(): ChartStateSnapshot {
+    // Consumer usage:
+    // const snapshot = client.exportChartState()
+    // localStorage.setItem("chart:snapshot", JSON.stringify(snapshot))
     const raw = this.wasm.chart_state_snapshot_json?.();
     const parsed = raw ? safeJsonParse<ChartStateSnapshot>(raw) : null;
     if (!parsed) {
@@ -212,6 +215,9 @@ export class DrishyaChartClient {
   }
 
   importChartState(snapshot: ChartStateSnapshot): void {
+    // Consumer usage:
+    // const raw = localStorage.getItem("chart:snapshot")
+    // if (raw) client.importChartState(JSON.parse(raw))
     this.wasm.restore_chart_state_json?.(JSON.stringify(snapshot));
   }
 
