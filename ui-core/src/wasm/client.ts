@@ -15,7 +15,7 @@ const EMPTY_OBJECT_TREE: ObjectTreeState = {
 };
 
 export class DrishyaChartClient {
-  constructor(private readonly wasm: WasmChartLike) {}
+  constructor(private readonly wasm: WasmChartLike) { }
 
   raw(): WasmChartLike {
     return this.wasm;
@@ -63,6 +63,14 @@ export class DrishyaChartClient {
 
   clearCrosshair(): void {
     this.wasm.clear_crosshair?.();
+  }
+
+  setCursorMode(mode: string): void {
+    this.wasm.set_cursor_mode?.(mode);
+  }
+
+  cursorMode(): string {
+    return this.wasm.cursor_mode?.() ?? "crosshair";
   }
 
   setTheme(theme: string): void {

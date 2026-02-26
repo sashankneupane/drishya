@@ -23,7 +23,9 @@ export type WorkspaceIconName =
   | "close"
   | "chevron-right"
   | "delete"
-  | "search";
+  | "search"
+  | "crosshair"
+  | "dot";
 
 export function makeSvgIcon(name: WorkspaceIconName | string, className = "drishya-icon"): SVGSVGElement {
   const svg = document.createElementNS(NS, "svg");
@@ -65,7 +67,9 @@ export function makeSvgIcon(name: WorkspaceIconName | string, className = "drish
     "close": ["M18 6L6 18", "M6 6l12 12"],
     "chevron-right": ["M9 18l6-6-6-6"],
     "delete": ["M3 6h18", "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2", "M10 11v6", "M14 11v6"],
-    "search": ["M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"]
+    "search": ["M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"],
+    "crosshair": ["M12 2v4", "M12 18v4", "M2 12h4", "M18 12h22", "M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"],
+    "dot": ["M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"]
   };
 
   const ds = icons[name] || [];

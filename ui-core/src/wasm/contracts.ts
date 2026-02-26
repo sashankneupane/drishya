@@ -47,6 +47,8 @@ export interface ObjectTreeState {
   drawings: DrawingTreeState[];
 }
 
+export type CursorMode = "crosshair" | "dot" | "normal";
+
 export interface WasmChartLike {
   resize(width: number, height: number): void;
   draw(): void;
@@ -62,6 +64,8 @@ export interface WasmChartLike {
   candle_style?(): string;
   set_crosshair_at?(x: number, y: number): void;
   clear_crosshair?(): void;
+  set_cursor_mode?(mode: string): void;
+  cursor_mode?(): string;
   clear_drawings?(): void;
   set_drawing_tool_mode?(mode: string): void;
   drawing_tool_mode?(): string;

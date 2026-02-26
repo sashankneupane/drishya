@@ -20,7 +20,7 @@ use crate::{
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
-    types::{Candle, Point},
+    types::{Candle, CursorMode, Point},
 };
 
 use super::Chart;
@@ -261,20 +261,40 @@ impl Chart {
         let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {
             out.push(DrawCommand::PushClip { rect: layout.plot });
-            out.extend(build_dotted_vertical(
-                crosshair.x,
-                layout.plot.y,
-                layout.plot_bottom(),
-                1.0,
-                ColorToken::Crosshair,
-            ));
-            out.extend(build_dotted_horizontal(
-                crosshair.y,
-                layout.plot.x,
-                layout.plot.right(),
-                1.0,
-                ColorToken::Crosshair,
-            ));
+
+            match self.cursor_mode {
+                CursorMode::Crosshair => {
+                    out.extend(build_dotted_vertical(
+                        crosshair.x,
+                        layout.plot.y,
+                        layout.plot_bottom(),
+                        1.0,
+                        ColorToken::Crosshair,
+                    ));
+                    out.extend(build_dotted_horizontal(
+                        crosshair.y,
+                        layout.plot.x,
+                        layout.plot.right(),
+                        1.0,
+                        ColorToken::Crosshair,
+                    ));
+                }
+                CursorMode::Dot => {
+                    out.push(DrawCommand::Rect {
+                        rect: crate::types::Rect {
+                            x: crosshair.x - 2.0,
+                            y: crosshair.y - 2.0,
+                            w: 4.0,
+                            h: 4.0,
+                        },
+                        fill: Some(FillStyle::token(ColorToken::Crosshair)),
+                        stroke: None,
+                    });
+                }
+                CursorMode::Normal => {
+                    // Lines are omitted in Normal mode, labels remain.
+                }
+            }
             out.push(DrawCommand::PopClip);
 
             if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, self.candles.len()) {

@@ -17,6 +17,14 @@ pub struct Candle {
     pub volume: f64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CursorMode {
+    Crosshair,
+    Dot,
+    Normal,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Size {
     pub width: f32,

@@ -22,7 +22,7 @@ use crate::{
     plots::provider::PlotDataProvider,
     render::candles::CandleBodyStyle,
     render::styles::ThemeId,
-    types::{Candle, Point, Size},
+    types::{Candle, CursorMode, Point, Size},
     viewport::Viewport,
 };
 use std::collections::{HashMap, HashSet};
@@ -45,6 +45,7 @@ pub struct Chart {
     pane_y_zoom_factors: HashMap<String, f32>,
     pane_y_pan_factors: HashMap<String, f32>,
     crosshair: Option<Point>,
+    cursor_mode: CursorMode,
     theme: ThemeId,
     candle_body_style: CandleBodyStyle,
     drawing_tool_mode: DrawingToolMode,
@@ -76,6 +77,7 @@ impl Chart {
             pane_y_zoom_factors: HashMap::new(),
             pane_y_pan_factors: HashMap::new(),
             crosshair: None,
+            cursor_mode: CursorMode::Crosshair,
             theme: ThemeId::Dark,
             candle_body_style: CandleBodyStyle::Solid,
             drawing_tool_mode: DrawingToolMode::Select,
@@ -100,6 +102,14 @@ impl Chart {
 
     pub fn candle_body_style(&self) -> CandleBodyStyle {
         self.candle_body_style
+    }
+
+    pub fn set_cursor_mode(&mut self, mode: CursorMode) {
+        self.cursor_mode = mode;
+    }
+
+    pub fn cursor_mode(&self) -> CursorMode {
+        self.cursor_mode
     }
 
     pub(crate) fn pane_y_zoom_factor(&self, pane_id: &PaneId) -> f32 {

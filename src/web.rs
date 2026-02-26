@@ -18,7 +18,7 @@ use crate::{
     indicators::api as indicator_api,
     plots::model::PaneId,
     render::{backends::canvas2d::paint_canvas2d, candles::CandleBodyStyle, styles::ThemeId},
-    types::Candle,
+    types::{Candle, CursorMode},
 };
 use serde::Serialize;
 
@@ -193,6 +193,26 @@ impl WasmChart {
             DrawingToolMode::FibRetracement => "fib",
             DrawingToolMode::LongPosition => "long",
             DrawingToolMode::ShortPosition => "short",
+        }
+        .to_string()
+    }
+
+    /// Sets cursor mode (`crosshair` | `dot` | `normal`).
+    pub fn set_cursor_mode(&mut self, mode: &str) {
+        let mode = match mode.to_ascii_lowercase().as_str() {
+            "dot" => CursorMode::Dot,
+            "normal" => CursorMode::Normal,
+            _ => CursorMode::Crosshair,
+        };
+        self.chart.set_cursor_mode(mode);
+    }
+
+    /// Returns current cursor mode label.
+    pub fn cursor_mode(&self) -> String {
+        match self.chart.cursor_mode() {
+            CursorMode::Crosshair => "crosshair",
+            CursorMode::Dot => "dot",
+            CursorMode::Normal => "normal",
         }
         .to_string()
     }
