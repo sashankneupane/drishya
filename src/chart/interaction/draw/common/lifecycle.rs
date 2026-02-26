@@ -87,7 +87,10 @@ impl Chart {
         let c = color.map(|s| s.to_string());
         execute_command(
             &mut self.drawings,
-            DrawingCommand::SetDrawingStrokeColor { id: drawing_id, color: c },
+            DrawingCommand::SetDrawingStrokeColor {
+                id: drawing_id,
+                color: c,
+            },
         );
         self.drawings.drawing(drawing_id).is_some()
     }
@@ -96,7 +99,10 @@ impl Chart {
         let c = color.map(|s| s.to_string());
         execute_command(
             &mut self.drawings,
-            DrawingCommand::SetDrawingFillColor { id: drawing_id, color: c },
+            DrawingCommand::SetDrawingFillColor {
+                id: drawing_id,
+                color: c,
+            },
         );
         self.drawings.drawing(drawing_id).is_some()
     }
@@ -104,7 +110,10 @@ impl Chart {
     pub fn set_drawing_locked(&mut self, drawing_id: u64, locked: bool) -> bool {
         execute_command(
             &mut self.drawings,
-            DrawingCommand::SetDrawingLocked { id: drawing_id, locked },
+            DrawingCommand::SetDrawingLocked {
+                id: drawing_id,
+                locked,
+            },
         );
         self.drawings.drawing(drawing_id).is_some()
     }
@@ -112,7 +121,10 @@ impl Chart {
     pub fn set_drawing_fill_opacity(&mut self, drawing_id: u64, opacity: Option<f32>) -> bool {
         execute_command(
             &mut self.drawings,
-            DrawingCommand::SetDrawingFillOpacity { id: drawing_id, opacity },
+            DrawingCommand::SetDrawingFillOpacity {
+                id: drawing_id,
+                opacity,
+            },
         );
         self.drawings.drawing(drawing_id).is_some()
     }
@@ -120,12 +132,19 @@ impl Chart {
     pub fn set_drawing_stroke_width(&mut self, drawing_id: u64, width: Option<f32>) -> bool {
         execute_command(
             &mut self.drawings,
-            DrawingCommand::SetDrawingStrokeWidth { id: drawing_id, width },
+            DrawingCommand::SetDrawingStrokeWidth {
+                id: drawing_id,
+                width,
+            },
         );
         self.drawings.drawing(drawing_id).is_some()
     }
 
-    pub fn set_drawing_stroke_type(&mut self, drawing_id: u64, stroke_type: Option<StrokeType>) -> bool {
+    pub fn set_drawing_stroke_type(
+        &mut self,
+        drawing_id: u64,
+        stroke_type: Option<StrokeType>,
+    ) -> bool {
         execute_command(
             &mut self.drawings,
             DrawingCommand::SetDrawingStrokeType {
@@ -193,6 +212,90 @@ impl Chart {
         self.drawings.layer_order().to_vec()
     }
 
+    pub fn create_drawing_layer(&mut self, id: String, name: String) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::CreateLayer { id, name });
+    }
+
+    pub fn delete_drawing_layer(&mut self, id: String) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::DeleteLayer { id });
+    }
+
+    pub fn update_drawing_layer(
+        &mut self,
+        id: String,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    ) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::UpdateLayer {
+                id,
+                name,
+                visible,
+                locked,
+            },
+        );
+    }
+
+    pub fn create_drawing_group(
+        &mut self,
+        id: String,
+        name: String,
+        layer_id: String,
+        parent_group_id: Option<String>,
+    ) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::CreateGroup {
+                id,
+                name,
+                layer_id,
+                parent_group_id,
+            },
+        );
+    }
+
+    pub fn delete_drawing_group(&mut self, id: String) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::DeleteGroup { id });
+    }
+
+    pub fn update_drawing_group(
+        &mut self,
+        id: String,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    ) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::UpdateGroup {
+                id,
+                name,
+                visible,
+                locked,
+            },
+        );
+    }
+
+    pub fn move_drawings_to_group(&mut self, ids: Vec<u64>, group_id: Option<String>) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::MoveDrawingsToGroup { ids, group_id },
+        );
+    }
+
+    pub fn move_drawings_to_layer(&mut self, ids: Vec<u64>, layer_id: String) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::MoveDrawingsToLayer { ids, layer_id },
+        );
+    }
+
+    pub fn delete_drawings(&mut self, ids: Vec<u64>) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::DeleteDrawings { ids });
+    }
+
     pub(crate) fn drawing_state(&self) -> Vec<DrawingState> {
         self.drawings
             .items()
@@ -209,20 +312,23 @@ impl Chart {
 }
 
 fn drawing_kind(drawing: &crate::drawings::types::Drawing) -> &'static str {
+    use crate::drawings::types::Drawing;
     match drawing {
-        crate::drawings::types::Drawing::HorizontalLine(_) => "hline",
-        crate::drawings::types::Drawing::VerticalLine(_) => "vline",
-        crate::drawings::types::Drawing::Ray(_) => "ray",
-        crate::drawings::types::Drawing::Rectangle(_) => "rectangle",
-        crate::drawings::types::Drawing::PriceRange(_) => "price_range",
-        crate::drawings::types::Drawing::TimeRange(_) => "time_range",
-        crate::drawings::types::Drawing::DateTimeRange(_) => "date_time_range",
-        crate::drawings::types::Drawing::LongPosition(_) => "long",
-        crate::drawings::types::Drawing::ShortPosition(_) => "short",
-        crate::drawings::types::Drawing::FibRetracement(_) => "fib",
-        crate::drawings::types::Drawing::Triangle(_) => "triangle",
-        crate::drawings::types::Drawing::Circle(_) => "circle",
-        crate::drawings::types::Drawing::Ellipse(_) => "ellipse",
-        crate::drawings::types::Drawing::Text(_) => "text",
+        Drawing::HorizontalLine(_) => "hline",
+        Drawing::VerticalLine(_) => "vline",
+        Drawing::Ray(_) => "ray",
+        Drawing::Rectangle(_) => "rectangle",
+        Drawing::PriceRange(_) => "price_range",
+        Drawing::TimeRange(_) => "time_range",
+        Drawing::DateTimeRange(_) => "date_time_range",
+        Drawing::LongPosition(_) => "long",
+        Drawing::ShortPosition(_) => "short",
+        Drawing::FibRetracement(_) => "fib",
+        Drawing::Triangle(_) => "triangle",
+        Drawing::Circle(_) => "circle",
+        Drawing::Ellipse(_) => "ellipse",
+        Drawing::Text(_) => "text",
+        Drawing::BrushStroke(_) => "brush",
+        Drawing::HighlightStroke(_) => "highlighter",
     }
 }

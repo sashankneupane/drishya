@@ -148,6 +148,10 @@ impl Chart {
         self.pane_y_pan_factors
             .insert(key, factor.clamp(-20.0, 20.0));
     }
+
+    pub fn drawings(&self) -> &DrawingStore {
+        &self.drawings
+    }
 }
 
 fn pane_zoom_key(pane_id: &PaneId) -> &str {

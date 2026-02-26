@@ -47,13 +47,6 @@ struct PaneTreeState {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct ObjectTreeState {
-    panes: Vec<PaneTreeState>,
-    series: Vec<SeriesTreeState>,
-    drawings: Vec<DrawingTreeState>,
-}
-
-#[derive(Debug, Clone, Serialize)]
 struct SeriesTreeState {
     id: String,
     name: String,
@@ -69,6 +62,36 @@ struct DrawingTreeState {
     layer_id: String,
     group_id: Option<String>,
     visible: bool,
+    locked: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct LayerTreeState {
+    id: String,
+    name: String,
+    visible: bool,
+    locked: bool,
+    order: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct GroupTreeState {
+    id: String,
+    name: String,
+    layer_id: String,
+    parent_group_id: Option<String>,
+    visible: bool,
+    locked: bool,
+    order: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ObjectTreeState {
+    panes: Vec<PaneTreeState>,
+    series: Vec<SeriesTreeState>,
+    layers: Vec<LayerTreeState>,
+    groups: Vec<GroupTreeState>,
+    drawings: Vec<DrawingTreeState>,
 }
 
 #[wasm_bindgen]
@@ -174,9 +197,7 @@ impl WasmChart {
     pub fn set_appearance_config(&mut self, json: &str) -> Result<(), JsValue> {
         let config: ChartAppearanceConfig = serde_json::from_str(json)
             .map_err(|e| JsValue::from_str(&format!("Invalid appearance config JSON: {e}")))?;
-        config
-            .validate()
-            .map_err(|e| JsValue::from_str(&e))?;
+        config.validate().map_err(|e| JsValue::from_str(&e))?;
         self.chart.set_appearance_config(config);
         Ok(())
     }
@@ -218,6 +239,7 @@ impl WasmChart {
 
     /// Returns current native drawing tool mode label.
     pub fn drawing_tool_mode(&self) -> String {
+        use crate::chart::tools::DrawingToolMode;
         match self.chart.drawing_tool_mode() {
             DrawingToolMode::Select => "select",
             DrawingToolMode::HorizontalLine => "hline",
@@ -234,6 +256,8 @@ impl WasmChart {
             DrawingToolMode::Circle => "circle",
             DrawingToolMode::Ellipse => "ellipse",
             DrawingToolMode::Text => "text",
+            DrawingToolMode::Brush => "brush",
+            DrawingToolMode::Highlighter => "highlighter",
         }
         .to_string()
     }
@@ -332,22 +356,37 @@ impl WasmChart {
     pub fn set_drawing_config(&mut self, drawing_id: u64, json: &str) -> Result<(), JsValue> {
         let val: serde_json::Value = serde_json::from_str(json)
             .map_err(|e| JsValue::from_str(&format!("Invalid drawing config JSON: {e}")))?;
-        let obj = val.as_object().ok_or_else(|| JsValue::from_str("Config must be a JSON object"))?;
+        let obj = val
+            .as_object()
+            .ok_or_else(|| JsValue::from_str("Config must be a JSON object"))?;
 
         if obj.contains_key("stroke_color") {
-            let v = obj.get("stroke_color").and_then(|x| x.as_str()).map(String::from);
-            self.chart.set_drawing_stroke_color(drawing_id, v.as_deref());
+            let v = obj
+                .get("stroke_color")
+                .and_then(|x| x.as_str())
+                .map(String::from);
+            self.chart
+                .set_drawing_stroke_color(drawing_id, v.as_deref());
         }
         if obj.contains_key("fill_color") {
-            let v = obj.get("fill_color").and_then(|x| x.as_str()).map(String::from);
+            let v = obj
+                .get("fill_color")
+                .and_then(|x| x.as_str())
+                .map(String::from);
             self.chart.set_drawing_fill_color(drawing_id, v.as_deref());
         }
         if obj.contains_key("fill_opacity") {
-            let v = obj.get("fill_opacity").and_then(|x| x.as_f64()).map(|f| f as f32);
+            let v = obj
+                .get("fill_opacity")
+                .and_then(|x| x.as_f64())
+                .map(|f| f as f32);
             self.chart.set_drawing_fill_opacity(drawing_id, v);
         }
         if obj.contains_key("stroke_width") {
-            let v = obj.get("stroke_width").and_then(|x| x.as_f64()).map(|f| f as f32);
+            let v = obj
+                .get("stroke_width")
+                .and_then(|x| x.as_f64())
+                .map(|f| f as f32);
             self.chart.set_drawing_stroke_width(drawing_id, v);
         }
         if obj.contains_key("stroke_type") {
@@ -366,7 +405,10 @@ impl WasmChart {
             self.chart.set_drawing_locked(drawing_id, locked);
         }
         if obj.contains_key("font_size") {
-            let v = obj.get("font_size").and_then(|x| x.as_f64()).map(|f| f as f32);
+            let v = obj
+                .get("font_size")
+                .and_then(|x| x.as_f64())
+                .map(|f| f as f32);
             self.chart.set_drawing_font_size(drawing_id, v);
         }
         if obj.contains_key("text_content") {
@@ -399,8 +441,13 @@ impl WasmChart {
                     height: f32,
                     color: String,
                 }
-                serde_json::to_string(&CaretBounds { x, y, height, color })
-                    .map_err(|e| JsValue::from_str(&format!("Serialize error: {e}")))
+                serde_json::to_string(&CaretBounds {
+                    x,
+                    y,
+                    height,
+                    color,
+                })
+                .map_err(|e| JsValue::from_str(&format!("Serialize error: {e}")))
             }
             None => Ok("null".to_string()),
         }
@@ -792,6 +839,7 @@ impl WasmChart {
             .drawing_state()
             .into_iter()
             .map(|item| DrawingTreeState {
+                locked: self.chart.is_drawing_locked(item.id),
                 id: item.id,
                 kind: item.kind,
                 layer_id: item.layer_id,
@@ -800,14 +848,124 @@ impl WasmChart {
             })
             .collect();
 
+        let layers = self
+            .chart
+            .drawings()
+            .layers()
+            .values()
+            .map(|l| LayerTreeState {
+                id: l.id.clone(),
+                name: l.name.clone(),
+                visible: l.visible,
+                locked: l.locked,
+                order: l.order,
+            })
+            .collect();
+
+        let groups = self
+            .chart
+            .drawings()
+            .groups()
+            .values()
+            .map(|g| GroupTreeState {
+                id: g.id.clone(),
+                name: g.name.clone(),
+                layer_id: g.layer_id.clone(),
+                parent_group_id: g.parent_group_id.clone(),
+                visible: g.visible,
+                locked: g.locked,
+                order: g.order,
+            })
+            .collect();
+
         let state = ObjectTreeState {
             panes,
             series,
+            layers,
+            groups,
             drawings,
         };
 
         serde_json::to_string(&state)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize object tree state: {e}")))
+    }
+
+    pub fn create_drawing_layer(&mut self, id: String, name: String) {
+        self.chart.create_drawing_layer(id, name);
+    }
+
+    pub fn delete_drawing_layer(&mut self, id: String) {
+        self.chart.delete_drawing_layer(id);
+    }
+
+    pub fn update_drawing_layer(&mut self, id: String, json: &str) -> Result<(), JsValue> {
+        let val: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let name = val
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let visible = val.get("visible").and_then(|v| v.as_bool());
+        let locked = val.get("locked").and_then(|v| v.as_bool());
+        self.chart.update_drawing_layer(id, name, visible, locked);
+        Ok(())
+    }
+
+    pub fn create_drawing_group(
+        &mut self,
+        id: String,
+        name: String,
+        layer_id: String,
+        parent_group_id: Option<String>,
+    ) {
+        self.chart
+            .create_drawing_group(id, name, layer_id, parent_group_id);
+    }
+
+    pub fn delete_drawing_group(&mut self, id: String) {
+        self.chart.delete_drawing_group(id);
+    }
+
+    pub fn update_drawing_group(&mut self, id: String, json: &str) -> Result<(), JsValue> {
+        let val: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let name = val
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let visible = val.get("visible").and_then(|v| v.as_bool());
+        let locked = val.get("locked").and_then(|v| v.as_bool());
+        self.chart.update_drawing_group(id, name, visible, locked);
+        Ok(())
+    }
+
+    pub fn move_drawings_to_group(
+        &mut self,
+        ids_json: &str,
+        group_id: Option<String>,
+    ) -> Result<(), JsValue> {
+        let ids: Vec<u64> = serde_json::from_str(ids_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid IDs JSON: {e}")))?;
+        self.chart.move_drawings_to_group(ids, group_id);
+        Ok(())
+    }
+
+    pub fn move_drawings_to_layer(
+        &mut self,
+        ids_json: &str,
+        layer_id: String,
+    ) -> Result<(), JsValue> {
+        let ids: Vec<u64> = serde_json::from_str(ids_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid IDs JSON: {e}")))?;
+        self.chart.move_drawings_to_layer(ids, layer_id);
+        Ok(())
+    }
+
+    pub fn delete_drawings(&mut self, ids_json: &str) -> Result<(), JsValue> {
+        let ids: Vec<u64> = serde_json::from_str(ids_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid IDs JSON: {e}")))?;
+        self.chart.delete_drawings(ids);
+        Ok(())
     }
 
     // -------- Rendering --------
@@ -854,8 +1012,10 @@ fn parse_drawing_tool_mode(mode: &str) -> Result<DrawingToolMode, JsValue> {
         "circle" => Ok(DrawingToolMode::Circle),
         "ellipse" => Ok(DrawingToolMode::Ellipse),
         "text" => Ok(DrawingToolMode::Text),
+        "brush" => Ok(DrawingToolMode::Brush),
+        "highlighter" => Ok(DrawingToolMode::Highlighter),
         other => Err(JsValue::from_str(&format!(
-            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, price_range, time_range, date_time_range, fib, long, short, triangle, circle, ellipse, text"
+            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, price_range, time_range, date_time_range, fib, long, short, triangle, circle, ellipse, text, brush, highlighter"
         ))),
     }
 }
