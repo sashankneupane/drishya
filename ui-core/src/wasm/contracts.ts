@@ -61,11 +61,32 @@ export interface DrawingTreeState {
   layer_id: string;
   group_id: string | null;
   visible: boolean;
+  locked: boolean;
+}
+
+export interface LayerTreeState {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  order: number;
+}
+
+export interface GroupTreeState {
+  id: string;
+  name: string;
+  layer_id: string;
+  parent_group_id: string | null;
+  visible: boolean;
+  locked: boolean;
+  order: number;
 }
 
 export interface ObjectTreeState {
   panes: PaneTreeState[];
   series: SeriesTreeState[];
+  layers: LayerTreeState[];
+  groups: GroupTreeState[];
   drawings: DrawingTreeState[];
 }
 
@@ -136,6 +157,21 @@ export interface WasmChartLike {
   selected_series_id?(): string | undefined;
   clear_selected_series?(): void;
   delete_selected_series?(): boolean;
-  set_drawing_visible?(drawingId: number, visible: boolean): boolean;
-  remove_drawing?(drawingId: number): boolean;
+  set_drawing_visible?(drawingId: number | bigint, visible: boolean): boolean;
+  remove_drawing?(drawingId: number | bigint): boolean;
+  create_drawing_layer?(id: string, name: string): void;
+  delete_drawing_layer?(id: string): void;
+  update_drawing_layer?(id: string, json: string): void;
+  create_drawing_group?(id: string, name: string, layer_id: string, parent_group_id: string | null): void;
+  delete_drawing_group?(id: string): void;
+  update_drawing_group?(id: string, json: string): void;
+  set_drawing_layer?(drawingId: number, layerId: string): boolean;
+  set_drawing_group?(drawingId: number, groupId: string): boolean;
+  set_drawing_group_visible?(groupId: string, visible: boolean): void;
+  set_drawing_layer_visible?(layerId: string, visible: boolean): void;
+  set_drawing_layer_order_json?(json: string): void;
+  drawing_layer_order_json?(): string;
+  move_drawings_to_group?(idsJson: string, groupId: string | null): void;
+  move_drawings_to_layer?(idsJson: string, layerId: string): void;
+  delete_drawings?(idsJson: string): void;
 }
