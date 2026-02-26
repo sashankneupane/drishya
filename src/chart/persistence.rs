@@ -59,10 +59,11 @@ impl Chart {
             })
             .collect();
 
-        PanesSnapshotDto {
-            order: state.order,
-            panes,
+        let mut order = state.order;
+        if order.is_empty() {
+            order = state.registered;
         }
+        PanesSnapshotDto { order, panes }
     }
 
     pub fn restore_panes_snapshot(&mut self, snapshot: &PanesSnapshotDto) {

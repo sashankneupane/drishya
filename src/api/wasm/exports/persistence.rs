@@ -83,7 +83,7 @@ impl WasmChart {
     }
 }
 
-fn validate_snapshot(
+pub(crate) fn validate_snapshot(
     snapshot: &ChartStateSnapshotDto,
     options: &RestoreChartStateOptionsDto,
 ) -> Result<(), String> {
