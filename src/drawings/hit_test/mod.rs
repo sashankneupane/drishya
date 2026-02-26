@@ -4,6 +4,9 @@
 //! interaction/editing logic can stay out of render and storage code.
 
 pub mod geometry;
+#[cfg(test)]
+#[path = "tests.rs"]
+mod regression_tests;
 pub mod selectors;
 
 use crate::{plots::model::PaneId, types::Point, types::Rect};

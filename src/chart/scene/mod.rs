@@ -9,6 +9,8 @@ pub mod crosshair;
 pub mod helpers;
 pub mod panes;
 pub mod readouts;
+#[cfg(test)]
+mod tests;
 
 use crate::{
     drawings::render::{build_drawing_commands, build_preview_drawing_commands},

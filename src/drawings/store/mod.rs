@@ -6,6 +6,9 @@
 pub mod create;
 pub mod ordering;
 pub mod queries;
+#[cfg(test)]
+#[path = "tests.rs"]
+mod regression_tests;
 pub mod update;
 pub mod visibility;
 
