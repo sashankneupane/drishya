@@ -50,4 +50,29 @@ impl WasmChart {
         self.chart.restore_viewport_snapshot(&snapshot);
         Ok(())
     }
+
+    /// Sets the price axis mode: "linear", "log", or "percent".
+    pub fn set_price_axis_mode(&mut self, mode: &str) -> Result<(), JsValue> {
+        let axis_mode = match mode.trim().to_ascii_lowercase().as_str() {
+            "linear" => crate::scale::PriceAxisMode::Linear,
+            "log" => crate::scale::PriceAxisMode::Log,
+            "percent" => crate::scale::PriceAxisMode::Percent,
+            other => {
+                return Err(JsValue::from_str(&format!(
+                    "Invalid axis mode '{other}'. Use: linear, log, percent"
+                )))
+            }
+        };
+        self.chart.set_price_axis_mode(axis_mode);
+        Ok(())
+    }
+
+    /// Returns the current price axis mode.
+    pub fn price_axis_mode(&self) -> String {
+        match self.chart.price_axis_mode() {
+            crate::scale::PriceAxisMode::Linear => "linear".to_string(),
+            crate::scale::PriceAxisMode::Log => "log".to_string(),
+            crate::scale::PriceAxisMode::Percent => "percent".to_string(),
+        }
+    }
 }

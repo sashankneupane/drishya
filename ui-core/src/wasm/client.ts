@@ -79,6 +79,14 @@ export class DrishyaChartClient {
     return this.wasm.cursor_mode?.() ?? "crosshair";
   }
 
+  setPriceAxisMode(mode: "linear" | "log" | "percent"): void {
+    this.wasm.set_price_axis_mode?.(mode);
+  }
+
+  priceAxisMode(): string {
+    return this.wasm.price_axis_mode?.() ?? "linear";
+  }
+
   setTheme(theme: string): void {
     this.wasm.set_theme?.(theme);
   }

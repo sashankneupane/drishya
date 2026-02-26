@@ -182,6 +182,8 @@ export interface WasmChartLike {
   reset_y_axis_zoom?(paneId: string): void;
   set_crosshair_at?(x: number, y: number): void;
   clear_crosshair?(): void;
+  set_price_axis_mode?(mode: string): void;
+  price_axis_mode?(): string;
 
   // Group C: Appearance
   set_theme?(theme: string): void;
