@@ -9,6 +9,7 @@
 //! while allowing internals to evolve without creating a monolithic file.
 
 pub mod anchors;
+pub mod appearance;
 pub mod hit_test;
 pub mod interaction;
 pub mod plots;
@@ -16,6 +17,7 @@ pub mod scene;
 pub mod state;
 pub mod tools;
 
+use self::appearance::ChartAppearanceConfig;
 use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
@@ -53,6 +55,7 @@ pub struct Chart {
     drawing_interaction: DrawingInteractionState,
     selected_drawing_id: Option<u64>,
     selected_series_id: Option<String>,
+    appearance_config: ChartAppearanceConfig,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -85,6 +88,7 @@ impl Chart {
             drawing_interaction: DrawingInteractionState::default(),
             selected_drawing_id: None,
             selected_series_id: None,
+            appearance_config: ChartAppearanceConfig::default(),
             drawings: DrawingStore::new(),
         }
     }
@@ -111,6 +115,16 @@ impl Chart {
 
     pub fn cursor_mode(&self) -> CursorMode {
         self.cursor_mode
+    }
+
+    pub fn set_appearance_config(&mut self, config: ChartAppearanceConfig) {
+        if config.validate().is_ok() {
+            self.appearance_config = config;
+        }
+    }
+
+    pub fn appearance_config(&self) -> &ChartAppearanceConfig {
+        &self.appearance_config
     }
 
     pub(crate) fn pane_y_zoom_factor(&self, pane_id: &PaneId) -> f32 {
