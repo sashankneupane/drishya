@@ -11,6 +11,40 @@ pub type DrawingGroupId = String;
 
 pub const DEFAULT_DRAWING_LAYER: &str = "drawings";
 
+/// Photoshop-style layer for macro stacking and visibility.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrawingLayer {
+    pub id: DrawingLayerId,
+    pub name: String,
+    pub visible: bool,
+    pub locked: bool,
+    pub order: i32,
+}
+
+impl Default for DrawingLayer {
+    fn default() -> Self {
+        Self {
+            id: DEFAULT_DRAWING_LAYER.to_string(),
+            name: "Drawings".to_string(),
+            visible: true,
+            locked: false,
+            order: 0,
+        }
+    }
+}
+
+/// Logical grouping of drawings within a layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrawingGroup {
+    pub id: DrawingGroupId,
+    pub name: String,
+    pub layer_id: DrawingLayerId,
+    pub parent_group_id: Option<DrawingGroupId>,
+    pub visible: bool,
+    pub locked: bool,
+    pub order: i32,
+}
+
 /// Stroke line style (solid, dotted, dashed).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,6 +83,30 @@ pub struct DrawingStyle {
     #[serde(default)]
     pub font_size: Option<f32>,
     pub locked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrokePoint {
+    pub index: f32,
+    pub price: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BrushStroke {
+    pub id: DrawingId,
+    pub points: Vec<StrokePoint>,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
+}
+
+#[derive(Debug, Clone)]
+pub struct HighlightStroke {
+    pub id: DrawingId,
+    pub points: Vec<StrokePoint>,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +158,7 @@ pub struct PriceRange {
     pub end_index: f32,
     pub top_price: f64,
     pub bottom_price: f64,
+    pub is_up: bool,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
     pub style: DrawingStyle,
@@ -112,6 +171,7 @@ pub struct TimeRange {
     pub end_index: f32,
     pub top_price: f64,
     pub bottom_price: f64,
+    pub is_up: bool,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
     pub style: DrawingStyle,
@@ -124,6 +184,7 @@ pub struct DateTimeRange {
     pub end_index: f32,
     pub top_price: f64,
     pub bottom_price: f64,
+    pub is_up: bool,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
     pub style: DrawingStyle,
@@ -134,6 +195,8 @@ pub struct LongPosition {
     pub id: DrawingId,
     pub start_index: f32,
     pub end_index: f32,
+    /// The candle index where the entry point was placed (first drop point).
+    pub entry_index: f32,
     pub entry_price: f64,
     pub stop_price: f64,
     pub target_price: f64,
@@ -147,6 +210,7 @@ pub struct ShortPosition {
     pub id: DrawingId,
     pub start_index: f32,
     pub end_index: f32,
+    pub entry_index: f32,
     pub entry_price: f64,
     pub stop_price: f64,
     pub target_price: f64,
@@ -234,6 +298,8 @@ pub enum Drawing {
     Triangle(Triangle),
     Ellipse(Ellipse),
     Text(Text),
+    BrushStroke(BrushStroke),
+    HighlightStroke(HighlightStroke),
 }
 
 impl Drawing {
@@ -253,6 +319,8 @@ impl Drawing {
             Drawing::Triangle(item) => item.id,
             Drawing::Ellipse(item) => item.id,
             Drawing::Text(item) => item.id,
+            Drawing::BrushStroke(item) => item.id,
+            Drawing::HighlightStroke(item) => item.id,
         }
     }
 
@@ -272,6 +340,8 @@ impl Drawing {
             Drawing::Triangle(item) => item.layer_id.as_str(),
             Drawing::Ellipse(item) => item.layer_id.as_str(),
             Drawing::Text(item) => item.layer_id.as_str(),
+            Drawing::BrushStroke(item) => item.layer_id.as_str(),
+            Drawing::HighlightStroke(item) => item.layer_id.as_str(),
         }
     }
 
@@ -291,6 +361,8 @@ impl Drawing {
             Drawing::Triangle(item) => item.group_id.as_deref(),
             Drawing::Ellipse(item) => item.group_id.as_deref(),
             Drawing::Text(item) => item.group_id.as_deref(),
+            Drawing::BrushStroke(item) => item.group_id.as_deref(),
+            Drawing::HighlightStroke(item) => item.group_id.as_deref(),
         }
     }
 
@@ -310,6 +382,8 @@ impl Drawing {
             Drawing::Triangle(item) => item.layer_id = layer_id.to_string(),
             Drawing::Ellipse(item) => item.layer_id = layer_id.to_string(),
             Drawing::Text(item) => item.layer_id = layer_id.to_string(),
+            Drawing::BrushStroke(item) => item.layer_id = layer_id.to_string(),
+            Drawing::HighlightStroke(item) => item.layer_id = layer_id.to_string(),
         }
     }
 
@@ -330,6 +404,8 @@ impl Drawing {
             Drawing::Triangle(item) => item.group_id = next,
             Drawing::Ellipse(item) => item.group_id = next,
             Drawing::Text(item) => item.group_id = next,
+            Drawing::BrushStroke(item) => item.group_id = next,
+            Drawing::HighlightStroke(item) => item.group_id = next,
         }
     }
 
@@ -348,6 +424,7 @@ impl Drawing {
                 | Drawing::Triangle(_)
                 | Drawing::Ellipse(_)
                 | Drawing::Text(_)
+                | Drawing::HighlightStroke(_)
         )
     }
 
@@ -367,6 +444,8 @@ impl Drawing {
             Drawing::Triangle(item) => &item.style,
             Drawing::Ellipse(item) => &item.style,
             Drawing::Text(item) => &item.style,
+            Drawing::BrushStroke(item) => &item.style,
+            Drawing::HighlightStroke(item) => &item.style,
         }
     }
 
@@ -386,6 +465,8 @@ impl Drawing {
             Drawing::Triangle(item) => &mut item.style,
             Drawing::Ellipse(item) => &mut item.style,
             Drawing::Text(item) => &mut item.style,
+            Drawing::BrushStroke(item) => &mut item.style,
+            Drawing::HighlightStroke(item) => &mut item.style,
         }
     }
 }

@@ -41,22 +41,26 @@ pub enum DrawingCommand {
         end_index: f32,
         top_price: f64,
         bottom_price: f64,
+        is_up: bool,
     },
     AddTimeRange {
         start_index: f32,
         end_index: f32,
         top_price: f64,
         bottom_price: f64,
+        is_up: bool,
     },
     AddDateTimeRange {
         start_index: f32,
         end_index: f32,
         top_price: f64,
         bottom_price: f64,
+        is_up: bool,
     },
     AddLongPosition {
         start_index: f32,
         end_index: f32,
+        entry_index: f32,
         entry_price: f64,
         stop_price: f64,
         target_price: f64,
@@ -64,6 +68,7 @@ pub enum DrawingCommand {
     AddShortPosition {
         start_index: f32,
         end_index: f32,
+        entry_index: f32,
         entry_price: f64,
         stop_price: f64,
         target_price: f64,
@@ -101,6 +106,12 @@ pub enum DrawingCommand {
         price: f64,
         text: String,
     },
+    AddBrushStroke {
+        points: Vec<StrokePoint>,
+    },
+    AddHighlightStroke {
+        points: Vec<StrokePoint>,
+    },
     RemoveById {
         id: DrawingId,
     },
@@ -137,7 +148,57 @@ pub enum DrawingCommand {
         id: DrawingId,
         text: String,
     },
+    // --- Layer/Group CRUD Skeletons (Commit 1) ---
+    CreateLayer {
+        id: DrawingLayerId,
+        name: String,
+    },
+    DeleteLayer {
+        id: DrawingLayerId,
+    },
+    UpdateLayer {
+        id: DrawingLayerId,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    },
+    CreateGroup {
+        id: DrawingGroupId,
+        name: String,
+        layer_id: DrawingLayerId,
+        parent_group_id: Option<DrawingGroupId>,
+    },
+    DeleteGroup {
+        id: DrawingGroupId,
+    },
+    UpdateGroup {
+        id: DrawingGroupId,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    },
+    MoveDrawingToGroup {
+        id: DrawingId,
+        group_id: Option<DrawingGroupId>,
+    },
+    MoveDrawingToLayer {
+        id: DrawingId,
+        layer_id: DrawingLayerId,
+    },
+    MoveDrawingsToGroup {
+        ids: Vec<DrawingId>,
+        group_id: Option<DrawingGroupId>,
+    },
+    MoveDrawingsToLayer {
+        ids: Vec<DrawingId>,
+        layer_id: DrawingLayerId,
+    },
+    DeleteDrawings {
+        ids: Vec<DrawingId>,
+    },
 }
+
+use crate::drawings::types::{DrawingGroupId, DrawingLayerId, StrokePoint};
 
 #[derive(Debug, Clone, Copy)]
 pub enum DrawingCommandResult {
@@ -184,8 +245,9 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             end_index,
             top_price,
             bottom_price,
+            is_up,
         } => {
-            let id = store.add_price_range(start_index, end_index, top_price, bottom_price);
+            let id = store.add_price_range(start_index, end_index, top_price, bottom_price, is_up);
             DrawingCommandResult::Added { id }
         }
         DrawingCommand::AddTimeRange {
@@ -193,8 +255,9 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             end_index,
             top_price,
             bottom_price,
+            is_up,
         } => {
-            let id = store.add_time_range(start_index, end_index, top_price, bottom_price);
+            let id = store.add_time_range(start_index, end_index, top_price, bottom_price, is_up);
             DrawingCommandResult::Added { id }
         }
         DrawingCommand::AddDateTimeRange {
@@ -202,13 +265,16 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             end_index,
             top_price,
             bottom_price,
+            is_up,
         } => {
-            let id = store.add_date_time_range(start_index, end_index, top_price, bottom_price);
+            let id =
+                store.add_date_time_range(start_index, end_index, top_price, bottom_price, is_up);
             DrawingCommandResult::Added { id }
         }
         DrawingCommand::AddLongPosition {
             start_index,
             end_index,
+            entry_index,
             entry_price,
             stop_price,
             target_price,
@@ -216,6 +282,7 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             let id = store.add_long_position(
                 start_index,
                 end_index,
+                entry_index,
                 entry_price,
                 stop_price,
                 target_price,
@@ -225,6 +292,7 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
         DrawingCommand::AddShortPosition {
             start_index,
             end_index,
+            entry_index,
             entry_price,
             stop_price,
             target_price,
@@ -232,6 +300,7 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             let id = store.add_short_position(
                 start_index,
                 end_index,
+                entry_index,
                 entry_price,
                 stop_price,
                 target_price,
@@ -278,12 +347,16 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             let id = store.add_ellipse(p1_index, p2_index, p3_index, p1_price, p2_price, p3_price);
             DrawingCommandResult::Added { id }
         }
-        DrawingCommand::AddText {
-            index,
-            price,
-            text,
-        } => {
+        DrawingCommand::AddText { index, price, text } => {
             let id = store.add_text(index, price, text);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddBrushStroke { points } => {
+            let id = store.add_brush_stroke(points);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddHighlightStroke { points } => {
+            let id = store.add_highlight_stroke(points);
             DrawingCommandResult::Added { id }
         }
         DrawingCommand::RemoveById { id } => {
@@ -343,6 +416,72 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
                 if let crate::drawings::types::Drawing::Text(t) = d {
                     t.text = text;
                 }
+            }
+            DrawingCommandResult::Updated
+        }
+        // Skeletons for Commit 1 -> Functional in Commit 2
+        DrawingCommand::CreateLayer { id, name } => {
+            store.create_layer(id, name);
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::DeleteLayer { id } => {
+            store.delete_layer(&id);
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::UpdateLayer {
+            id,
+            name,
+            visible,
+            locked,
+        } => {
+            store.update_layer(&id, name, visible, locked);
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::CreateGroup {
+            id,
+            name,
+            layer_id,
+            parent_group_id,
+        } => {
+            store.create_group(id, name, layer_id, parent_group_id);
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::DeleteGroup { id } => {
+            store.delete_group(&id);
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::UpdateGroup {
+            id,
+            name,
+            visible,
+            locked,
+        } => {
+            store.update_group(&id, name, visible, locked);
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::MoveDrawingToGroup { id, group_id } => {
+            store.set_drawing_group(id, group_id.as_deref());
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::MoveDrawingToLayer { id, layer_id } => {
+            store.set_drawing_layer(id, &layer_id);
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::MoveDrawingsToGroup { ids, group_id } => {
+            for id in ids {
+                store.set_drawing_group(id, group_id.as_deref());
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::MoveDrawingsToLayer { ids, layer_id } => {
+            for id in ids {
+                store.set_drawing_layer(id, &layer_id);
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::DeleteDrawings { ids } => {
+            for id in ids {
+                store.remove(id);
             }
             DrawingCommandResult::Updated
         }
