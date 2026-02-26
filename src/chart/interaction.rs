@@ -18,6 +18,13 @@ impl Chart {
         Some(world_x.round().clamp(0.0, max))
     }
 
+    fn snap_world_x_to_time_step(&self, world_x: f32) -> Option<f32> {
+        if self.candles.is_empty() {
+            return None;
+        }
+        Some(world_x.round().max(0.0))
+    }
+
     pub(crate) fn snap_pixel_x_to_world_x(
         &self,
         x_pixels: f32,
@@ -109,9 +116,7 @@ impl Chart {
 
         let snapped_x = if let Some(vp) = self.viewport {
             let world_x = vp.pixel_x_to_world_x(x_pixels, plot.x, plot.w.max(1.0));
-            let snapped_world_x = self
-                .snap_world_x_to_candle_index(world_x)
-                .unwrap_or(world_x);
+            let snapped_world_x = self.snap_world_x_to_time_step(world_x).unwrap_or(world_x);
             vp.world_x_to_pixel_x(snapped_world_x, plot.x, plot.w.max(1.0))
         } else {
             x_pixels
@@ -197,6 +202,29 @@ mod tests {
         let cross = chart.crosshair.expect("crosshair should be set");
         let vp = chart.viewport.expect("viewport should exist");
         let world = vp.pixel_x_to_world_x(cross.x, layout.plot.x, layout.plot.w.max(1.0));
+        assert!((world - world.round()).abs() < 1e-3);
+    }
+
+    #[test]
+    fn crosshair_can_move_to_future_time_steps() {
+        let mut chart = Chart::new(800.0, 400.0);
+        chart.set_data(vec![
+            candle(1, 100.0),
+            candle(2, 101.0),
+            candle(3, 102.0),
+            candle(4, 103.0),
+        ]);
+
+        chart.pan_pixels(-800.0);
+        let layout = chart.current_layout();
+        let x = layout.plot.right() - 2.0;
+        let y = layout.plot.y + layout.plot.h * 0.5;
+        chart.set_crosshair_at(x, y);
+
+        let cross = chart.crosshair.expect("crosshair should be set");
+        let vp = chart.viewport.expect("viewport should exist");
+        let world = vp.pixel_x_to_world_x(cross.x, layout.plot.x, layout.plot.w.max(1.0));
+        assert!(world > (chart.candles.len().saturating_sub(1) as f32));
         assert!((world - world.round()).abs() < 1e-3);
     }
 }

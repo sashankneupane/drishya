@@ -33,6 +33,7 @@ use crate::{
 
 use self::helpers::{
     compute_pane_value_bounds, nearest_candle_index, price_at_y, series_value_at_index,
+    timestamp_for_world_x, world_x_at_pixel,
 };
 use super::Chart;
 
@@ -321,9 +322,14 @@ impl Chart {
 
             if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, self.candles.len()) {
                 crosshair_index = Some(idx);
-                if let Some(readout) =
-                    build_crosshair_readout_commands(&self.candles, idx, crosshair, &layout, ps)
-                {
+                if let Some(readout) = build_crosshair_readout_commands(
+                    &self.candles,
+                    idx,
+                    crosshair,
+                    &layout,
+                    ps,
+                    ts_price,
+                ) {
                     out.extend(readout);
                 }
             }
@@ -432,6 +438,7 @@ fn build_crosshair_readout_commands(
     crosshair: Point,
     layout: &ChartLayout,
     ps: PriceScale,
+    ts: TimeScale,
 ) -> Option<Vec<DrawCommand>> {
     if candles.is_empty() {
         return None;
@@ -486,7 +493,10 @@ fn build_crosshair_readout_commands(
     });
 
     let time_formatter = HumanTimeFormatter;
-    let ts_text = time_formatter.format_time(candle.ts);
+    let label_ts = world_x_at_pixel(crosshair.x, ts)
+        .and_then(|world_x| timestamp_for_world_x(world_x, candles))
+        .unwrap_or(candle.ts);
+    let ts_text = time_formatter.format_time(label_ts);
     let x_label_w = 84.0f32;
     let x_label_h = 16.0f32;
     let x_label_x =
