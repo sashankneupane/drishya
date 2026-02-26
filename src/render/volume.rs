@@ -4,7 +4,7 @@
 
 use crate::{
     render::primitives::DrawCommand,
-    render::styles::{ColorToken, FillStyle},
+    render::styles::{ColorRef, FillStyle},
     scale::TimeScale,
     types::{Candle, Rect},
 };
@@ -15,6 +15,8 @@ pub fn build_volume_commands(
     ts: TimeScale,
     pane: Rect,
     max_volume: f64,
+    bull_color: ColorRef,
+    bear_color: ColorRef,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     // Slightly narrower than candle bodies to reduce visual crowding.
@@ -34,11 +36,7 @@ pub fn build_volume_commands(
         let h = (band_bottom - y).max(1.0);
 
         let bull = c.close >= c.open;
-        let color = if bull {
-            ColorToken::BullMuted
-        } else {
-            ColorToken::BearMuted
-        };
+        let color = if bull { bull_color.clone() } else { bear_color.clone() };
 
         out.push(DrawCommand::Rect {
             rect: Rect {
@@ -47,7 +45,7 @@ pub fn build_volume_commands(
                 w: bw,
                 h,
             },
-            fill: Some(FillStyle::token(color)),
+            fill: Some(FillStyle { color }),
             stroke: None,
         });
     }

@@ -146,6 +146,8 @@ impl Chart {
             &pane_scales,
         ));
 
+        let bull = ColorRef::Css(cfg.candle_up.clone());
+        let bear = ColorRef::Css(cfg.candle_down.clone());
         out.push(DrawCommand::PushClip { rect: price_pane });
         out.extend(build_volume_commands(
             visible,
@@ -153,9 +155,9 @@ impl Chart {
             ts_price,
             price_pane,
             max_vol,
+            bull.clone(),
+            bear.clone(),
         ));
-        let bull = ColorRef::Css(cfg.candle_up.clone());
-        let bear = ColorRef::Css(cfg.candle_down.clone());
         out.extend(build_candle_commands(
             visible,
             visible_start,
