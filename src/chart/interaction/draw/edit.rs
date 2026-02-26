@@ -1,7 +1,7 @@
 use crate::{
     drawings::hit_test::RectHitTarget, drawings::shape::fib as fib_shape,
-    drawings::shape::position as position_shape, drawings::shape::rectangle as rectangle_shape,
-    drawings::types::Drawing, types::Point,
+    drawings::shape::position as position_shape, drawings::shape::range as range_shape,
+    drawings::shape::rectangle as rectangle_shape, drawings::types::Drawing, types::Point,
 };
 
 use crate::chart::Chart;
@@ -51,6 +51,24 @@ impl Chart {
                 item.top_price += price_dy;
                 item.bottom_price += price_dy;
             }
+            Drawing::PriceRange(item) => {
+                item.start_index += world_dx;
+                item.end_index += world_dx;
+                item.top_price += price_dy;
+                item.bottom_price += price_dy;
+            }
+            Drawing::TimeRange(item) => {
+                item.start_index += world_dx;
+                item.end_index += world_dx;
+                item.top_price += price_dy;
+                item.bottom_price += price_dy;
+            }
+            Drawing::DateTimeRange(item) => {
+                item.start_index += world_dx;
+                item.end_index += world_dx;
+                item.top_price += price_dy;
+                item.bottom_price += price_dy;
+            }
             Drawing::FibRetracement(item) => {
                 item.start_index += world_dx;
                 item.end_index += world_dx;
@@ -80,6 +98,9 @@ impl Chart {
         matches!(
             self.drawings.drawing(drawing_id),
             Some(Drawing::Rectangle(_))
+                | Some(Drawing::PriceRange(_))
+                | Some(Drawing::TimeRange(_))
+                | Some(Drawing::DateTimeRange(_))
                 | Some(Drawing::FibRetracement(_))
                 | Some(Drawing::LongPosition(_))
                 | Some(Drawing::ShortPosition(_))
@@ -97,6 +118,15 @@ impl Chart {
 
         match drawing {
             Drawing::Rectangle(item) => Some(rectangle_shape::resize(item, target, world_x, price)),
+            Drawing::PriceRange(item) => Some(range_shape::resize_price_range(
+                item, target, world_x, price,
+            )),
+            Drawing::TimeRange(item) => {
+                Some(range_shape::resize_time_range(item, target, world_x, price))
+            }
+            Drawing::DateTimeRange(item) => Some(range_shape::resize_date_time_range(
+                item, target, world_x, price,
+            )),
             Drawing::FibRetracement(item) => Some(fib_shape::resize(item, target, world_x, price)),
             Drawing::LongPosition(item) => {
                 Some(position_shape::resize_long(item, target, world_x, price))

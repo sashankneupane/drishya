@@ -15,7 +15,8 @@ use crate::{
         axes::build_axis_commands,
         candles::build_candle_commands,
         primitives::DrawCommand,
-        styles::{ColorToken, FillStyle, StrokeStyle},
+        styles::{ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
+        ticks::{HumanTimeFormatter, TimeLabelFormatter},
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
@@ -52,7 +53,25 @@ impl Chart {
         };
         let visible = &self.candles[visible_start..visible_end];
 
-        let plot_series = self.collect_plot_series();
+        let mut plot_series = self.collect_plot_series();
+        if let Some(selected_series_id) = self.selected_series_id() {
+            for s in &mut plot_series {
+                if s.id != selected_series_id {
+                    continue;
+                }
+                for primitive in &mut s.primitives {
+                    match primitive {
+                        PlotPrimitive::Line { style, .. } => {
+                            style.width = (style.width + 1.0).max(2.0);
+                        }
+                        PlotPrimitive::Markers { style, .. } => {
+                            style.size = (style.size + 1.0).max(3.0);
+                        }
+                        PlotPrimitive::Band { .. } | PlotPrimitive::Histogram { .. } => {}
+                    }
+                }
+            }
+        }
 
         let layout: ChartLayout = self.current_layout();
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
@@ -134,8 +153,60 @@ impl Chart {
             price_pane,
             max_vol,
         ));
-        out.extend(build_candle_commands(visible, visible_start, ts_price, ps));
+        out.extend(build_candle_commands(
+            visible,
+            visible_start,
+            ts_price,
+            ps,
+            self.candle_body_style(),
+        ));
         out.push(DrawCommand::PopClip);
+
+        if let Some(last) = self.candles.last() {
+            let live_y = ps.y_for_price(last.close);
+            if live_y >= price_pane.y && live_y <= price_pane.bottom() {
+                let prev_close = self
+                    .candles
+                    .iter()
+                    .rev()
+                    .nth(1)
+                    .map(|c| c.close)
+                    .unwrap_or(last.open);
+                let live_color = if last.close >= prev_close {
+                    ColorToken::Bull
+                } else {
+                    ColorToken::Bear
+                };
+                out.push(DrawCommand::PushClip { rect: price_pane });
+                out.extend(build_dotted_horizontal(
+                    live_y,
+                    price_pane.x,
+                    price_pane.right(),
+                    1.0,
+                    live_color,
+                ));
+                out.push(DrawCommand::PopClip);
+                out.push(DrawCommand::Rect {
+                    rect: crate::types::Rect {
+                        x: layout.y_axis.x + 1.0,
+                        y: (live_y - 8.0).clamp(layout.y_axis.y, layout.y_axis.bottom() - 16.0),
+                        w: layout.y_axis.w - 2.0,
+                        h: 16.0,
+                    },
+                    fill: Some(FillStyle::token(ColorToken::PaneBorder)),
+                    stroke: None,
+                });
+                out.push(DrawCommand::Text {
+                    pos: Point {
+                        x: layout.y_axis.right() - 4.0,
+                        y: (live_y + 4.0)
+                            .clamp(layout.y_axis.y + 12.0, layout.y_axis.bottom() - 2.0),
+                    },
+                    text: format!("{:.2}", last.close),
+                    style: TextStyle::token(live_color, 11.0, TextAlign::Right),
+                });
+            }
+        }
 
         let price_range = ValueScaleRange {
             min: min_price,
@@ -174,6 +245,8 @@ impl Chart {
             layout.clone(),
             ps,
             self.viewport,
+            &self.candles,
+            self.selected_drawing_id(),
         ));
 
         if let Some(preview) = self.active_drawing_preview() {
@@ -185,6 +258,7 @@ impl Chart {
             ));
         }
 
+        let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {
             out.push(DrawCommand::PushClip { rect: layout.plot });
             out.extend(build_dotted_vertical(
@@ -202,10 +276,244 @@ impl Chart {
                 ColorToken::Crosshair,
             ));
             out.push(DrawCommand::PopClip);
+
+            if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, self.candles.len()) {
+                crosshair_index = Some(idx);
+                if let Some(readout) =
+                    build_crosshair_readout_commands(&self.candles, idx, crosshair, &layout, ps)
+                {
+                    out.extend(readout);
+                }
+            }
+        }
+
+        let fallback_index = visible_end
+            .checked_sub(1)
+            .or_else(|| self.candles.len().checked_sub(1));
+        let readout_index = crosshair_index.or(fallback_index);
+
+        if crosshair_index.is_none() {
+            if let Some(idx) = readout_index {
+                if let Some(close_readout) =
+                    build_last_close_readout_commands(&self.candles, idx, &layout)
+                {
+                    out.extend(close_readout);
+                }
+            }
+        }
+
+        if let Some(idx) = readout_index {
+            out.extend(build_non_price_pane_readout_commands(
+                &plot_series,
+                &layout,
+                idx,
+            ));
         }
 
         out
     }
+}
+
+fn build_last_close_readout_commands(
+    candles: &[Candle],
+    index: usize,
+    layout: &ChartLayout,
+) -> Option<Vec<DrawCommand>> {
+    let candle = candles.get(index)?;
+    Some(vec![DrawCommand::Text {
+        pos: Point {
+            x: layout.plot.x + 8.0,
+            y: layout.plot.y + 14.0,
+        },
+        text: format!(
+            "O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
+            candle.open, candle.high, candle.low, candle.close, candle.volume
+        ),
+        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
+    }])
+}
+
+fn build_crosshair_readout_commands(
+    candles: &[Candle],
+    index: usize,
+    crosshair: Point,
+    layout: &ChartLayout,
+    ps: PriceScale,
+) -> Option<Vec<DrawCommand>> {
+    if candles.is_empty() {
+        return None;
+    }
+
+    if crosshair.x < layout.plot.x
+        || crosshair.x > layout.plot.right()
+        || crosshair.y < layout.plot.y
+        || crosshair.y > layout.plot_bottom()
+    {
+        return None;
+    }
+
+    let candle = candles.get(index)?;
+
+    let mut out = Vec::new();
+
+    let ohlcv = format!(
+        "O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
+        candle.open, candle.high, candle.low, candle.close, candle.volume
+    );
+    out.push(DrawCommand::Text {
+        pos: Point {
+            x: layout.plot.x + 8.0,
+            y: layout.plot.y + 14.0,
+        },
+        text: ohlcv,
+        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
+    });
+
+    let price_at_cursor = price_at_y(crosshair.y, ps);
+    let price_label_h = 16.0f32;
+    let price_label_y = (crosshair.y - price_label_h * 0.5)
+        .clamp(layout.y_axis.y, layout.y_axis.bottom() - price_label_h);
+    out.push(DrawCommand::Rect {
+        rect: crate::types::Rect {
+            x: layout.y_axis.x + 1.0,
+            y: price_label_y,
+            w: layout.y_axis.w - 2.0,
+            h: price_label_h,
+        },
+        fill: Some(FillStyle::token(ColorToken::PaneBorder)),
+        stroke: None,
+    });
+    out.push(DrawCommand::Text {
+        pos: Point {
+            x: layout.y_axis.right() - 4.0,
+            y: price_label_y + 12.0,
+        },
+        text: format!("{:.2}", price_at_cursor),
+        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Right),
+    });
+
+    let time_formatter = HumanTimeFormatter;
+    let ts_text = time_formatter.format_time(candle.ts);
+    let x_label_w = 84.0f32;
+    let x_label_h = 16.0f32;
+    let x_label_x =
+        (crosshair.x - x_label_w * 0.5).clamp(layout.x_axis.x, layout.x_axis.right() - x_label_w);
+    out.push(DrawCommand::Rect {
+        rect: crate::types::Rect {
+            x: x_label_x,
+            y: layout.x_axis.y + 2.0,
+            w: x_label_w,
+            h: x_label_h,
+        },
+        fill: Some(FillStyle::token(ColorToken::PaneBorder)),
+        stroke: None,
+    });
+    out.push(DrawCommand::Text {
+        pos: Point {
+            x: x_label_x + x_label_w * 0.5,
+            y: layout.x_axis.y + 13.0,
+        },
+        text: ts_text,
+        style: TextStyle::token(ColorToken::AxisText, 10.0, TextAlign::Center),
+    });
+
+    Some(out)
+}
+
+fn build_non_price_pane_readout_commands(
+    series: &[PlotSeries],
+    layout: &ChartLayout,
+    index: usize,
+) -> Vec<DrawCommand> {
+    let mut out = Vec::new();
+
+    for pane in &layout.panes {
+        if matches!(pane.id, PaneId::Price) {
+            continue;
+        }
+
+        let mut lines: Vec<String> = Vec::new();
+        for s in series {
+            if !s.visible || s.pane != pane.id {
+                continue;
+            }
+
+            if let Some(value) = series_value_at_index(s, index) {
+                lines.push(format!("{}: {:.2}", s.name, value));
+            }
+        }
+
+        if lines.is_empty() {
+            continue;
+        }
+
+        out.push(DrawCommand::PushClip { rect: pane.rect });
+        for (i, text) in lines.into_iter().enumerate() {
+            out.push(DrawCommand::Text {
+                pos: Point {
+                    x: pane.rect.x + 6.0,
+                    y: pane.rect.y + 14.0 + i as f32 * 12.0,
+                },
+                text,
+                style: TextStyle::token(ColorToken::AxisText, 10.0, TextAlign::Left),
+            });
+        }
+        out.push(DrawCommand::PopClip);
+    }
+
+    out
+}
+
+fn series_value_at_index(series: &PlotSeries, index: usize) -> Option<f64> {
+    // Prefer later primitives so readouts pick the main signal line
+    // (e.g. RSI value) over static guide lines (e.g. 70/30).
+    for primitive in series.primitives.iter().rev() {
+        match primitive {
+            PlotPrimitive::Line { values, .. } | PlotPrimitive::Histogram { values, .. } => {
+                if let Some(v) = values.get(index).and_then(|v| *v) {
+                    return Some(v);
+                }
+            }
+            PlotPrimitive::Band { upper, lower, .. } => {
+                let u = upper.get(index).and_then(|v| *v);
+                let l = lower.get(index).and_then(|v| *v);
+                if let (Some(u), Some(l)) = (u, l) {
+                    return Some((u + l) * 0.5);
+                }
+                if let Some(v) = u.or(l) {
+                    return Some(v);
+                }
+            }
+            PlotPrimitive::Markers { points, .. } => {
+                if let Some(point) = points.iter().find(|p| p.index == index) {
+                    return Some(point.value);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn nearest_candle_index(x: f32, ts: TimeScale, total_len: usize) -> Option<usize> {
+    if total_len == 0 {
+        return None;
+    }
+
+    let span = ts.world_span();
+    if span <= 0.0 || ts.pane.w <= 0.0 {
+        return Some(0);
+    }
+
+    let u = ((x - ts.pane.x) as f64 / ts.pane.w as f64).clamp(0.0, 1.0);
+    let world_x = ts.world_start_x + u * span;
+    let idx = world_x.floor() as isize;
+    let clamped = idx.clamp(0, total_len as isize - 1);
+    Some(clamped as usize)
+}
+
+fn price_at_y(y: f32, ps: PriceScale) -> f64 {
+    let t = 1.0 - ((y - ps.pane.y) / ps.pane.h).clamp(0.0, 1.0);
+    ps.min + (ps.max - ps.min) * t as f64
 }
 
 fn build_dotted_vertical(

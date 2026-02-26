@@ -2,5 +2,6 @@ mod fib;
 mod line;
 mod position;
 mod preview;
+mod range;
 mod ray;
 mod rectangle;

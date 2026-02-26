@@ -47,9 +47,12 @@ impl Chart {
             .map(|p| p.rect.h.max(1.0))
             .unwrap_or(layout.plot.h.max(1.0));
 
+        // Dragging should move the content in the same visual direction as the pointer.
+        // Positive mouse dy (downward) should shift the visible value window upward
+        // in data space, which corresponds to a negative pan-factor delta.
         let delta_factor = dy_pixels / pane_h;
         let current = self.pane_y_pan_factor(&target_pane);
-        self.set_pane_y_pan_factor(&target_pane, current + delta_factor);
+        self.set_pane_y_pan_factor(&target_pane, current - delta_factor);
     }
 
     /// zoom_factor < 1.0 => zoom in, > 1.0 => zoom out

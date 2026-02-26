@@ -1,5 +1,5 @@
 use crate::{
-    drawings::hit_test::{InteractionMode, LocalHitInfo, RectCorner, RectEdge, RectHitTarget},
+    drawings::hit_test::{InteractionMode, LocalHitInfo, RectHitTarget},
     types::Point,
 };
 
@@ -15,25 +15,18 @@ impl Chart {
                     return "grabbing";
                 }
 
-                let Some(hit) = self.hit_test_drawings(x_pixels, y_pixels, InteractionMode::Hover)
-                else {
-                    return "crosshair";
-                };
-
-                match hit.local {
-                    LocalHitInfo::Rect { target } => match target {
-                        RectHitTarget::Inside => "grab",
-                        RectHitTarget::Edge(edge) => match edge {
-                            RectEdge::Top | RectEdge::Bottom => "ns-resize",
-                            RectEdge::Left | RectEdge::Right => "ew-resize",
-                        },
-                        RectHitTarget::Corner(corner) => match corner {
-                            RectCorner::TopLeft | RectCorner::BottomRight => "nwse-resize",
-                            RectCorner::TopRight | RectCorner::BottomLeft => "nesw-resize",
-                        },
-                    },
-                    LocalHitInfo::Line { .. } | LocalHitInfo::Marker { .. } => "grab",
+                if self
+                    .hit_test_drawings(x_pixels, y_pixels, InteractionMode::Hover)
+                    .is_some()
+                {
+                    return "pointer";
                 }
+
+                if self.hit_test_series_at(x_pixels, y_pixels).is_some() {
+                    return "pointer";
+                }
+
+                "crosshair"
             }
             _ => "crosshair",
         }
@@ -65,6 +58,8 @@ impl Chart {
                 if let Some(hit) =
                     self.hit_test_drawings(x_pixels, y_pixels, InteractionMode::Select)
                 {
+                    self.selected_drawing_id = Some(hit.primitive_id);
+                    self.selected_series_id = None;
                     self.drawing_interaction.pointer_down = true;
                     self.drawing_interaction.dragging_drawing_id = Some(hit.primitive_id);
                     self.drawing_interaction.dragging_resize_target = match hit.local {
@@ -82,6 +77,7 @@ impl Chart {
                     self.drawing_interaction.last_pointer = Some(point);
                     return true;
                 }
+                self.selected_drawing_id = None;
                 false
             }
             crate::chart::tools::DrawingToolMode::HorizontalLine => {
@@ -95,19 +91,18 @@ impl Chart {
                 true
             }
             crate::chart::tools::DrawingToolMode::Rectangle
+            | crate::chart::tools::DrawingToolMode::PriceRange
+            | crate::chart::tools::DrawingToolMode::TimeRange
+            | crate::chart::tools::DrawingToolMode::DateTimeRange
             | crate::chart::tools::DrawingToolMode::FibRetracement
             | crate::chart::tools::DrawingToolMode::Ray
             | crate::chart::tools::DrawingToolMode::LongPosition
             | crate::chart::tools::DrawingToolMode::ShortPosition => {
-                if let Some(start) = self.drawing_interaction.pending_start {
-                    self.finalize_shape_from_points(start, point);
-                    self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
-                    return true;
-                }
-
                 self.drawing_interaction.pointer_down = true;
                 self.drawing_interaction.dragged = false;
-                self.drawing_interaction.pending_start = Some(point);
+                if self.drawing_interaction.pending_start.is_none() {
+                    self.drawing_interaction.pending_start = Some(point);
+                }
                 self.drawing_interaction.last_pointer = Some(point);
                 true
             }
@@ -171,6 +166,8 @@ impl Chart {
             self.drawing_interaction.pointer_down = false;
             self.drawing_interaction.dragging_drawing_id = None;
             self.drawing_interaction.dragging_resize_target = None;
+            self.drawing_interaction.pending_start = None;
+            self.drawing_interaction.dragged = false;
             self.drawing_interaction.last_pointer = Some(point);
             return true;
         }
@@ -180,15 +177,45 @@ impl Chart {
         }
 
         self.drawing_interaction.pointer_down = false;
+        let start = self.drawing_interaction.pending_start;
         if self.drawing_interaction.dragged {
-            if let Some(start) = self.drawing_interaction.pending_start {
+            if let Some(start) = start {
                 self.finalize_shape_from_points(start, point);
+                self.drawing_interaction.pending_start = None;
                 self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
                 return true;
             }
+        } else if is_two_point_shape_tool(self.drawing_tool_mode) {
+            if let Some(start) = start {
+                let dist = ((point.x - start.x).powi(2) + (point.y - start.y).powi(2)).sqrt();
+                if dist >= DRAW_SHAPE_DRAG_THRESHOLD_PX {
+                    self.finalize_shape_from_points(start, point);
+                    self.drawing_interaction.pending_start = None;
+                    self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
+                    return true;
+                }
+
+                // First click in click-click mode: keep anchor and wait for next click.
+                self.drawing_interaction.pending_start = Some(start);
+            }
         }
 
+        self.drawing_interaction.dragged = false;
         self.drawing_interaction.last_pointer = Some(point);
         true
     }
+}
+
+fn is_two_point_shape_tool(mode: crate::chart::tools::DrawingToolMode) -> bool {
+    matches!(
+        mode,
+        crate::chart::tools::DrawingToolMode::Rectangle
+            | crate::chart::tools::DrawingToolMode::PriceRange
+            | crate::chart::tools::DrawingToolMode::TimeRange
+            | crate::chart::tools::DrawingToolMode::DateTimeRange
+            | crate::chart::tools::DrawingToolMode::FibRetracement
+            | crate::chart::tools::DrawingToolMode::Ray
+            | crate::chart::tools::DrawingToolMode::LongPosition
+            | crate::chart::tools::DrawingToolMode::ShortPosition
+    )
 }
