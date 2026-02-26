@@ -1,7 +1,7 @@
 use crate::drawings::{
     commands::DrawingCommand,
     hit_test::{RectCorner, RectEdge, RectHitTarget},
-    types::{Drawing, FibRetracement, DEFAULT_DRAWING_LAYER},
+    types::{Drawing, DrawingStyle, FibRetracement, DEFAULT_DRAWING_LAYER},
 };
 
 const FIB_LEVELS: [f64; 8] = [-0.618, -0.272, 0.0, 0.382, 0.5, 0.618, 0.786, 1.0];
@@ -19,6 +19,7 @@ pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> FibRetracement 
         end_price: price - price_span * 0.06,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -36,6 +37,7 @@ pub fn from_points(
         end_price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -147,6 +149,7 @@ mod tests {
             end_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }
     }
 

@@ -15,12 +15,12 @@ use crate::{
         axes::build_axis_commands,
         candles::build_candle_commands,
         primitives::DrawCommand,
-        styles::{ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
+        styles::{ColorRef, ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
         ticks::{HumanTimeFormatter, TimeLabelFormatter},
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
-    types::{Candle, Point},
+    types::{Candle, CursorMode, Point},
 };
 
 use super::Chart;
@@ -131,9 +131,10 @@ impl Chart {
             }
         }
 
+        let cfg = self.appearance_config();
         out.push(DrawCommand::Rect {
             rect: layout.full,
-            fill: Some(FillStyle::token(ColorToken::CanvasBg)),
+            fill: Some(FillStyle::css(cfg.background.clone())),
             stroke: None,
         });
 
@@ -145,6 +146,8 @@ impl Chart {
             &pane_scales,
         ));
 
+        let bull = ColorRef::Css(cfg.candle_up.clone());
+        let bear = ColorRef::Css(cfg.candle_down.clone());
         out.push(DrawCommand::PushClip { rect: price_pane });
         out.extend(build_volume_commands(
             visible,
@@ -152,6 +155,8 @@ impl Chart {
             ts_price,
             price_pane,
             max_vol,
+            bull.clone(),
+            bear.clone(),
         ));
         out.extend(build_candle_commands(
             visible,
@@ -159,6 +164,8 @@ impl Chart {
             ts_price,
             ps,
             self.candle_body_style(),
+            bull,
+            bear,
         ));
         out.push(DrawCommand::PopClip);
 
@@ -247,6 +254,7 @@ impl Chart {
             self.viewport,
             &self.candles,
             self.selected_drawing_id(),
+            Some(self.appearance_config()),
         ));
 
         if let Some(preview) = self.active_drawing_preview() {
@@ -258,23 +266,46 @@ impl Chart {
             ));
         }
 
+        // Drop-point dots: pending construction clicks + selected vertex handles
+        out.extend(self.build_anchor_commands());
+
         let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {
             out.push(DrawCommand::PushClip { rect: layout.plot });
-            out.extend(build_dotted_vertical(
-                crosshair.x,
-                layout.plot.y,
-                layout.plot_bottom(),
-                1.0,
-                ColorToken::Crosshair,
-            ));
-            out.extend(build_dotted_horizontal(
-                crosshair.y,
-                layout.plot.x,
-                layout.plot.right(),
-                1.0,
-                ColorToken::Crosshair,
-            ));
+
+            match self.cursor_mode {
+                CursorMode::Crosshair => {
+                    out.extend(build_dotted_vertical(
+                        crosshair.x,
+                        layout.plot.y,
+                        layout.plot_bottom(),
+                        1.0,
+                        ColorToken::Crosshair,
+                    ));
+                    out.extend(build_dotted_horizontal(
+                        crosshair.y,
+                        layout.plot.x,
+                        layout.plot.right(),
+                        1.0,
+                        ColorToken::Crosshair,
+                    ));
+                }
+                CursorMode::Dot => {
+                    out.push(DrawCommand::Rect {
+                        rect: crate::types::Rect {
+                            x: crosshair.x - 2.0,
+                            y: crosshair.y - 2.0,
+                            w: 4.0,
+                            h: 4.0,
+                        },
+                        fill: Some(FillStyle::token(ColorToken::Crosshair)),
+                        stroke: None,
+                    });
+                }
+                CursorMode::Normal => {
+                    // Lines are omitted in Normal mode, labels remain.
+                }
+            }
             out.push(DrawCommand::PopClip);
 
             if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, self.candles.len()) {
@@ -311,6 +342,57 @@ impl Chart {
         }
 
         out
+    }
+
+    /// Returns caret bounds for the selected Text drawing when not locked, for inline edit mode.
+    /// Returns (x, y, height, color) in layout pixels, or None.
+    pub fn selected_text_caret_bounds(&self) -> Option<(f32, f32, f32, String)> {
+        use crate::drawings::types::Drawing;
+
+        let id = self.selected_drawing_id()?;
+        let drawing = self.drawings.drawing(id)?;
+        let Drawing::Text(t) = drawing else {
+            return None;
+        };
+        if t.style.locked {
+            return None;
+        }
+
+        let layout = self.current_layout();
+        let price_pane = layout.price_pane()?;
+        let vp = self.viewport?;
+
+        let visible = self.visible_data();
+        if visible.is_empty() {
+            return None;
+        }
+        let (min_price, max_price, _) = self.compute_visible_bounds(visible);
+        let (min_price, max_price) = apply_y_zoom(
+            min_price,
+            max_price,
+            self.pane_y_zoom_factor(&PaneId::Price),
+            self.pane_y_pan_factor(&PaneId::Price),
+        );
+        let ps = crate::scale::PriceScale {
+            pane: price_pane,
+            min: min_price,
+            max: max_price,
+        };
+
+        let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w);
+        let y = ps.y_for_price(t.price);
+        let size = t.style.font_size.unwrap_or(14.0);
+        let text_width = (t.text.chars().count() as f32 * size * 0.6).max(0.0);
+        let caret_x = x + 4.0 + text_width;
+        let caret_y = y - size * 0.5;
+        let color = t
+            .style
+            .stroke_color
+            .as_deref()
+            .unwrap_or("#e5e7eb")
+            .to_string();
+
+        Some((caret_x, caret_y, size, color))
     }
 }
 

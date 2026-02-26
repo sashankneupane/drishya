@@ -28,6 +28,22 @@ pub enum DrawCommand {
         fill: Option<FillStyle>,
         stroke: Option<StrokeStyle>,
     },
+    Polyline {
+        points: Vec<Point>,
+        stroke: StrokeStyle,
+    },
+    Ellipse {
+        /// Center of the ellipse in pixel space.
+        cx: f32,
+        cy: f32,
+        /// Semi-axes in pixel space (rx along the major axis, ry along the minor).
+        rx: f32,
+        ry: f32,
+        /// Rotation of the major axis from the positive-x screen axis (radians).
+        rotation: f32,
+        fill: Option<FillStyle>,
+        stroke: Option<StrokeStyle>,
+    },
     Text {
         pos: Point,
         text: String,

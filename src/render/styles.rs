@@ -42,6 +42,8 @@ impl From<ColorToken> for ColorRef {
 pub struct StrokeStyle {
     pub color: ColorRef,
     pub width: f32,
+    /// Dash pattern for dotted/dashed lines; None = solid.
+    pub dash: Option<Vec<f64>>,
 }
 
 impl Default for StrokeStyle {
@@ -49,6 +51,7 @@ impl Default for StrokeStyle {
         Self {
             color: ColorToken::AxisText.into(),
             width: 1.0,
+            dash: None,
         }
     }
 }
@@ -58,6 +61,7 @@ impl StrokeStyle {
         Self {
             color: color.into(),
             width,
+            dash: None,
         }
     }
 
@@ -65,6 +69,23 @@ impl StrokeStyle {
         Self {
             color: ColorRef::Css(color),
             width,
+            dash: None,
+        }
+    }
+
+    pub fn token_with_dash(color: ColorToken, width: f32, dash: Option<Vec<f64>>) -> Self {
+        Self {
+            color: color.into(),
+            width,
+            dash,
+        }
+    }
+
+    pub fn css_with_dash(color: String, width: f32, dash: Option<Vec<f64>>) -> Self {
+        Self {
+            color: ColorRef::Css(color),
+            width,
+            dash,
         }
     }
 }

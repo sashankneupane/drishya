@@ -1,7 +1,7 @@
 use crate::drawings::{
     commands::DrawingCommand,
     hit_test::{RectCorner, RectEdge, RectHitTarget},
-    types::{Drawing, LongPosition, ShortPosition, DEFAULT_DRAWING_LAYER},
+    types::{Drawing, DrawingStyle, LongPosition, ShortPosition, DEFAULT_DRAWING_LAYER},
 };
 
 pub fn long_from_anchor(world_x: f32, entry_price: f64, price_span: f64) -> LongPosition {
@@ -9,11 +9,13 @@ pub fn long_from_anchor(world_x: f32, entry_price: f64, price_span: f64) -> Long
         id: 0,
         start_index: world_x - 6.0,
         end_index: world_x + 20.0,
+        entry_index: world_x,
         entry_price,
         stop_price: entry_price - price_span * 0.06,
         target_price: entry_price + price_span * 0.1,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -34,11 +36,13 @@ pub fn long_from_points(
         id: 0,
         start_index,
         end_index,
+        entry_index: start_index,
         entry_price,
         stop_price,
         target_price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -47,11 +51,13 @@ pub fn short_from_anchor(world_x: f32, entry_price: f64, price_span: f64) -> Sho
         id: 0,
         start_index: world_x - 6.0,
         end_index: world_x + 20.0,
+        entry_index: world_x,
         entry_price,
         stop_price: entry_price + price_span * 0.06,
         target_price: entry_price - price_span * 0.1,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -72,11 +78,13 @@ pub fn short_from_points(
         id: 0,
         start_index,
         end_index,
+        entry_index: start_index,
         entry_price,
         stop_price,
         target_price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -112,6 +120,7 @@ pub fn add_long_command_from_anchor(
     DrawingCommand::AddLongPosition {
         start_index: long.start_index,
         end_index: long.end_index,
+        entry_index: long.entry_index,
         entry_price: long.entry_price,
         stop_price: long.stop_price,
         target_price: long.target_price,
@@ -128,6 +137,7 @@ pub fn add_long_command_from_points(
     DrawingCommand::AddLongPosition {
         start_index: long.start_index,
         end_index: long.end_index,
+        entry_index: long.entry_index,
         entry_price: long.entry_price,
         stop_price: long.stop_price,
         target_price: long.target_price,
@@ -143,6 +153,7 @@ pub fn add_short_command_from_anchor(
     DrawingCommand::AddShortPosition {
         start_index: short.start_index,
         end_index: short.end_index,
+        entry_index: short.entry_index,
         entry_price: short.entry_price,
         stop_price: short.stop_price,
         target_price: short.target_price,
@@ -159,6 +170,7 @@ pub fn add_short_command_from_points(
     DrawingCommand::AddShortPosition {
         start_index: short.start_index,
         end_index: short.end_index,
+        entry_index: short.entry_index,
         entry_price: short.entry_price,
         stop_price: short.stop_price,
         target_price: short.target_price,
@@ -308,11 +320,13 @@ mod tests {
             id: 1,
             start_index: 60.0,
             end_index: 100.0,
+            entry_index: 60.0,
             entry_price: 5.0,
             stop_price: 0.0,
             target_price: 10.0,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         };
 
         let target = resize_long(&mut item, RectHitTarget::Edge(RectEdge::Left), 120.0, 8.0);

@@ -3,13 +3,15 @@
 //! This store is intentionally minimal and deterministic: append, remove,
 //! iterate. Higher-level semantics live in the command layer.
 
-use crate::drawings::types::*;
-use std::collections::HashSet;
+use crate::drawings::types::{DrawingStyle, *};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default)]
 pub struct DrawingStore {
     next_id: DrawingId,
     items: Vec<Drawing>,
+    layers: HashMap<DrawingLayerId, DrawingLayer>,
+    groups: HashMap<DrawingGroupId, DrawingGroup>,
     layer_order: Vec<DrawingLayerId>,
     hidden_layers: HashSet<DrawingLayerId>,
     hidden_groups: HashSet<DrawingGroupId>,
@@ -18,14 +20,37 @@ pub struct DrawingStore {
 
 impl DrawingStore {
     pub fn new() -> Self {
+        let mut layers = HashMap::new();
+        let default_layer_id = DEFAULT_DRAWING_LAYER.to_string();
+        layers.insert(
+            default_layer_id.clone(),
+            DrawingLayer {
+                id: default_layer_id.clone(),
+                name: "Drawings".to_string(),
+                visible: true,
+                locked: false,
+                order: 0,
+            },
+        );
+
         Self {
             next_id: 1,
             items: Vec::new(),
-            layer_order: vec![DEFAULT_DRAWING_LAYER.to_string()],
+            layers,
+            groups: HashMap::new(),
+            layer_order: vec![default_layer_id],
             hidden_layers: HashSet::new(),
             hidden_groups: HashSet::new(),
             hidden_drawings: HashSet::new(),
         }
+    }
+
+    pub fn layers(&self) -> &HashMap<DrawingLayerId, DrawingLayer> {
+        &self.layers
+    }
+
+    pub fn groups(&self) -> &HashMap<DrawingGroupId, DrawingGroup> {
+        &self.groups
     }
 
     fn alloc_id(&mut self) -> DrawingId {
@@ -42,6 +67,7 @@ impl DrawingStore {
             price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -53,6 +79,7 @@ impl DrawingStore {
             index,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -79,6 +106,7 @@ impl DrawingStore {
             end_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -110,6 +138,7 @@ impl DrawingStore {
             bottom_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -120,6 +149,7 @@ impl DrawingStore {
         end_index: f32,
         top_price: f64,
         bottom_price: f64,
+        is_up: bool,
     ) -> DrawingId {
         let id = self.alloc_id();
         let (start_index, end_index) = if start_index <= end_index {
@@ -139,8 +169,10 @@ impl DrawingStore {
             end_index,
             top_price,
             bottom_price,
+            is_up,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -151,6 +183,7 @@ impl DrawingStore {
         end_index: f32,
         top_price: f64,
         bottom_price: f64,
+        is_up: bool,
     ) -> DrawingId {
         let id = self.alloc_id();
         let (start_index, end_index) = if start_index <= end_index {
@@ -170,8 +203,10 @@ impl DrawingStore {
             end_index,
             top_price,
             bottom_price,
+            is_up,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -182,6 +217,7 @@ impl DrawingStore {
         end_index: f32,
         top_price: f64,
         bottom_price: f64,
+        is_up: bool,
     ) -> DrawingId {
         let id = self.alloc_id();
         let (start_index, end_index) = if start_index <= end_index {
@@ -201,8 +237,10 @@ impl DrawingStore {
             end_index,
             top_price,
             bottom_price,
+            is_up,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -211,6 +249,7 @@ impl DrawingStore {
         &mut self,
         start_index: f32,
         end_index: f32,
+        entry_index: f32,
         entry_price: f64,
         stop_price: f64,
         target_price: f64,
@@ -228,11 +267,13 @@ impl DrawingStore {
             id,
             start_index,
             end_index,
+            entry_index,
             entry_price,
             stop_price,
             target_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -241,6 +282,7 @@ impl DrawingStore {
         &mut self,
         start_index: f32,
         end_index: f32,
+        entry_index: f32,
         entry_price: f64,
         stop_price: f64,
         target_price: f64,
@@ -258,11 +300,13 @@ impl DrawingStore {
             id,
             start_index,
             end_index,
+            entry_index,
             entry_price,
             stop_price,
             target_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -283,6 +327,120 @@ impl DrawingStore {
             end_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
+        }));
+        id
+    }
+
+    pub fn add_circle(
+        &mut self,
+        center_index: f32,
+        radius_index: f32,
+        center_price: f64,
+        radius_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Circle(Circle {
+            id,
+            center_index,
+            center_price,
+            radius_index,
+            radius_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+            style: DrawingStyle::default(),
+        }));
+        id
+    }
+
+    pub fn add_triangle(
+        &mut self,
+        p1_index: f32,
+        p2_index: f32,
+        p3_index: f32,
+        p1_price: f64,
+        p2_price: f64,
+        p3_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Triangle(Triangle {
+            id,
+            p1_index,
+            p1_price,
+            p2_index,
+            p2_price,
+            p3_index,
+            p3_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+            style: DrawingStyle::default(),
+        }));
+        id
+    }
+
+    pub fn add_ellipse(
+        &mut self,
+        p1_index: f32,
+        p2_index: f32,
+        p3_index: f32,
+        p1_price: f64,
+        p2_price: f64,
+        p3_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Ellipse(Ellipse {
+            id,
+            p1_index,
+            p1_price,
+            p2_index,
+            p2_price,
+            p3_index,
+            p3_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+            style: DrawingStyle::default(),
+        }));
+        id
+    }
+
+    pub fn add_text(&mut self, index: f32, price: f64, text: String) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Text(Text {
+            id,
+            index,
+            price,
+            text: if text.is_empty() {
+                "Text".to_string()
+            } else {
+                text
+            },
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+            style: DrawingStyle::default(),
+        }));
+        id
+    }
+
+    pub fn add_brush_stroke(&mut self, points: Vec<StrokePoint>) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::BrushStroke(BrushStroke {
+            id,
+            points,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+            style: DrawingStyle::default(),
+        }));
+        id
+    }
+
+    pub fn add_highlight_stroke(&mut self, points: Vec<StrokePoint>) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::HighlightStroke(HighlightStroke {
+            id,
+            points,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -349,6 +507,9 @@ impl DrawingStore {
 
     pub fn set_layer_visible(&mut self, layer_id: &str, visible: bool) {
         self.ensure_layer(layer_id);
+        if let Some(layer) = self.layers.get_mut(layer_id) {
+            layer.visible = visible;
+        }
         if visible {
             self.hidden_layers.remove(layer_id);
         } else {
@@ -359,6 +520,9 @@ impl DrawingStore {
     pub fn set_group_visible(&mut self, group_id: &str, visible: bool) {
         if group_id.trim().is_empty() {
             return;
+        }
+        if let Some(group) = self.groups.get_mut(group_id) {
+            group.visible = visible;
         }
 
         if visible {
@@ -408,30 +572,242 @@ impl DrawingStore {
         !self.hidden_drawings.contains(&id)
     }
 
+    pub fn create_layer(&mut self, id: DrawingLayerId, name: String) {
+        if id.trim().is_empty() {
+            return;
+        }
+        if !self.layers.contains_key(&id) {
+            self.layers.insert(
+                id.clone(),
+                DrawingLayer {
+                    id: id.clone(),
+                    name,
+                    visible: true,
+                    locked: false,
+                    order: self.layers.len() as i32,
+                },
+            );
+            if !self.layer_order.contains(&id) {
+                self.layer_order.push(id);
+            }
+        }
+    }
+
+    pub fn delete_layer(&mut self, id: &str) {
+        if id == DEFAULT_DRAWING_LAYER {
+            return; // Cannot delete default layer
+        }
+
+        if self.layers.remove(id).is_some() {
+            self.layer_order.retain(|l| l != id);
+            self.hidden_layers.remove(id);
+
+            // Rehome drawings to default layer
+            for item in &mut self.items {
+                if item.layer_id() == id {
+                    item.set_layer_id(DEFAULT_DRAWING_LAYER);
+                }
+            }
+
+            // Rehome groups to default layer
+            for group in self.groups.values_mut() {
+                if group.layer_id == id {
+                    group.layer_id = DEFAULT_DRAWING_LAYER.to_string();
+                }
+            }
+        }
+    }
+
+    pub fn update_layer(
+        &mut self,
+        id: &str,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    ) {
+        if let Some(layer) = self.layers.get_mut(id) {
+            if let Some(n) = name {
+                layer.name = n;
+            }
+            if let Some(v) = visible {
+                layer.visible = v;
+                if v {
+                    self.hidden_layers.remove(id);
+                } else {
+                    self.hidden_layers.insert(id.to_string());
+                }
+            }
+            if let Some(l) = locked {
+                layer.locked = l;
+            }
+        }
+    }
+
+    pub fn create_group(
+        &mut self,
+        id: DrawingGroupId,
+        name: String,
+        layer_id: DrawingLayerId,
+        parent_group_id: Option<DrawingGroupId>,
+    ) {
+        if id.trim().is_empty() {
+            return;
+        }
+        self.ensure_layer(&layer_id);
+        if !self.groups.contains_key(&id) {
+            self.groups.insert(
+                id.clone(),
+                DrawingGroup {
+                    id,
+                    name,
+                    layer_id,
+                    parent_group_id,
+                    visible: true,
+                    locked: false,
+                    order: self.groups.len() as i32,
+                },
+            );
+        }
+    }
+
+    pub fn delete_group(&mut self, id: &str) {
+        if self.groups.remove(id).is_some() {
+            self.hidden_groups.remove(id);
+
+            // Policy: Cascade delete drawings in this group
+            self.items.retain(|item| item.group_id() != Some(id));
+
+            // Reparent sub-groups
+            for group in self.groups.values_mut() {
+                if group.parent_group_id.as_deref() == Some(id) {
+                    group.parent_group_id = None;
+                }
+            }
+        }
+    }
+
+    pub fn update_group(
+        &mut self,
+        id: &str,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    ) {
+        if let Some(group) = self.groups.get_mut(id) {
+            if let Some(n) = name {
+                group.name = n;
+            }
+            if let Some(v) = visible {
+                group.visible = v;
+                if v {
+                    self.hidden_groups.remove(id);
+                } else {
+                    self.hidden_groups.insert(id.to_string());
+                }
+            }
+            if let Some(l) = locked {
+                group.locked = l;
+            }
+        }
+    }
+
+    pub fn group_effective_visible(&self, group_id: &str) -> bool {
+        if self.hidden_groups.contains(group_id) {
+            return false;
+        }
+        if let Some(group) = self.groups.get(group_id) {
+            if !group.visible {
+                return false;
+            }
+            if let Some(parent_id) = &group.parent_group_id {
+                return self.group_effective_visible(parent_id);
+            }
+            true
+        } else {
+            true // If group not found, assume visible (or ignore)
+        }
+    }
+
+    pub fn group_effective_locked(&self, group_id: &str) -> bool {
+        if let Some(group) = self.groups.get(group_id) {
+            if group.locked {
+                return true;
+            }
+            if let Some(parent_id) = &group.parent_group_id {
+                return self.group_effective_locked(parent_id);
+            }
+            false
+        } else {
+            false
+        }
+    }
+
+    pub fn layer_effective_visible(&self, layer_id: &str) -> bool {
+        !self.hidden_layers.contains(layer_id)
+            && self.layers.get(layer_id).map(|l| l.visible).unwrap_or(true)
+    }
+
+    pub fn layer_effective_locked(&self, layer_id: &str) -> bool {
+        self.layers.get(layer_id).map(|l| l.locked).unwrap_or(false)
+    }
+
+    pub fn drawing_effective_locked(&self, drawing_id: DrawingId) -> bool {
+        if let Some(drawing) = self.drawing(drawing_id) {
+            if self.layer_effective_locked(drawing.layer_id()) {
+                return true;
+            }
+            if let Some(group_id) = drawing.group_id() {
+                if self.group_effective_locked(group_id) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn visible_items_in_paint_order(&self) -> Vec<&Drawing> {
         let mut out = Vec::new();
 
-        for layer in &self.layer_order {
-            if self.hidden_layers.contains(layer) {
+        for layer_id in &self.layer_order {
+            if !self.layer_effective_visible(layer_id) {
                 continue;
             }
 
-            for item in &self.items {
-                if item.layer_id() != layer {
+            // Get groups in this layer, sorted by order
+            let mut layer_groups: Vec<&DrawingGroup> = self
+                .groups
+                .values()
+                .filter(|g| g.layer_id == *layer_id)
+                .collect();
+            layer_groups.sort_by_key(|g| g.order);
+
+            // Drawings in this layer
+            let layer_drawings: Vec<&Drawing> = self
+                .items
+                .iter()
+                .filter(|d| d.layer_id() == layer_id)
+                .collect();
+
+            // First: Grouped drawings (by group order)
+            for group in layer_groups {
+                if !self.group_effective_visible(&group.id) {
                     continue;
                 }
 
-                if let Some(group_id) = item.group_id() {
-                    if self.hidden_groups.contains(group_id) {
-                        continue;
+                for drawing in &layer_drawings {
+                    if drawing.group_id() == Some(&group.id)
+                        && !self.hidden_drawings.contains(&drawing.id())
+                    {
+                        out.push(*drawing);
                     }
                 }
+            }
 
-                if self.hidden_drawings.contains(&item.id()) {
-                    continue;
+            // Second: Ungrouped drawings
+            for drawing in &layer_drawings {
+                if drawing.group_id().is_none() && !self.hidden_drawings.contains(&drawing.id()) {
+                    out.push(*drawing);
                 }
-
-                out.push(item);
             }
         }
 
@@ -465,6 +841,18 @@ mod tests {
         let a = store.add_horizontal_line(100.0);
         let b = store.add_vertical_line(4.0);
 
+        store.create_group(
+            "group-a".to_string(),
+            "Group A".to_string(),
+            DEFAULT_DRAWING_LAYER.to_string(),
+            None,
+        );
+        store.create_group(
+            "group-b".to_string(),
+            "Group B".to_string(),
+            DEFAULT_DRAWING_LAYER.to_string(),
+            None,
+        );
         assert!(store.set_drawing_group(a, Some("group-a")));
         assert!(store.set_drawing_group(b, Some("group-b")));
         store.set_group_visible("group-b", false);

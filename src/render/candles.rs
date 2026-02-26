@@ -4,7 +4,7 @@
 
 use crate::{
     render::primitives::DrawCommand,
-    render::styles::{ColorToken, FillStyle, StrokeStyle},
+    render::styles::{ColorRef, FillStyle, StrokeStyle},
     scale::{PriceScale, TimeScale},
     types::{Candle, Point, Rect},
 };
@@ -23,6 +23,8 @@ pub fn build_candle_commands(
     ts: TimeScale,
     ps: PriceScale,
     body_style: CandleBodyStyle,
+    bull_color: ColorRef,
+    bear_color: ColorRef,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let cw = ts.candle_width();
@@ -37,9 +39,9 @@ pub fn build_candle_commands(
 
         let bull = c.close >= c.open;
         let color = if bull {
-            ColorToken::Bull
+            bull_color.clone()
         } else {
-            ColorToken::Bear
+            bear_color.clone()
         };
 
         let y_high = ps.y_for_price(c.high);
@@ -54,12 +56,18 @@ pub fn build_candle_commands(
         let body_bottom = y + h;
 
         // Wick / bar spine
+        let stroke_color = |c: &ColorRef| StrokeStyle {
+            color: c.clone(),
+            width: 1.0,
+            dash: None,
+        };
+        let fill_color = |c: &ColorRef| FillStyle { color: c.clone() };
         match body_style {
             CandleBodyStyle::Solid => {
                 out.push(DrawCommand::Line {
                     from: Point { x, y: y_high },
                     to: Point { x, y: y_low },
-                    stroke: StrokeStyle::token(color, 1.0),
+                    stroke: stroke_color(&color),
                 });
             }
             CandleBodyStyle::Hollow => {
@@ -68,14 +76,14 @@ pub fn build_candle_commands(
                     out.push(DrawCommand::Line {
                         from: Point { x, y: y_high },
                         to: Point { x, y: body_top },
-                        stroke: StrokeStyle::token(color, 1.0),
+                        stroke: stroke_color(&color),
                     });
                 }
                 if body_bottom < y_low {
                     out.push(DrawCommand::Line {
                         from: Point { x, y: body_bottom },
                         to: Point { x, y: y_low },
-                        stroke: StrokeStyle::token(color, 1.0),
+                        stroke: stroke_color(&color),
                     });
                 }
             }
@@ -83,14 +91,14 @@ pub fn build_candle_commands(
                 out.push(DrawCommand::Line {
                     from: Point { x, y: y_high },
                     to: Point { x, y: y_low },
-                    stroke: StrokeStyle::token(color, 1.0),
+                    stroke: stroke_color(&color),
                 });
             }
             CandleBodyStyle::Volume => {
                 out.push(DrawCommand::Line {
                     from: Point { x, y: y_high },
                     to: Point { x, y: y_low },
-                    stroke: StrokeStyle::token(color, 1.0),
+                    stroke: stroke_color(&color),
                 });
             }
         }
@@ -105,7 +113,7 @@ pub fn build_candle_commands(
                         y: y_open,
                     },
                     to: Point { x, y: y_open },
-                    stroke: StrokeStyle::token(color, 1.0),
+                    stroke: stroke_color(&color),
                 });
                 out.push(DrawCommand::Line {
                     from: Point { x, y: y_close },
@@ -113,7 +121,7 @@ pub fn build_candle_commands(
                         x: x + tick_w,
                         y: y_close,
                     },
-                    stroke: StrokeStyle::token(color, 1.0),
+                    stroke: stroke_color(&color),
                 });
             }
             CandleBodyStyle::Solid | CandleBodyStyle::Hollow | CandleBodyStyle::Volume => {
@@ -133,16 +141,12 @@ pub fn build_candle_commands(
                 };
 
                 let (fill, stroke) = match body_style {
-                    CandleBodyStyle::Solid => (Some(FillStyle::token(color)), None),
+                    CandleBodyStyle::Solid => (Some(fill_color(&color)), None),
                     CandleBodyStyle::Hollow => {
-                        let fill = if bull {
-                            None
-                        } else {
-                            Some(FillStyle::token(color))
-                        };
-                        (fill, Some(StrokeStyle::token(color, 1.0)))
+                        let fill = if bull { None } else { Some(fill_color(&color)) };
+                        (fill, Some(stroke_color(&color)))
                     }
-                    CandleBodyStyle::Volume => (Some(FillStyle::token(color)), None),
+                    CandleBodyStyle::Volume => (Some(fill_color(&color)), None),
                     CandleBodyStyle::Bars => unreachable!(),
                 };
 

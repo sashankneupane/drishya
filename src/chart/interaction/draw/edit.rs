@@ -8,6 +8,9 @@ use crate::chart::Chart;
 
 impl Chart {
     pub fn move_drawing_by_pixels(&mut self, id: u64, dx_pixels: f32, dy_pixels: f32) -> bool {
+        if self.is_drawing_locked(id) {
+            return false;
+        }
         let layout = self.current_layout();
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
 
@@ -89,6 +92,44 @@ impl Chart {
                 item.stop_price += price_dy;
                 item.target_price += price_dy;
             }
+            Drawing::Triangle(item) => {
+                item.p1_index += world_dx;
+                item.p2_index += world_dx;
+                item.p3_index += world_dx;
+                item.p1_price += price_dy;
+                item.p2_price += price_dy;
+                item.p3_price += price_dy;
+            }
+            Drawing::Circle(item) => {
+                item.center_index += world_dx;
+                item.radius_index += world_dx;
+                item.center_price += price_dy;
+                item.radius_price += price_dy;
+            }
+            Drawing::Ellipse(item) => {
+                item.p1_index += world_dx;
+                item.p2_index += world_dx;
+                item.p3_index += world_dx;
+                item.p1_price += price_dy;
+                item.p2_price += price_dy;
+                item.p3_price += price_dy;
+            }
+            Drawing::Text(item) => {
+                item.index += world_dx;
+                item.price += price_dy;
+            }
+            Drawing::BrushStroke(s) => {
+                for p in &mut s.points {
+                    p.index += world_dx;
+                    p.price += price_dy;
+                }
+            }
+            Drawing::HighlightStroke(s) => {
+                for p in &mut s.points {
+                    p.index += world_dx;
+                    p.price += price_dy;
+                }
+            }
         }
 
         true
@@ -113,6 +154,9 @@ impl Chart {
         target: RectHitTarget,
         pointer: Point,
     ) -> Option<RectHitTarget> {
+        if self.is_drawing_locked(drawing_id) {
+            return None;
+        }
         let (world_x, price) = self.drawing_world_price_at(pointer.x, pointer.y)?;
         let drawing = self.drawings.drawing_mut(drawing_id)?;
 
@@ -134,6 +178,25 @@ impl Chart {
             Drawing::ShortPosition(item) => {
                 Some(position_shape::resize_short(item, target, world_x, price))
             }
+            Drawing::Triangle(item) => {
+                // Move all three vertices together
+                item.p1_index += world_x - item.p1_index;
+                item.p2_index += world_x - item.p1_index;
+                item.p3_index += world_x - item.p1_index;
+                None // Triangle uses vertex drag, not rect resize
+            }
+            Drawing::Circle(item) => Some({
+                // Adjust radius point only
+                item.radius_index = world_x;
+                item.radius_price = price;
+                RectHitTarget::Inside
+            }),
+            Drawing::Ellipse(item) => Some({
+                // Move the third control point (perpendicular radius)
+                item.p3_index = world_x;
+                item.p3_price = price;
+                RectHitTarget::Inside
+            }),
             _ => None,
         }
     }

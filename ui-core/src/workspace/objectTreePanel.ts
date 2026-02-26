@@ -1,6 +1,7 @@
 import { makeSvgIcon } from "./icons.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
+import { buildObjectTreeNodes } from "../chrome/objectTree.js";
 
 interface ObjectTreePanelOptions {
   chart: DrishyaChartClient;
@@ -42,18 +43,9 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   const refresh = () => {
     container.innerHTML = "";
     const state = chart.objectTreeState();
+    const nodes = buildObjectTreeNodes(state);
 
-    // Categorize and filter
-    const paneItems = state.panes.map(p => ({ id: p.id, label: `Pane: ${p.id}`, visible: p.visible, kind: 'pane' as const }));
-    const seriesItems = state.series
-      .filter(s => !s.deleted)
-      .map(s => ({ id: s.id, label: s.name || s.id, visible: s.visible, kind: 'series' as const }));
-    const drawingItems = state.drawings
-      .map(d => ({ id: String(d.id), label: `${d.kind} #${d.id}`, visible: d.visible, kind: 'drawing' as const }));
-
-    const allItems = [...paneItems, ...seriesItems, ...drawingItems];
-
-    if (allItems.length === 0) {
+    if (nodes.length === 0) {
       const empty = document.createElement("div");
       empty.className = "p-8 text-center text-[10px] text-zinc-700 italic";
       empty.textContent = "No objects active";
@@ -61,35 +53,68 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
       return;
     }
 
-    allItems.forEach((item) => {
+    nodes.forEach((node) => {
+      if (node.kind === "header") {
+        const headerRow = document.createElement("div");
+        headerRow.className = "h-6 flex items-center px-3 text-[9px] font-bold text-zinc-600 uppercase tracking-widest mt-2 mb-1";
+        headerRow.textContent = node.label;
+        container.appendChild(headerRow);
+        return;
+      }
+
       const row = document.createElement("div");
       row.className = "group h-8 flex items-center px-3 hover:bg-zinc-900/50 transition-colors cursor-default";
+      row.style.paddingLeft = `${node.depth * 12 + 12}px`;
 
       const label = document.createElement("span");
-      label.className = `flex-1 truncate text-[11px] ${item.visible ? 'text-zinc-500' : 'text-zinc-700 italic line-through'}`;
-      label.textContent = item.label;
+      const isVisible = node.visible !== false;
+      label.className = `flex-1 truncate text-[11px] ${isVisible ? 'text-zinc-500' : 'text-zinc-700 italic line-through'}`;
+      label.textContent = node.label;
 
       const actions = document.createElement("div");
       actions.className = "flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity";
 
-      const visibility = document.createElement("button");
-      visibility.className = `p-1 cursor-pointer transition-colors border-none outline-none bg-transparent ${item.visible ? 'text-zinc-600 hover:text-zinc-200' : 'text-zinc-400'}`;
-      visibility.appendChild(makeSvgIcon(item.visible ? "eye" : "eye-off", "h-3.5 w-3.5"));
-      visibility.title = item.visible ? "Hide" : "Show";
-      visibility.onclick = () => {
-        chart.applyObjectTreeAction({
-          type: "toggle_visibility",
-          kind: item.kind,
-          id: item.id,
-          visible: !item.visible
-        });
-        refresh();
-        options.onMutate?.();
-      };
+      // Visibility Toggle
+      if (node.visible !== undefined) {
+        const visibility = document.createElement("button");
+        visibility.className = `p-1 cursor-pointer transition-colors border-none outline-none bg-transparent ${node.visible ? 'text-zinc-600 hover:text-zinc-200' : 'text-zinc-400'}`;
+        visibility.appendChild(makeSvgIcon(node.visible ? "eye" : "eye-off", "h-3.5 w-3.5"));
+        visibility.title = node.visible ? "Hide" : "Show";
+        visibility.onclick = () => {
+          chart.applyObjectTreeAction({
+            type: "toggle_visibility",
+            kind: node.kind as any,
+            id: node.id,
+            visible: !node.visible
+          });
+          refresh();
+          options.onMutate?.();
+        };
+        actions.appendChild(visibility);
+      }
 
-      actions.appendChild(visibility);
+      // Lock Toggle (Layers/Groups/Drawings)
+      if (node.locked !== undefined) {
+        const lock = document.createElement("button");
+        lock.className = `p-1 cursor-pointer transition-colors border-none outline-none bg-transparent ${node.locked ? 'text-amber-600 hover:text-amber-400' : 'text-zinc-700 hover:text-zinc-300'}`;
+        lock.appendChild(makeSvgIcon(node.locked ? "lock" : "unlock", "h-3.5 w-3.5")); // Assuming 'unlock' icon exists
+        lock.title = node.locked ? "Unlock" : "Lock";
+        lock.onclick = () => {
+          if (node.kind === "drawing") {
+            chart.setDrawingConfig(Number(node.id), { locked: !node.locked });
+          } else if (node.kind === "layer") {
+            chart.updateLayer(node.id, { locked: !node.locked });
+          } else if (node.kind === "group") {
+            chart.updateGroup(node.id, { locked: !node.locked });
+          }
+          refresh();
+          options.onMutate?.();
+        };
+        actions.appendChild(lock);
+      }
 
-      if (item.kind !== 'pane') {
+      // Delete (Everything except Pane and Default Layer)
+      if (node.deletable) {
         const del = document.createElement("button");
         del.className = "p-1 text-zinc-700 hover:text-red-500 transition-colors cursor-pointer border-none outline-none bg-transparent";
         del.appendChild(makeSvgIcon("delete", "h-3.5 w-3.5"));
@@ -97,9 +122,8 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         del.onclick = () => {
           chart.applyObjectTreeAction({
             type: "delete",
-            kind: item.kind,
-            id: item.id,
-            visible: false
+            kind: node.kind as any,
+            id: node.id
           });
           refresh();
           options.onMutate?.();

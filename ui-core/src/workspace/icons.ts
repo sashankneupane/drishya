@@ -15,6 +15,10 @@ export type WorkspaceIconName =
   | "fib"
   | "long"
   | "short"
+  | "triangle"
+  | "circle"
+  | "ellipse"
+  | "text"
   | "trash"
   | "theme"
   | "theme-off"
@@ -23,7 +27,16 @@ export type WorkspaceIconName =
   | "close"
   | "chevron-right"
   | "delete"
-  | "search";
+  | "search"
+  | "crosshair"
+  | "dot"
+  | "settings"
+  | "grip-vertical"
+  | "grip-horizontal"
+  | "lock"
+  | "lock-open"
+  | "brush"
+  | "highlighter";
 
 export function makeSvgIcon(name: WorkspaceIconName | string, className = "drishya-icon"): SVGSVGElement {
   const svg = document.createElementNS(NS, "svg");
@@ -65,7 +78,20 @@ export function makeSvgIcon(name: WorkspaceIconName | string, className = "drish
     "close": ["M18 6L6 18", "M6 6l12 12"],
     "chevron-right": ["M9 18l6-6-6-6"],
     "delete": ["M3 6h18", "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2", "M10 11v6", "M14 11v6"],
-    "search": ["M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"]
+    "search": ["M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"],
+    "crosshair": ["M12 2v4", "M12 18v4", "M2 12h4", "M18 12h22", "M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"],
+    "dot": ["M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"],
+    "settings": ["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"],
+    "triangle": ["M12 3l9 17H3L12 3z"],
+    "circle": ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"],
+    "ellipse": ["M22 12c0 4.418-4.477 8-10 8s-10-3.582-10-8 4.477-8 10-8 10 3.582 10 8z"],
+    "text": ["M4 7V4h16v3", "M9 20h6", "M12 4v16"],
+    "grip-vertical": ["M8 4h2", "M8 12h2", "M8 20h2", "M14 4h2", "M14 12h2", "M14 20h2"],
+    "grip-horizontal": ["M4 8h2", "M4 14h2", "M12 8h2", "M12 14h2", "M20 8h2", "M20 14h2"],
+    "lock": ["M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2z", "M7 11V7a5 5 0 0110 0v4"],
+    "lock-open": ["M7 11V7a5 5 0 019.9-1", "M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2z"],
+    "brush": ["M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"],
+    "highlighter": ["M15.5 3.5a2.121 2.121 0 0 1 3 3L11 14l-4 1.5L8.5 11l7-7.5z", "M2 22l5-5"]
   };
 
   const ds = icons[name] || [];

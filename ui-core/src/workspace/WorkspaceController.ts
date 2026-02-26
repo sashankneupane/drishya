@@ -1,11 +1,13 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import type { WorkspaceTheme } from "./types.js";
+import type { CursorMode } from "../wasm/contracts.js";
 
 export interface WorkspaceState {
     theme: WorkspaceTheme;
     activeTool: DrawingToolId;
     isObjectTreeOpen: boolean;
     isLeftStripOpen: boolean;
+    cursorMode: CursorMode;
 }
 
 export type WorkspaceListener = (state: WorkspaceState) => void;
@@ -24,7 +26,8 @@ export class WorkspaceController {
             theme: initial.theme ?? "dark",
             activeTool: initial.activeTool ?? "select",
             isObjectTreeOpen: initial.isObjectTreeOpen ?? true,
-            isLeftStripOpen: initial.isLeftStripOpen ?? true
+            isLeftStripOpen: initial.isLeftStripOpen ?? true,
+            cursorMode: initial.cursorMode ?? "crosshair"
         };
     }
 
@@ -54,8 +57,9 @@ export class WorkspaceController {
         return nextTheme;
     }
 
-    setActiveTool(tool: DrawingToolId): void {
-        if (this.state.activeTool === tool) return;
+    setActiveTool(tool: DrawingToolId, options?: { force?: boolean }): void {
+        const force = options?.force === true;
+        if (!force && this.state.activeTool === tool) return;
         this.state.activeTool = tool;
         this.notify();
     }
@@ -69,6 +73,12 @@ export class WorkspaceController {
     setLeftStripOpen(open: boolean): void {
         if (this.state.isLeftStripOpen === open) return;
         this.state.isLeftStripOpen = open;
+        this.notify();
+    }
+
+    setCursorMode(mode: CursorMode): void {
+        if (this.state.cursorMode === mode) return;
+        this.state.cursorMode = mode;
         this.notify();
     }
 }

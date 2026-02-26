@@ -1,6 +1,6 @@
 use crate::drawings::{
     commands::DrawingCommand,
-    types::{HorizontalLine, VerticalLine, DEFAULT_DRAWING_LAYER},
+    types::{DrawingStyle, HorizontalLine, VerticalLine, DEFAULT_DRAWING_LAYER},
 };
 
 pub fn horizontal_from_price(price: f64) -> HorizontalLine {
@@ -9,6 +9,7 @@ pub fn horizontal_from_price(price: f64) -> HorizontalLine {
         price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -18,6 +19,7 @@ pub fn vertical_from_index(index: f32) -> VerticalLine {
         index,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 

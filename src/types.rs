@@ -17,6 +17,14 @@ pub struct Candle {
     pub volume: f64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CursorMode {
+    Crosshair,
+    Dot,
+    Normal,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Size {
     pub width: f32,
@@ -46,5 +54,13 @@ impl Rect {
     /// Bottom edge helper used throughout layout and render modules.
     pub fn bottom(self) -> f32 {
         self.y + self.h
+    }
+
+    /// Center point of the rectangle.
+    pub fn center(self) -> Point {
+        Point {
+            x: self.x + self.w * 0.5,
+            y: self.y + self.h * 0.5,
+        }
     }
 }

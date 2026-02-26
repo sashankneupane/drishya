@@ -28,10 +28,12 @@
     "build:styles": "tailwindcss -i ./src/styles/tailwind.css -o ./dist/styles.css --config ./tailwind.config.cjs --minify",
     "watch:styles": "tailwindcss -i ./src/styles/tailwind.css -o ./dist/styles.css --config ./tailwind.config.cjs --watch",
     "build:watch": "tsdown src/index.ts src/workspace/index.ts --format esm,cjs --dts --sourcemap --platform browser --out-dir dist --watch",
-    "dev": "npm run build:watch & npm run watch:styles",
+    "dev": "concurrently \"npm run build:watch\" \"npm run watch:styles\" \"npm run watch:wasm\"",
+    "watch:wasm": "cargo watch -C .. -w src -s \"wasm-pack build --dev --target web --out-dir ui-core/pkg\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "tailwindcss": "^3.4.13",
     "tsdown": "^0.20.3",
     "typescript": "^5.6.3"

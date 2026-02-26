@@ -1,5 +1,6 @@
 use crate::chart::Chart;
 use crate::drawings::commands::{execute_command, DrawingCommand};
+use crate::drawings::types::{DrawingStyle, StrokeType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +83,124 @@ impl Chart {
         self.drawings.set_group_visible(group_id, visible);
     }
 
+    pub fn set_drawing_stroke_color(&mut self, drawing_id: u64, color: Option<&str>) -> bool {
+        let c = color.map(|s| s.to_string());
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingStrokeColor {
+                id: drawing_id,
+                color: c,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_fill_color(&mut self, drawing_id: u64, color: Option<&str>) -> bool {
+        let c = color.map(|s| s.to_string());
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingFillColor {
+                id: drawing_id,
+                color: c,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_locked(&mut self, drawing_id: u64, locked: bool) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingLocked {
+                id: drawing_id,
+                locked,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_fill_opacity(&mut self, drawing_id: u64, opacity: Option<f32>) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingFillOpacity {
+                id: drawing_id,
+                opacity,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_stroke_width(&mut self, drawing_id: u64, width: Option<f32>) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingStrokeWidth {
+                id: drawing_id,
+                width,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_stroke_type(
+        &mut self,
+        drawing_id: u64,
+        stroke_type: Option<StrokeType>,
+    ) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingStrokeType {
+                id: drawing_id,
+                stroke_type,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_font_size(&mut self, drawing_id: u64, font_size: Option<f32>) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingFontSize {
+                id: drawing_id,
+                font_size,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_text_content(&mut self, drawing_id: u64, text: &str) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingTextContent {
+                id: drawing_id,
+                text: text.to_string(),
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn drawing_config(&self, drawing_id: u64) -> Option<DrawingStyle> {
+        self.drawings.drawing(drawing_id).map(|d| d.style().clone())
+    }
+
+    pub fn drawing_config_with_capabilities(
+        &self,
+        drawing_id: u64,
+    ) -> Option<(DrawingStyle, bool, Option<String>)> {
+        self.drawings.drawing(drawing_id).map(|d| {
+            let text_content = match d {
+                crate::drawings::types::Drawing::Text(t) => Some(t.text.clone()),
+                _ => None,
+            };
+            (d.style().clone(), d.supports_fill(), text_content)
+        })
+    }
+
+    pub fn is_drawing_locked(&self, drawing_id: u64) -> bool {
+        self.drawings
+            .drawing(drawing_id)
+            .map(|d| d.style().locked)
+            .unwrap_or(false)
+    }
+
     pub fn set_drawing_layer_order<I>(&mut self, layers: I)
     where
         I: IntoIterator<Item = String>,
@@ -91,6 +210,90 @@ impl Chart {
 
     pub fn drawing_layer_order(&self) -> Vec<String> {
         self.drawings.layer_order().to_vec()
+    }
+
+    pub fn create_drawing_layer(&mut self, id: String, name: String) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::CreateLayer { id, name });
+    }
+
+    pub fn delete_drawing_layer(&mut self, id: String) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::DeleteLayer { id });
+    }
+
+    pub fn update_drawing_layer(
+        &mut self,
+        id: String,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    ) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::UpdateLayer {
+                id,
+                name,
+                visible,
+                locked,
+            },
+        );
+    }
+
+    pub fn create_drawing_group(
+        &mut self,
+        id: String,
+        name: String,
+        layer_id: String,
+        parent_group_id: Option<String>,
+    ) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::CreateGroup {
+                id,
+                name,
+                layer_id,
+                parent_group_id,
+            },
+        );
+    }
+
+    pub fn delete_drawing_group(&mut self, id: String) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::DeleteGroup { id });
+    }
+
+    pub fn update_drawing_group(
+        &mut self,
+        id: String,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    ) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::UpdateGroup {
+                id,
+                name,
+                visible,
+                locked,
+            },
+        );
+    }
+
+    pub fn move_drawings_to_group(&mut self, ids: Vec<u64>, group_id: Option<String>) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::MoveDrawingsToGroup { ids, group_id },
+        );
+    }
+
+    pub fn move_drawings_to_layer(&mut self, ids: Vec<u64>, layer_id: String) {
+        let _ = execute_command(
+            &mut self.drawings,
+            DrawingCommand::MoveDrawingsToLayer { ids, layer_id },
+        );
+    }
+
+    pub fn delete_drawings(&mut self, ids: Vec<u64>) {
+        let _ = execute_command(&mut self.drawings, DrawingCommand::DeleteDrawings { ids });
     }
 
     pub(crate) fn drawing_state(&self) -> Vec<DrawingState> {
@@ -109,16 +312,23 @@ impl Chart {
 }
 
 fn drawing_kind(drawing: &crate::drawings::types::Drawing) -> &'static str {
+    use crate::drawings::types::Drawing;
     match drawing {
-        crate::drawings::types::Drawing::HorizontalLine(_) => "hline",
-        crate::drawings::types::Drawing::VerticalLine(_) => "vline",
-        crate::drawings::types::Drawing::Ray(_) => "ray",
-        crate::drawings::types::Drawing::Rectangle(_) => "rectangle",
-        crate::drawings::types::Drawing::PriceRange(_) => "price_range",
-        crate::drawings::types::Drawing::TimeRange(_) => "time_range",
-        crate::drawings::types::Drawing::DateTimeRange(_) => "date_time_range",
-        crate::drawings::types::Drawing::LongPosition(_) => "long",
-        crate::drawings::types::Drawing::ShortPosition(_) => "short",
-        crate::drawings::types::Drawing::FibRetracement(_) => "fib",
+        Drawing::HorizontalLine(_) => "hline",
+        Drawing::VerticalLine(_) => "vline",
+        Drawing::Ray(_) => "ray",
+        Drawing::Rectangle(_) => "rectangle",
+        Drawing::PriceRange(_) => "price_range",
+        Drawing::TimeRange(_) => "time_range",
+        Drawing::DateTimeRange(_) => "date_time_range",
+        Drawing::LongPosition(_) => "long",
+        Drawing::ShortPosition(_) => "short",
+        Drawing::FibRetracement(_) => "fib",
+        Drawing::Triangle(_) => "triangle",
+        Drawing::Circle(_) => "circle",
+        Drawing::Ellipse(_) => "ellipse",
+        Drawing::Text(_) => "text",
+        Drawing::BrushStroke(_) => "brush",
+        Drawing::HighlightStroke(_) => "highlighter",
     }
 }

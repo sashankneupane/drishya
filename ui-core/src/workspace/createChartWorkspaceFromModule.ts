@@ -18,6 +18,8 @@ export interface CreateChartWorkspaceFromModuleOptions {
   initialTheme?: WorkspaceTheme;
   initialTool?: DrawingToolId;
   injectStyles?: boolean;
+  /** When set, workspace state is saved to localStorage and restored on load */
+  persistKey?: string;
   marketControls?: CreateChartWorkspaceOptions["marketControls"];
 }
 
@@ -42,6 +44,7 @@ export async function createChartWorkspaceFromModule(
     initialTheme: options.initialTheme,
     initialTool: options.initialTool,
     injectStyles: options.injectStyles,
+    persistKey: options.persistKey,
     marketControls: options.marketControls,
   });
 }

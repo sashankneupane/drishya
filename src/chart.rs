@@ -8,6 +8,8 @@
 //! Keeping the public `Chart` type here provides a stable surface for callers
 //! while allowing internals to evolve without creating a monolithic file.
 
+pub mod anchors;
+pub mod appearance;
 pub mod hit_test;
 pub mod interaction;
 pub mod plots;
@@ -15,6 +17,7 @@ pub mod scene;
 pub mod state;
 pub mod tools;
 
+use self::appearance::ChartAppearanceConfig;
 use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
@@ -22,7 +25,7 @@ use crate::{
     plots::provider::PlotDataProvider,
     render::candles::CandleBodyStyle,
     render::styles::ThemeId,
-    types::{Candle, Point, Size},
+    types::{Candle, CursorMode, Point, Size},
     viewport::Viewport,
 };
 use std::collections::{HashMap, HashSet};
@@ -45,12 +48,14 @@ pub struct Chart {
     pane_y_zoom_factors: HashMap<String, f32>,
     pane_y_pan_factors: HashMap<String, f32>,
     crosshair: Option<Point>,
+    cursor_mode: CursorMode,
     theme: ThemeId,
     candle_body_style: CandleBodyStyle,
     drawing_tool_mode: DrawingToolMode,
     drawing_interaction: DrawingInteractionState,
     selected_drawing_id: Option<u64>,
     selected_series_id: Option<String>,
+    appearance_config: ChartAppearanceConfig,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -76,12 +81,14 @@ impl Chart {
             pane_y_zoom_factors: HashMap::new(),
             pane_y_pan_factors: HashMap::new(),
             crosshair: None,
+            cursor_mode: CursorMode::Crosshair,
             theme: ThemeId::Dark,
             candle_body_style: CandleBodyStyle::Solid,
             drawing_tool_mode: DrawingToolMode::Select,
             drawing_interaction: DrawingInteractionState::default(),
             selected_drawing_id: None,
             selected_series_id: None,
+            appearance_config: ChartAppearanceConfig::default(),
             drawings: DrawingStore::new(),
         }
     }
@@ -100,6 +107,24 @@ impl Chart {
 
     pub fn candle_body_style(&self) -> CandleBodyStyle {
         self.candle_body_style
+    }
+
+    pub fn set_cursor_mode(&mut self, mode: CursorMode) {
+        self.cursor_mode = mode;
+    }
+
+    pub fn cursor_mode(&self) -> CursorMode {
+        self.cursor_mode
+    }
+
+    pub fn set_appearance_config(&mut self, config: ChartAppearanceConfig) {
+        if config.validate().is_ok() {
+            self.appearance_config = config;
+        }
+    }
+
+    pub fn appearance_config(&self) -> &ChartAppearanceConfig {
+        &self.appearance_config
     }
 
     pub(crate) fn pane_y_zoom_factor(&self, pane_id: &PaneId) -> f32 {
@@ -122,6 +147,10 @@ impl Chart {
         let key = pane_zoom_key(pane_id).to_string();
         self.pane_y_pan_factors
             .insert(key, factor.clamp(-20.0, 20.0));
+    }
+
+    pub fn drawings(&self) -> &DrawingStore {
+        &self.drawings
     }
 }
 

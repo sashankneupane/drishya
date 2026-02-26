@@ -1,5 +1,7 @@
 import type {
   Candle,
+  ChartAppearanceConfig,
+  DrawingConfig,
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
@@ -11,11 +13,13 @@ import type { ObjectTreeAction } from "../chrome/objectTree.js";
 const EMPTY_OBJECT_TREE: ObjectTreeState = {
   panes: [],
   series: [],
+  layers: [],
+  groups: [],
   drawings: []
 };
 
 export class DrishyaChartClient {
-  constructor(private readonly wasm: WasmChartLike) {}
+  constructor(private readonly wasm: WasmChartLike) { }
 
   raw(): WasmChartLike {
     return this.wasm;
@@ -65,8 +69,30 @@ export class DrishyaChartClient {
     this.wasm.clear_crosshair?.();
   }
 
+  setCursorMode(mode: string): void {
+    this.wasm.set_cursor_mode?.(mode);
+  }
+
+  cursorMode(): string {
+    return this.wasm.cursor_mode?.() ?? "crosshair";
+  }
+
   setTheme(theme: string): void {
     this.wasm.set_theme?.(theme);
+  }
+
+  setAppearanceConfig(config: ChartAppearanceConfig): void {
+    this.wasm.set_appearance_config?.(JSON.stringify(config));
+  }
+
+  getAppearanceConfig(): ChartAppearanceConfig | null {
+    const raw = this.wasm.appearance_config?.();
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as ChartAppearanceConfig;
+    } catch {
+      return null;
+    }
   }
 
   setCandleStyle(style: "solid" | "hollow" | "bars" | "volume"): void {
@@ -112,7 +138,9 @@ export class DrishyaChartClient {
 
   selectedDrawingId(): number | null {
     const selected = this.wasm.selected_drawing_id?.();
-    return Number.isFinite(selected) ? (selected as number) : null;
+    if (selected === undefined || selected === null) return null;
+    const n = typeof selected === "bigint" ? Number(selected) : selected;
+    return Number.isFinite(n) && Number.isSafeInteger(n) ? n : null;
   }
 
   clearSelectedDrawing(): void {
@@ -165,6 +193,14 @@ export class DrishyaChartClient {
     this.wasm.set_pane_weights_json?.(JSON.stringify(weightMap));
   }
 
+  getPaneStateJson(): string | null {
+    return this.wasm.pane_state_json?.() ?? null;
+  }
+
+  restorePaneStateJson(json: string): void {
+    this.wasm.restore_pane_state_json?.(json);
+  }
+
   paneLayouts(): PaneLayout[] {
     const raw = this.wasm.pane_layouts_json?.();
     if (!raw) return [];
@@ -180,8 +216,142 @@ export class DrishyaChartClient {
     return {
       panes: Array.isArray(parsed.panes) ? parsed.panes : [],
       series: Array.isArray(parsed.series) ? parsed.series : [],
+      layers: Array.isArray(parsed.layers) ? parsed.layers : [],
+      groups: Array.isArray(parsed.groups) ? parsed.groups : [],
       drawings: Array.isArray(parsed.drawings) ? parsed.drawings : []
     };
+  }
+
+  createLayer(id: string, name: string): void {
+    this.wasm.create_drawing_layer?.(id, name);
+  }
+
+  deleteLayer(id: string): void {
+    this.wasm.delete_drawing_layer?.(id);
+  }
+
+  updateLayer(id: string, config: { name?: string; visible?: boolean; locked?: boolean }): void {
+    this.wasm.update_drawing_layer?.(id, JSON.stringify(config));
+  }
+
+  createGroup(id: string, name: string, layerId: string, parentGroupId: string | null = null): void {
+    this.wasm.create_drawing_group?.(id, name, layerId, parentGroupId);
+  }
+
+  deleteGroup(id: string): void {
+    this.wasm.delete_drawing_group?.(id);
+  }
+
+  updateGroup(id: string, config: { name?: string; visible?: boolean; locked?: boolean }): void {
+    this.wasm.update_drawing_group?.(id, JSON.stringify(config));
+  }
+
+  setDrawingLayer(drawingId: number, layerId: string): void {
+    this.moveDrawingsToLayer([drawingId], layerId);
+  }
+
+  setDrawingGroup(drawingId: number, groupId: string | null): void {
+    this.moveDrawingsToGroup([drawingId], groupId);
+  }
+
+  moveDrawingsToGroup(ids: number[], groupId: string | null): void {
+    this.wasm.move_drawings_to_group?.(JSON.stringify(ids), groupId);
+  }
+
+  moveDrawingsToLayer(ids: number[], layerId: string): void {
+    this.wasm.move_drawings_to_layer?.(JSON.stringify(ids), layerId);
+  }
+
+  setLayerOrder(order: string[]): void {
+    this.wasm.set_drawing_layer_order_json?.(JSON.stringify(order));
+  }
+
+  getLayerOrder(): string[] {
+    const raw = this.wasm.drawing_layer_order_json?.();
+    if (!raw) return [];
+    return safeJsonParse<string[]>(raw) || [];
+  }
+
+  getDrawingConfig(drawingId: number): DrawingConfig | null {
+    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    const raw = this.wasm.drawing_config?.(id);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as DrawingConfig;
+      return {
+        stroke_color: parsed.stroke_color ?? null,
+        fill_color: parsed.fill_color ?? null,
+        fill_opacity: parsed.fill_opacity ?? null,
+        stroke_width: parsed.stroke_width ?? null,
+        stroke_type: parsed.stroke_type ?? "solid",
+        font_size: parsed.font_size ?? null,
+        text_content: parsed.text_content ?? null,
+        locked: !!parsed.locked,
+        supports_fill: !!parsed.supports_fill
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  setDrawingConfig(drawingId: number, config: Partial<DrawingConfig>): void {
+    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    const payload: Record<string, unknown> = {};
+    if (config.stroke_color !== undefined) payload.stroke_color = config.stroke_color || null;
+    if (config.fill_color !== undefined) payload.fill_color = config.fill_color || null;
+    if (config.fill_opacity !== undefined) payload.fill_opacity = config.fill_opacity;
+    if (config.stroke_width !== undefined) payload.stroke_width = config.stroke_width;
+    if (config.stroke_type !== undefined) payload.stroke_type = config.stroke_type ?? null;
+    if (config.font_size !== undefined) payload.font_size = config.font_size;
+    if (config.text_content !== undefined) payload.text_content = config.text_content ?? "";
+    if (config.locked !== undefined) payload.locked = config.locked;
+    this.wasm.set_drawing_config?.(id, JSON.stringify(payload));
+  }
+
+  selectedTextCaretBounds(): { x: number; y: number; height: number; color: string } | null {
+    const raw = this.wasm.selected_text_caret_bounds?.();
+    if (!raw || raw === "null") return null;
+    try {
+      const parsed = JSON.parse(raw) as { x: number; y: number; height: number; color: string };
+      if (typeof parsed.x !== "number" || typeof parsed.y !== "number") return null;
+      return {
+        x: parsed.x,
+        y: parsed.y,
+        height: parsed.height ?? 14,
+        color: parsed.color ?? "#e5e7eb"
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  getSelectedDrawingConfig(): DrawingConfig | null {
+    const raw = this.wasm.selected_drawing_config?.();
+    if (!raw || raw === "{}") return null;
+    try {
+      const parsed = JSON.parse(raw) as DrawingConfig;
+      return {
+        stroke_color: parsed.stroke_color ?? null,
+        fill_color: parsed.fill_color ?? null,
+        fill_opacity: parsed.fill_opacity ?? null,
+        stroke_width: parsed.stroke_width ?? null,
+        stroke_type: parsed.stroke_type ?? "solid",
+        font_size: parsed.font_size ?? null,
+        text_content: parsed.text_content ?? null,
+        locked: !!parsed.locked,
+        supports_fill: !!parsed.supports_fill
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  setLayerVisible(id: string, visible: boolean): void {
+    this.updateLayer(id, { visible });
+  }
+
+  setGroupVisible(id: string, visible: boolean): void {
+    this.updateGroup(id, { visible });
   }
 
   applyObjectTreeAction(action: ObjectTreeAction): void {
@@ -200,13 +370,35 @@ export class DrishyaChartClient {
     }
 
     if (action.kind === "drawing") {
-      const drawingId = Number(action.id);
-      if (!Number.isFinite(drawingId)) return;
+      const idStr = action.id;
       if (action.type === "delete") {
-        this.wasm.remove_drawing?.(drawingId);
+        if (this.wasm.delete_drawings) {
+          this.wasm.delete_drawings(JSON.stringify([Number(idStr)]));
+        } else {
+          this.wasm.remove_drawing?.(BigInt(idStr));
+        }
       } else {
-        this.wasm.set_drawing_visible?.(drawingId, action.visible);
+        this.wasm.set_drawing_visible?.(BigInt(idStr), !!action.visible);
       }
+      return;
+    }
+
+    if (action.kind === "layer") {
+      if (action.type === "toggle_visibility") {
+        this.setLayerVisible(action.id, !!action.visible);
+      } else if (action.type === "delete") {
+        this.deleteLayer(action.id);
+      }
+      return;
+    }
+
+    if (action.kind === "group") {
+      if (action.type === "toggle_visibility") {
+        this.setGroupVisible(action.id, !!action.visible);
+      } else if (action.type === "delete") {
+        this.deleteGroup(action.id);
+      }
+      return;
     }
   }
 }

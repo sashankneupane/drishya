@@ -69,7 +69,7 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
         closeAllPopups();
         if (tool.id === "clear") options.onClear?.();
         else if (tool.id === "theme") controller.toggleTheme();
-        else controller.setActiveTool(tool.id as DrawingToolId);
+        else controller.setActiveTool(tool.id as DrawingToolId, { force: true });
       }
     });
 
@@ -102,7 +102,7 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
 
       cbtn.append(icon, label, hotkey);
       cbtn.onclick = () => {
-        controller.setActiveTool(child.id as DrawingToolId);
+        controller.setActiveTool(child.id as DrawingToolId, { force: true });
         // Update owner icon
         const iconContainer = ownerBtn.querySelector("div");
         if (iconContainer) iconContainer.replaceChildren(makeSvgIcon(child.id, ICON_SIZE));

@@ -8,6 +8,8 @@ TypeScript + Tailwind workspace UI library for Drishya.
 2. Importable workspace shell API (`createChartWorkspace`)
 3. Modular UI primitives (left drawing rail, right object tree)
 4. Tailwind-based styling tokens/components
+5. Chart appearance config (background, candle up/down colors) via top-strip **Config** button
+6. Per-drawing style and lock config via floating panel on selection (stroke, fill when supported, lock toggle, delete)
 
 ## Source layout
 
@@ -15,6 +17,17 @@ TypeScript + Tailwind workspace UI library for Drishya.
 2. `src/workspace/*` - modular shell implementation
 3. `src/chrome/*` - object tree models/layout types
 4. `src/styles/tailwind.css` - Tailwind component classes
+
+## Drawing config workflow
+
+When a drawing is selected (select tool active, click on a drawing), a floating config panel appears in the top-right of the chart area. The panel provides:
+
+- **Stroke color** – text input + color picker
+- **Fill color** – only for fill-capable shapes (rectangles, circles, ellipses, etc.)
+- **Lock toggle** – locked drawings are selectable but not movable or editable
+- **Delete** – removes the selected drawing and closes the panel
+
+Use the WASM client `getDrawingConfig`, `setDrawingConfig`, `getSelectedDrawingConfig`, and `deleteSelectedDrawing` for programmatic access.
 
 ## Build output
 

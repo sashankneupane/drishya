@@ -55,25 +55,66 @@ impl Chart {
 
         match self.drawing_tool_mode {
             crate::chart::tools::DrawingToolMode::Select => {
+                // First: check if clicking on an anchor of the currently selected shape
+                if let Some(sel_id) = self.selected_drawing_id {
+                    if !self.is_drawing_locked(sel_id) {
+                        if let Some(anchor_idx) = self.anchor_index_at(x_pixels, y_pixels) {
+                            self.drawing_interaction.pointer_down = true;
+                            self.drawing_interaction.dragged = false;
+                            self.drawing_interaction.dragging_drawing_id = Some(sel_id);
+                            self.drawing_interaction.dragging_anchor_index = Some(anchor_idx);
+                            self.drawing_interaction.last_pointer = Some(point);
+                            return true;
+                        }
+                    }
+                }
+
                 if let Some(hit) =
                     self.hit_test_drawings(x_pixels, y_pixels, InteractionMode::Select)
                 {
                     self.selected_drawing_id = Some(hit.primitive_id);
                     self.selected_series_id = None;
                     self.drawing_interaction.pointer_down = true;
-                    self.drawing_interaction.dragging_drawing_id = Some(hit.primitive_id);
-                    self.drawing_interaction.dragging_resize_target = match hit.local {
-                        LocalHitInfo::Rect { target }
-                            if self.is_resizable_primitive(hit.primitive_id) =>
-                        {
-                            if matches!(target, RectHitTarget::Inside) {
-                                None
-                            } else {
-                                Some(target)
+                    // Only start drag/resize if drawing is not locked
+                    if !self.is_drawing_locked(hit.primitive_id) {
+                        self.drawing_interaction.dragging_drawing_id = Some(hit.primitive_id);
+                        self.drawing_interaction.dragging_anchor_index = None;
+                        // For anchor-managed shapes, disable edge/corner resize so
+                        // that dragging the body always moves the whole shape.
+                        let is_anchor_shape = self
+                            .drawings
+                            .drawing(hit.primitive_id)
+                            .map(|d| {
+                                matches!(
+                                    d,
+                                    crate::drawings::types::Drawing::Triangle(_)
+                                        | crate::drawings::types::Drawing::Circle(_)
+                                        | crate::drawings::types::Drawing::Ellipse(_)
+                                        | crate::drawings::types::Drawing::Rectangle(_)
+                                )
+                            })
+                            .unwrap_or(false);
+                        self.drawing_interaction.dragging_resize_target = if is_anchor_shape {
+                            None
+                        } else {
+                            match hit.local {
+                                LocalHitInfo::Rect { target }
+                                    if self.is_resizable_primitive(hit.primitive_id) =>
+                                {
+                                    if matches!(target, RectHitTarget::Inside) {
+                                        None
+                                    } else {
+                                        Some(target)
+                                    }
+                                }
+                                _ => None,
                             }
-                        }
-                        _ => None,
-                    };
+                        };
+                    } else {
+                        self.drawing_interaction.dragging_drawing_id = None;
+                        self.drawing_interaction.dragging_anchor_index = None;
+                        self.drawing_interaction.dragging_resize_target = None;
+                    }
                     self.drawing_interaction.last_pointer = Some(point);
                     return true;
                 }
@@ -90,6 +131,11 @@ impl Chart {
                 self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
                 true
             }
+            crate::chart::tools::DrawingToolMode::Text => {
+                self.add_text_at(x_pixels, y_pixels);
+                self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
+                true
+            }
             crate::chart::tools::DrawingToolMode::Rectangle
             | crate::chart::tools::DrawingToolMode::PriceRange
             | crate::chart::tools::DrawingToolMode::TimeRange
@@ -97,12 +143,33 @@ impl Chart {
             | crate::chart::tools::DrawingToolMode::FibRetracement
             | crate::chart::tools::DrawingToolMode::Ray
             | crate::chart::tools::DrawingToolMode::LongPosition
-            | crate::chart::tools::DrawingToolMode::ShortPosition => {
+            | crate::chart::tools::DrawingToolMode::ShortPosition
+            | crate::chart::tools::DrawingToolMode::Circle => {
                 self.drawing_interaction.pointer_down = true;
                 self.drawing_interaction.dragged = false;
                 if self.drawing_interaction.pending_start.is_none() {
                     self.drawing_interaction.pending_start = Some(point);
                 }
+                self.drawing_interaction.last_pointer = Some(point);
+                true
+            }
+            crate::chart::tools::DrawingToolMode::Triangle
+            | crate::chart::tools::DrawingToolMode::Ellipse => {
+                // Multi-click: record points, finalize after 3
+                self.drawing_interaction.pointer_down = true;
+                self.drawing_interaction.dragged = false;
+                if self.drawing_interaction.pending_start.is_none() {
+                    self.drawing_interaction.pending_start = Some(point);
+                }
+                self.drawing_interaction.last_pointer = Some(point);
+                true
+            }
+            crate::chart::tools::DrawingToolMode::Brush
+            | crate::chart::tools::DrawingToolMode::Highlighter => {
+                self.drawing_interaction.pointer_down = true;
+                self.drawing_interaction.dragged = false;
+                self.drawing_interaction.pending_points.clear();
+                self.drawing_interaction.pending_points.push(point);
                 self.drawing_interaction.last_pointer = Some(point);
                 true
             }
@@ -131,7 +198,11 @@ impl Chart {
                     let dx = point.x - last.x;
                     let dy = point.y - last.y;
                     if dx != 0.0 || dy != 0.0 {
-                        self.move_drawing_by_pixels(drawing_id, dx, dy);
+                        if let Some(anchor_idx) = self.drawing_interaction.dragging_anchor_index {
+                            self.move_anchor_to_pixel(drawing_id, anchor_idx, point.x, point.y);
+                        } else {
+                            self.move_drawing_by_pixels(drawing_id, dx, dy);
+                        }
                         self.drawing_interaction.last_pointer = Some(point);
                         return true;
                     }
@@ -140,7 +211,23 @@ impl Chart {
             return true;
         }
 
-        if let Some(start) = self.drawing_interaction.pending_start {
+        if matches!(
+            self.drawing_tool_mode,
+            crate::chart::tools::DrawingToolMode::Brush
+                | crate::chart::tools::DrawingToolMode::Highlighter
+        ) {
+            if self.drawing_interaction.pointer_down {
+                if let Some(last) = self.drawing_interaction.pending_points.last() {
+                    let dist_sq = (point.x - last.x).powi(2) + (point.y - last.y).powi(2);
+                    if dist_sq >= 4.0 {
+                        self.drawing_interaction.pending_points.push(point);
+                        self.drawing_interaction.dragged = true;
+                    }
+                }
+                self.drawing_interaction.last_pointer = Some(point);
+                return true;
+            }
+        } else if let Some(start) = self.drawing_interaction.pending_start {
             if self.drawing_interaction.pointer_down {
                 let dist = ((point.x - start.x).powi(2) + (point.y - start.y).powi(2)).sqrt();
                 if dist >= DRAW_SHAPE_DRAG_THRESHOLD_PX {
@@ -178,6 +265,83 @@ impl Chart {
 
         self.drawing_interaction.pointer_down = false;
         let start = self.drawing_interaction.pending_start;
+
+        // Triangle and Ellipse use 3-click construction via pending_points
+        if matches!(
+            self.drawing_tool_mode,
+            crate::chart::tools::DrawingToolMode::Triangle
+                | crate::chart::tools::DrawingToolMode::Ellipse
+        ) {
+            // Record this click as a pending point
+            self.drawing_interaction.pending_points.push(point);
+            let n = self.drawing_interaction.pending_points.len();
+            if n >= 3 {
+                // We have all 3 vertices: finalize the shape
+                let pts = self.drawing_interaction.pending_points.clone();
+                match self.drawing_tool_mode {
+                    crate::chart::tools::DrawingToolMode::Triangle => {
+                        self.add_triangle_from_pixels_3(
+                            pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y,
+                        );
+                    }
+                    crate::chart::tools::DrawingToolMode::Ellipse => {
+                        self.add_ellipse_from_pixels_3(
+                            pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y,
+                        );
+                    }
+                    _ => {} // Should not happen due to the outer match
+                }
+                self.drawing_interaction.pending_start = None;
+                self.drawing_interaction.pending_points.clear();
+                self.drawing_interaction.dragged = false;
+                self.drawing_interaction.last_pointer = Some(point);
+                self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
+            } else {
+                // After 1st or 2nd click, keep anchor and wait for next click
+                self.drawing_interaction.dragged = false;
+                self.drawing_interaction.last_pointer = Some(point);
+            }
+            return true;
+        }
+
+        if matches!(
+            self.drawing_tool_mode,
+            crate::chart::tools::DrawingToolMode::Brush
+                | crate::chart::tools::DrawingToolMode::Highlighter
+        ) {
+            // Commit the freehand stroke
+            let pts: Vec<_> = self
+                .drawing_interaction
+                .pending_points
+                .iter()
+                .filter_map(|p| {
+                    let (idx, pr) = self.drawing_world_price_at(p.x, p.y)?;
+                    Some(crate::drawings::types::StrokePoint {
+                        index: idx,
+                        price: pr,
+                    })
+                })
+                .collect();
+
+            if pts.len() >= 2 {
+                match self.drawing_tool_mode {
+                    crate::chart::tools::DrawingToolMode::Brush => {
+                        self.add_brush_stroke_from_world_points(pts);
+                    }
+                    crate::chart::tools::DrawingToolMode::Highlighter => {
+                        self.add_highlight_stroke_from_world_points(pts);
+                    }
+                    _ => {}
+                }
+            }
+
+            self.drawing_interaction.pending_points.clear();
+            self.drawing_interaction.dragged = false;
+            self.drawing_interaction.last_pointer = Some(point);
+            self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
+            return true;
+        }
+
         if self.drawing_interaction.dragged {
             if let Some(start) = start {
                 self.finalize_shape_from_points(start, point);
@@ -217,5 +381,6 @@ fn is_two_point_shape_tool(mode: crate::chart::tools::DrawingToolMode) -> bool {
             | crate::chart::tools::DrawingToolMode::Ray
             | crate::chart::tools::DrawingToolMode::LongPosition
             | crate::chart::tools::DrawingToolMode::ShortPosition
+            | crate::chart::tools::DrawingToolMode::Circle
     )
 }
