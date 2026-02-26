@@ -118,6 +118,18 @@ impl Chart {
                 item.index += world_dx;
                 item.price += price_dy;
             }
+            Drawing::BrushStroke(s) => {
+                for p in &mut s.points {
+                    p.index += world_dx;
+                    p.price += price_dy;
+                }
+            }
+            Drawing::HighlightStroke(s) => {
+                for p in &mut s.points {
+                    p.index += world_dx;
+                    p.price += price_dy;
+                }
+            }
         }
 
         true
