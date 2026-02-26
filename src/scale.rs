@@ -3,6 +3,15 @@
 //! Scale objects map domain values (index/price/volume) into pane pixels.
 
 use crate::types::Rect;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PriceAxisMode {
+    #[default]
+    Linear,
+    Log,
+    Percent,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct TimeScale {
@@ -57,12 +66,12 @@ pub struct PriceScale {
     pub pane: Rect,
     pub min: f64,
     pub max: f64,
-    pub mode: crate::chart::axis_mode::PriceAxisMode,
+    pub mode: crate::scale::PriceAxisMode,
 }
 
 impl PriceScale {
     pub fn y_for_price(&self, price: f64) -> f32 {
-        use crate::chart::axis_mode::PriceAxisMode;
+        use crate::scale::PriceAxisMode;
 
         let (val, min_v, max_v) = match self.mode {
             PriceAxisMode::Linear | PriceAxisMode::Percent => (price, self.min, self.max),
@@ -84,7 +93,7 @@ impl PriceScale {
     }
 
     pub fn price_for_y(&self, y: f32) -> f64 {
-        use crate::chart::axis_mode::PriceAxisMode;
+        use crate::scale::PriceAxisMode;
 
         let t = 1.0 - ((y - self.pane.y) / self.pane.h).clamp(0.0, 1.0);
 

@@ -10,7 +10,6 @@
 
 pub mod anchors;
 pub mod appearance;
-pub mod axis_mode;
 pub mod hit_test;
 pub mod interaction;
 pub mod panes;
@@ -21,7 +20,6 @@ pub mod state;
 pub mod tools;
 
 use self::appearance::ChartAppearanceConfig;
-use self::axis_mode::PriceAxisMode;
 use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
@@ -60,7 +58,7 @@ pub struct Chart {
     selected_drawing_id: Option<u64>,
     selected_series_id: Option<String>,
     appearance_config: ChartAppearanceConfig,
-    price_axis_mode: PriceAxisMode,
+    pub price_axis_mode: crate::scale::PriceAxisMode,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -94,7 +92,7 @@ impl Chart {
             selected_drawing_id: None,
             selected_series_id: None,
             appearance_config: ChartAppearanceConfig::default(),
-            price_axis_mode: PriceAxisMode::Linear,
+            price_axis_mode: crate::scale::PriceAxisMode::Linear,
             drawings: DrawingStore::new(),
         }
     }
@@ -159,11 +157,11 @@ impl Chart {
         &self.drawings
     }
 
-    pub fn price_axis_mode(&self) -> PriceAxisMode {
+    pub fn price_axis_mode(&self) -> crate::scale::PriceAxisMode {
         self.price_axis_mode
     }
 
-    pub fn set_price_axis_mode(&mut self, mode: PriceAxisMode) {
+    pub fn set_price_axis_mode(&mut self, mode: crate::scale::PriceAxisMode) {
         self.price_axis_mode = mode;
     }
 }

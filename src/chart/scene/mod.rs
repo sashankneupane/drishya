@@ -139,7 +139,11 @@ impl Chart {
                         pane: pane.rect,
                         min: min_v,
                         max: max_v,
-                        mode: self.price_axis_mode, // Apply same mode to indicator panes for consistency in beta
+                        mode: if pane.id == PaneId::Price {
+                            self.price_axis_mode
+                        } else {
+                            crate::scale::PriceAxisMode::Linear
+                        },
                     },
                 ));
             }

@@ -58,8 +58,14 @@ pub fn build_axis_commands_with_formatters(
             .map(|(_, ps)| ps);
         if let Some(ps) = pane_scale {
             // Horizontal grid + y labels per pane, driven by pluggable provider.
-            let y_ticks =
-                y_provider.generate(ps.min, ps.max, pane.rect.y, pane.rect.h, formatters.y);
+            let y_ticks = y_provider.generate(
+                ps.min,
+                ps.max,
+                pane.rect.y,
+                pane.rect.h,
+                formatters.y,
+                ps.mode,
+            );
             for tick in y_ticks {
                 let y = tick.y;
 
