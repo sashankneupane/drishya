@@ -19,8 +19,8 @@ function testWorkspaceController() {
     if (controller.getState().theme !== "light") throw new Error("Theme state update failed");
 
     // Test tool change
-    controller.setActiveTool("rect");
-    if (controller.getState().activeTool !== "rect") throw new Error("Tool state update failed");
+    controller.setActiveTool("rectangle");
+    if (controller.getState().activeTool !== "rectangle") throw new Error("Tool state update failed");
 
     console.log("WorkspaceController tests passed!");
 }
