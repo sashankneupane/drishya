@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::{pane_id_label, WasmChart};
+use crate::api::wasm::parse::json::parse_json;
 use crate::chart::plots::PaneLayoutState;
 
 #[wasm_bindgen]
@@ -14,8 +15,8 @@ impl WasmChart {
     /// Sets many pane weight ratios in one call from a JSON object map.
     /// Example: {"price": 3.0, "rsi": 1.0, "momentum": 1.0}
     pub fn set_pane_weights_json(&mut self, json: &str) -> Result<(), JsValue> {
-        let weights: std::collections::BTreeMap<String, f32> = serde_json::from_str(json)
-            .map_err(|e| JsValue::from_str(&format!("Invalid pane-weights JSON: {e}")))?;
+        let weights: std::collections::BTreeMap<String, f32> =
+            parse_json(json, "pane-weights JSON")?;
         self.chart.set_pane_weights(weights);
         Ok(())
     }
@@ -90,8 +91,7 @@ impl WasmChart {
 
     /// Sets full named-pane order from JSON array. `price` is ignored and stays first.
     pub fn set_pane_order_json(&mut self, json: &str) -> Result<(), JsValue> {
-        let order: Vec<String> = serde_json::from_str(json)
-            .map_err(|e| JsValue::from_str(&format!("Invalid pane-order JSON: {e}")))?;
+        let order: Vec<String> = parse_json(json, "pane-order JSON")?;
         self.chart.set_pane_order(order);
         Ok(())
     }
@@ -105,8 +105,7 @@ impl WasmChart {
 
     /// Restores pane layout state from JSON.
     pub fn restore_pane_state_json(&mut self, json: &str) -> Result<(), JsValue> {
-        let state: PaneLayoutState = serde_json::from_str(json)
-            .map_err(|e| JsValue::from_str(&format!("Invalid pane-state JSON: {e}")))?;
+        let state: PaneLayoutState = parse_json(json, "pane-state JSON")?;
         self.chart.restore_pane_layout_state(state);
         Ok(())
     }

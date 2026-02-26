@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::WasmChart;
+use crate::api::wasm::parse::json::parse_json;
 use crate::{
     chart::appearance::ChartAppearanceConfig,
     render::{candles::CandleBodyStyle, styles::ThemeId},
@@ -20,8 +21,7 @@ impl WasmChart {
     /// Expects: {"background":"#030712","candle_up":"#22c55e","candle_down":"#ef4444"}
     /// Invalid values are rejected silently.
     pub fn set_appearance_config(&mut self, json: &str) -> Result<(), JsValue> {
-        let config: ChartAppearanceConfig = serde_json::from_str(json)
-            .map_err(|e| JsValue::from_str(&format!("Invalid appearance config JSON: {e}")))?;
+        let config: ChartAppearanceConfig = parse_json(json, "appearance config JSON")?;
         config.validate().map_err(|e| JsValue::from_str(&e))?;
         self.chart.set_appearance_config(config);
         Ok(())
