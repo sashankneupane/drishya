@@ -14,9 +14,7 @@ pub fn simplify_points(points: Vec<StrokePoint>, tolerance: f32) -> Vec<StrokePo
     // Naive distance-based simplification for now.
     // In a real charting app, we might want RDP or similar,
     // but distance-based is often enough for real-time freehand.
-    for i in 1..points.len() - 1 {
-        let p = &points[i];
-
+    for p in points.iter().take(points.len() - 1).skip(1) {
         // We use a normalized distance or just separate thresholds since index and price have different scales.
         // A better way is to simplify in pixels, but here we only have world coords.
         let dx = (p.index - last_point.index).abs();
@@ -29,7 +27,9 @@ pub fn simplify_points(points: Vec<StrokePoint>, tolerance: f32) -> Vec<StrokePo
         }
     }
 
-    simplified.push(points.last().unwrap().clone());
+    if let Some(last) = points.last() {
+        simplified.push(last.clone());
+    }
     simplified
 }
 

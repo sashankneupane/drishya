@@ -6,7 +6,7 @@ use crate::types::Point;
 
 pub fn from_points(points: &[Point]) -> Triangle {
     let zero = Point { x: 0.0, y: 0.0 };
-    let p1 = points.get(0).cloned().unwrap_or(zero);
+    let p1 = points.first().cloned().unwrap_or(zero);
     let p2 = points.get(1).cloned().unwrap_or(zero);
     let p3 = points.get(2).cloned().unwrap_or(zero);
 
