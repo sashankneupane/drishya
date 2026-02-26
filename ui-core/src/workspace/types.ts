@@ -1,13 +1,19 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WasmChartLike } from "../wasm/contracts.js";
+import type { WorkspaceController } from "./WorkspaceController.js";
 
 export type WorkspaceTheme = "dark" | "light";
 
 export interface WorkspaceToolDef {
-  id: DrawingToolId;
+  id: string;
   hotkey: string;
   title: string;
+  /**
+   * When present the tool acts as a group button; children are the actual
+   * selectable tools.  Only one child is active at a time.
+   */
+  children?: readonly WorkspaceToolDef[];
 }
 
 export interface CreateChartWorkspaceOptions {
@@ -16,6 +22,14 @@ export interface CreateChartWorkspaceOptions {
   initialTheme?: WorkspaceTheme;
   initialTool?: DrawingToolId;
   injectStyles?: boolean;
+  marketControls?: {
+    symbols: readonly string[];
+    timeframes: readonly string[];
+    selectedSymbol?: string;
+    selectedTimeframe?: string;
+    onSymbolChange?: (symbol: string) => void | Promise<void>;
+    onTimeframeChange?: (timeframe: string) => void | Promise<void>;
+  };
 }
 
 export interface ChartWorkspaceHandle {
@@ -25,6 +39,7 @@ export interface ChartWorkspaceHandle {
   canvas: HTMLCanvasElement;
   chart: DrishyaChartClient;
   rawChart: WasmChartLike;
+  controller: WorkspaceController;
   draw: () => void;
   resize: () => void;
   setTool: (toolId: DrawingToolId) => void;

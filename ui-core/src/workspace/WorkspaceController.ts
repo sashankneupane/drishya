@@ -1,0 +1,74 @@
+import type { DrawingToolId } from "../toolbar/model.js";
+import type { WorkspaceTheme } from "./types.js";
+
+export interface WorkspaceState {
+    theme: WorkspaceTheme;
+    activeTool: DrawingToolId;
+    isObjectTreeOpen: boolean;
+    isLeftStripOpen: boolean;
+}
+
+export type WorkspaceListener = (state: WorkspaceState) => void;
+
+/**
+ * Headless controller for the Drishya Workspace UI.
+ * Manages the state and provides methods to update it,
+ * notifying listeners of any changes.
+ */
+export class WorkspaceController {
+    private state: WorkspaceState;
+    private listeners: Set<WorkspaceListener> = new Set();
+
+    constructor(initial: Partial<WorkspaceState> = {}) {
+        this.state = {
+            theme: initial.theme ?? "dark",
+            activeTool: initial.activeTool ?? "select",
+            isObjectTreeOpen: initial.isObjectTreeOpen ?? true,
+            isLeftStripOpen: initial.isLeftStripOpen ?? true
+        };
+    }
+
+    getState(): WorkspaceState {
+        return { ...this.state };
+    }
+
+    subscribe(listener: WorkspaceListener): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+    }
+
+    private notify(): void {
+        const currentState = this.getState();
+        this.listeners.forEach((l) => l(currentState));
+    }
+
+    setTheme(theme: WorkspaceTheme): void {
+        if (this.state.theme === theme) return;
+        this.state.theme = theme;
+        this.notify();
+    }
+
+    toggleTheme(): WorkspaceTheme {
+        const nextTheme = this.state.theme === "dark" ? "light" : "dark";
+        this.setTheme(nextTheme);
+        return nextTheme;
+    }
+
+    setActiveTool(tool: DrawingToolId): void {
+        if (this.state.activeTool === tool) return;
+        this.state.activeTool = tool;
+        this.notify();
+    }
+
+    setObjectTreeOpen(open: boolean): void {
+        if (this.state.isObjectTreeOpen === open) return;
+        this.state.isObjectTreeOpen = open;
+        this.notify();
+    }
+
+    setLeftStripOpen(open: boolean): void {
+        if (this.state.isLeftStripOpen === open) return;
+        this.state.isLeftStripOpen = open;
+        this.notify();
+    }
+}
