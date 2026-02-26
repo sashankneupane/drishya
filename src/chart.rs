@@ -49,6 +49,8 @@ pub struct Chart {
     candle_body_style: CandleBodyStyle,
     drawing_tool_mode: DrawingToolMode,
     drawing_interaction: DrawingInteractionState,
+    selected_drawing_id: Option<u64>,
+    selected_series_id: Option<String>,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -78,6 +80,8 @@ impl Chart {
             candle_body_style: CandleBodyStyle::Solid,
             drawing_tool_mode: DrawingToolMode::Select,
             drawing_interaction: DrawingInteractionState::default(),
+            selected_drawing_id: None,
+            selected_series_id: None,
             drawings: DrawingStore::new(),
         }
     }

@@ -172,7 +172,7 @@ impl WasmChart {
         .to_string()
     }
 
-    /// Sets native drawing tool mode (`select`, `hline`, `vline`, `rectangle`, `long`, `short`).
+    /// Sets native drawing tool mode.
     pub fn set_drawing_tool_mode(&mut self, mode: &str) -> Result<(), JsValue> {
         let mode = parse_drawing_tool_mode(mode)?;
         self.chart.set_drawing_tool_mode(mode);
@@ -187,6 +187,9 @@ impl WasmChart {
             DrawingToolMode::VerticalLine => "vline",
             DrawingToolMode::Ray => "ray",
             DrawingToolMode::Rectangle => "rectangle",
+            DrawingToolMode::PriceRange => "price_range",
+            DrawingToolMode::TimeRange => "time_range",
+            DrawingToolMode::DateTimeRange => "date_time_range",
             DrawingToolMode::FibRetracement => "fib",
             DrawingToolMode::LongPosition => "long",
             DrawingToolMode::ShortPosition => "short",
@@ -217,6 +220,26 @@ impl WasmChart {
     /// Cancels active native drawing interaction.
     pub fn cancel_drawing_interaction(&mut self) {
         self.chart.cancel_drawing_interaction();
+    }
+
+    /// Selects drawing under cursor, returning selected id when hit.
+    pub fn select_drawing_at(&mut self, x: f32, y: f32) -> Option<u64> {
+        self.chart.select_drawing_at(x, y)
+    }
+
+    /// Returns currently selected drawing id, if any.
+    pub fn selected_drawing_id(&self) -> Option<u64> {
+        self.chart.selected_drawing_id()
+    }
+
+    /// Clears current drawing selection.
+    pub fn clear_selected_drawing(&mut self) {
+        self.chart.clear_selected_drawing();
+    }
+
+    /// Deletes currently selected drawing.
+    pub fn delete_selected_drawing(&mut self) -> bool {
+        self.chart.delete_selected_drawing()
     }
 
     // -------- Drawing tools --------
@@ -434,6 +457,26 @@ impl WasmChart {
         self.chart.delete_series(series_id);
     }
 
+    /// Selects series near cursor and returns id when hit.
+    pub fn select_series_at(&mut self, x: f32, y: f32) -> Option<String> {
+        self.chart.select_series_at(x, y)
+    }
+
+    /// Returns currently selected series id.
+    pub fn selected_series_id(&self) -> Option<String> {
+        self.chart.selected_series_id()
+    }
+
+    /// Clears selected series.
+    pub fn clear_selected_series(&mut self) {
+        self.chart.clear_selected_series();
+    }
+
+    /// Deletes currently selected series.
+    pub fn delete_selected_series(&mut self) -> bool {
+        self.chart.delete_selected_series()
+    }
+
     /// Restores a previously deleted series by id.
     pub fn restore_series(&mut self, series_id: &str) {
         self.chart.restore_series(series_id);
@@ -632,11 +675,14 @@ fn parse_drawing_tool_mode(mode: &str) -> Result<DrawingToolMode, JsValue> {
         "vline" => Ok(DrawingToolMode::VerticalLine),
         "ray" => Ok(DrawingToolMode::Ray),
         "rectangle" => Ok(DrawingToolMode::Rectangle),
+        "price_range" => Ok(DrawingToolMode::PriceRange),
+        "time_range" => Ok(DrawingToolMode::TimeRange),
+        "date_time_range" => Ok(DrawingToolMode::DateTimeRange),
         "fib" => Ok(DrawingToolMode::FibRetracement),
         "long" => Ok(DrawingToolMode::LongPosition),
         "short" => Ok(DrawingToolMode::ShortPosition),
         other => Err(JsValue::from_str(&format!(
-            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, fib, long, short"
+            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, price_range, time_range, date_time_range, fib, long, short"
         ))),
     }
 }
