@@ -89,6 +89,28 @@ impl Chart {
                 item.stop_price += price_dy;
                 item.target_price += price_dy;
             }
+            Drawing::Triangle(item) => {
+                item.p1_index += world_dx;
+                item.p2_index += world_dx;
+                item.p3_index += world_dx;
+                item.p1_price += price_dy;
+                item.p2_price += price_dy;
+                item.p3_price += price_dy;
+            }
+            Drawing::Circle(item) => {
+                item.center_index += world_dx;
+                item.radius_index += world_dx;
+                item.center_price += price_dy;
+                item.radius_price += price_dy;
+            }
+            Drawing::Ellipse(item) => {
+                item.p1_index += world_dx;
+                item.p2_index += world_dx;
+                item.p3_index += world_dx;
+                item.p1_price += price_dy;
+                item.p2_price += price_dy;
+                item.p3_price += price_dy;
+            }
         }
 
         true
@@ -134,6 +156,25 @@ impl Chart {
             Drawing::ShortPosition(item) => {
                 Some(position_shape::resize_short(item, target, world_x, price))
             }
+            Drawing::Triangle(item) => {
+                // Move all three vertices together
+                item.p1_index += world_x - item.p1_index;
+                item.p2_index += world_x - item.p1_index;
+                item.p3_index += world_x - item.p1_index;
+                None // Triangle uses vertex drag, not rect resize
+            }
+            Drawing::Circle(item) => Some({
+                // Adjust radius point only
+                item.radius_index = world_x;
+                item.radius_price = price;
+                RectHitTarget::Inside
+            }),
+            Drawing::Ellipse(item) => Some({
+                // Move the third control point (perpendicular radius)
+                item.p3_index = world_x;
+                item.p3_price = price;
+                RectHitTarget::Inside
+            }),
             _ => None,
         }
     }

@@ -70,42 +70,62 @@ pub fn resize(
     world_x: f32,
     price: f64,
 ) -> RectHitTarget {
+    resize_generic(
+        &mut rect.start_index,
+        &mut rect.end_index,
+        &mut rect.top_price,
+        &mut rect.bottom_price,
+        target,
+        world_x,
+        price,
+    )
+}
+
+pub fn resize_generic(
+    start_index: &mut f32,
+    end_index: &mut f32,
+    top_price: &mut f64,
+    bottom_price: &mut f64,
+    target: RectHitTarget,
+    world_x: f32,
+    price: f64,
+) -> RectHitTarget {
     let mut target = target;
 
     match target {
         RectHitTarget::Inside => {}
         RectHitTarget::Edge(edge) => match edge {
-            RectEdge::Top => rect.top_price = price,
-            RectEdge::Right => rect.end_index = world_x,
-            RectEdge::Bottom => rect.bottom_price = price,
-            RectEdge::Left => rect.start_index = world_x,
+            RectEdge::Top => *top_price = price,
+            RectEdge::Right => *end_index = world_x,
+            RectEdge::Bottom => *bottom_price = price,
+            RectEdge::Left => *start_index = world_x,
         },
         RectHitTarget::Corner(corner) => match corner {
             RectCorner::TopLeft => {
-                rect.start_index = world_x;
-                rect.top_price = price;
+                *start_index = world_x;
+                *top_price = price;
             }
             RectCorner::TopRight => {
-                rect.end_index = world_x;
-                rect.top_price = price;
+                *end_index = world_x;
+                *top_price = price;
             }
             RectCorner::BottomRight => {
-                rect.end_index = world_x;
-                rect.bottom_price = price;
+                *end_index = world_x;
+                *bottom_price = price;
             }
             RectCorner::BottomLeft => {
-                rect.start_index = world_x;
-                rect.bottom_price = price;
+                *start_index = world_x;
+                *bottom_price = price;
             }
         },
     }
 
-    if rect.start_index > rect.end_index {
-        std::mem::swap(&mut rect.start_index, &mut rect.end_index);
+    if *start_index > *end_index {
+        std::mem::swap(start_index, end_index);
         target = flip_resize_target_x(target);
     }
-    if rect.top_price < rect.bottom_price {
-        std::mem::swap(&mut rect.top_price, &mut rect.bottom_price);
+    if *top_price < *bottom_price {
+        std::mem::swap(top_price, bottom_price);
         target = flip_resize_target_y(target);
     }
 

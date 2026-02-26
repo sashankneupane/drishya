@@ -120,5 +120,8 @@ fn drawing_kind(drawing: &crate::drawings::types::Drawing) -> &'static str {
         crate::drawings::types::Drawing::LongPosition(_) => "long",
         crate::drawings::types::Drawing::ShortPosition(_) => "short",
         crate::drawings::types::Drawing::FibRetracement(_) => "fib",
+        crate::drawings::types::Drawing::Triangle(_) => "triangle",
+        crate::drawings::types::Drawing::Circle(_) => "circle",
+        crate::drawings::types::Drawing::Ellipse(_) => "ellipse",
     }
 }
