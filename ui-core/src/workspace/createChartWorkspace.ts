@@ -1,6 +1,6 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import { DrishyaChartClient } from "../wasm/client.js";
-import { WORKSPACE_DRAW_TOOLS } from "./constants.js";
+import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "./constants.js";
 import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
@@ -52,11 +52,22 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let rawChart = createWasmChart(canvasId, 300, 300);
   const chart = new DrishyaChartClient(rawChart);
   chart.setTheme(controller.getState().theme);
+  // Apply default appearance on init (wasm may not support it in older builds)
+  const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
+    try {
+      chart.setAppearanceConfig(config);
+    } catch {
+      // ignore if wasm doesn't support appearance config
+    }
+  };
+  applyAppearance(DEFAULT_APPEARANCE_CONFIG);
 
   // top control strip
   const topHandle = createTopStrip({
     chart,
     controller,
+    getAppearanceConfig: () => chart.getAppearanceConfig(),
+    applyAppearanceConfig: (cfg) => applyAppearanceConfig(cfg),
     symbols: options.marketControls?.symbols ?? [],
     timeframes: options.marketControls?.timeframes ?? [],
     selectedSymbol: options.marketControls?.selectedSymbol,
@@ -129,6 +140,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const unsubscribe = controller.subscribe((state) => {
     chart.setTheme(state.theme);
     chart.setDrawingTool(state.activeTool);
+    chart.setCursorMode(state.cursorMode);
     draw();
   });
 
@@ -159,7 +171,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const mode = hotkeyToolMap[key];
     if (mode) {
       event.preventDefault();
-      controller.setActiveTool(mode);
+      const m = mode as string;
+      if (m === "crosshair" || m === "dot" || m === "normal") {
+        controller.setCursorMode(m as any);
+        if (m === "normal") controller.setActiveTool("select");
+      } else {
+        controller.setActiveTool(mode);
+      }
       return;
     }
 
@@ -209,6 +227,17 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   chart.setDrawingTool(controller.getState().activeTool);
   draw();
 
+  const applyAppearanceConfig = (config: { background: string; candle_up: string; candle_down: string }) => {
+    try {
+      chart.setAppearanceConfig(config);
+      draw();
+    } catch {
+      // invalid config - fail gracefully
+    }
+  };
+
+  const getAppearanceConfig = () => chart.getAppearanceConfig();
+
   return {
     root: root as HTMLDivElement,
     strip: stripHandle.root,
@@ -218,6 +247,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     rawChart,
     controller,
     draw,
+    applyAppearanceConfig,
+    getAppearanceConfig,
     resize: () => {
       setupCanvasBackingStore();
       draw();

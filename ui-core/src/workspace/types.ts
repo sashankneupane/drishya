@@ -1,6 +1,6 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
-import type { WasmChartLike } from "../wasm/contracts.js";
+import type { ChartAppearanceConfig, WasmChartLike } from "../wasm/contracts.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 
 export type WorkspaceTheme = "dark" | "light";
@@ -32,6 +32,11 @@ export interface CreateChartWorkspaceOptions {
   };
 }
 
+/** Workspace appearance config state (mirrors wasm). */
+export interface WorkspaceAppearanceState {
+  config: ChartAppearanceConfig;
+}
+
 export interface ChartWorkspaceHandle {
   root: HTMLDivElement;
   strip: HTMLElement;
@@ -46,5 +51,7 @@ export interface ChartWorkspaceHandle {
   clearDrawings: () => void;
   toggleTheme: () => WorkspaceTheme;
   refreshObjectTree: () => void;
+  applyAppearanceConfig?: (config: ChartAppearanceConfig) => void;
+  getAppearanceConfig?: () => ChartAppearanceConfig | null;
   destroy: () => void;
 }

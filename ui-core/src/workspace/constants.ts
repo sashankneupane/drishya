@@ -1,7 +1,25 @@
 import type { WorkspaceToolDef } from "./types.js";
+import type { ChartAppearanceConfig } from "../wasm/contracts.js";
+
+/** Default chart appearance colors (dark theme). */
+export const DEFAULT_APPEARANCE_CONFIG: ChartAppearanceConfig = {
+  background: "#030712",
+  candle_up: "#22c55e",
+  candle_down: "#ef4444"
+};
+
 
 export const WORKSPACE_DRAW_TOOLS: readonly WorkspaceToolDef[] = [
-  { id: "select", hotkey: "V", title: "Select / edit drawings" },
+  {
+    id: "cursor-group",
+    hotkey: "Q",
+    title: "Cursor options",
+    children: [
+      { id: "crosshair", hotkey: "Q", title: "Crosshair" },
+      { id: "dot", hotkey: "D", title: "Dot" },
+      { id: "normal", hotkey: "V", title: "Arrow / Normal" }
+    ]
+  },
   {
     id: "line-group",
     hotkey: "L",
@@ -12,7 +30,17 @@ export const WORKSPACE_DRAW_TOOLS: readonly WorkspaceToolDef[] = [
       { id: "ray", hotkey: "R", title: "Ray" }
     ]
   },
-  { id: "rectangle", hotkey: "B", title: "Rectangle" },
+  {
+    id: "shape-group",
+    hotkey: "S",
+    title: "Shape tools",
+    children: [
+      { id: "rectangle", hotkey: "B", title: "Rectangle" },
+      { id: "triangle", hotkey: "T", title: "Triangle" },
+      { id: "circle", hotkey: "C", title: "Circle" },
+      { id: "ellipse", hotkey: "E", title: "Ellipse" }
+    ]
+  },
   {
     id: "range-group",
     hotkey: "G",
