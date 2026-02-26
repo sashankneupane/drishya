@@ -8,6 +8,7 @@ TypeScript + Tailwind workspace UI library for Drishya.
 2. Importable workspace shell API (`createChartWorkspace`)
 3. Modular UI primitives (left drawing rail, right object tree)
 4. Tailwind-based styling tokens/components
+5. Chart appearance config (background, candle up/down colors) via top-strip **Config** button
 
 ## Source layout
 
