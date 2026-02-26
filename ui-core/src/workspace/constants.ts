@@ -61,5 +61,14 @@ export const WORKSPACE_DRAW_TOOLS: readonly WorkspaceToolDef[] = [
       { id: "short", hotkey: "S", title: "Short position" }
     ]
   },
+  {
+    id: "brush-group",
+    hotkey: "K",
+    title: "Freehand tools",
+    children: [
+      { id: "brush", hotkey: "K", title: "Brush" },
+      { id: "highlighter", hotkey: "M", title: "Marker / Highlighter" }
+    ]
+  },
   { id: "text", hotkey: "X", title: "Text" }
 ];

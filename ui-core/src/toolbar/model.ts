@@ -13,7 +13,9 @@ export type DrawingToolId =
   | "triangle"
   | "circle"
   | "ellipse"
-  | "text";
+  | "text"
+  | "brush"
+  | "highlighter";
 
 export interface DrawingToolDef {
   id: DrawingToolId;
@@ -36,7 +38,9 @@ export const DRAWING_TOOLS: readonly DrawingToolDef[] = [
   { id: "triangle", label: "Triangle", hotkey: "T" },
   { id: "circle", label: "Circle", hotkey: "C" },
   { id: "ellipse", label: "Ellipse", hotkey: "E" },
-  { id: "text", label: "Text", hotkey: "X" }
+  { id: "text", label: "Text", hotkey: "X" },
+  { id: "brush", label: "Brush", hotkey: "K" },
+  { id: "highlighter", label: "Marker", hotkey: "M" }
 ];
 
 export function isDrawingToolId(value: string): value is DrawingToolId {

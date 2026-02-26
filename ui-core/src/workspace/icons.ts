@@ -34,7 +34,9 @@ export type WorkspaceIconName =
   | "grip-vertical"
   | "grip-horizontal"
   | "lock"
-  | "lock-open";
+  | "lock-open"
+  | "brush"
+  | "highlighter";
 
 export function makeSvgIcon(name: WorkspaceIconName | string, className = "drishya-icon"): SVGSVGElement {
   const svg = document.createElementNS(NS, "svg");
@@ -87,7 +89,9 @@ export function makeSvgIcon(name: WorkspaceIconName | string, className = "drish
     "grip-vertical": ["M8 4h2", "M8 12h2", "M8 20h2", "M14 4h2", "M14 12h2", "M14 20h2"],
     "grip-horizontal": ["M4 8h2", "M4 14h2", "M12 8h2", "M12 14h2", "M20 8h2", "M20 14h2"],
     "lock": ["M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2z", "M7 11V7a5 5 0 0110 0v4"],
-    "lock-open": ["M7 11V7a5 5 0 019.9-1", "M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2z"]
+    "lock-open": ["M7 11V7a5 5 0 019.9-1", "M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2z"],
+    "brush": ["M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"],
+    "highlighter": ["M15.5 3.5a2.121 2.121 0 0 1 3 3L11 14l-4 1.5L8.5 11l7-7.5z", "M2 22l5-5"]
   };
 
   const ds = icons[name] || [];
