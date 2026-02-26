@@ -13,6 +13,13 @@ pub enum PriceAxisMode {
     Percent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PercentBaselinePolicy {
+    #[default]
+    FirstVisibleBar,
+    // Custom(f64) could be added later
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TimeScale {
     pub pane: Rect,

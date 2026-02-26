@@ -59,6 +59,8 @@ pub struct Chart {
     selected_series_id: Option<String>,
     appearance_config: ChartAppearanceConfig,
     pub price_axis_mode: crate::scale::PriceAxisMode,
+    pub percent_baseline_policy: crate::scale::PercentBaselinePolicy,
+    pub(crate) derived_percent_baseline_price: std::cell::RefCell<Option<f64>>,
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
@@ -93,6 +95,8 @@ impl Chart {
             selected_series_id: None,
             appearance_config: ChartAppearanceConfig::default(),
             price_axis_mode: crate::scale::PriceAxisMode::Linear,
+            percent_baseline_policy: crate::scale::PercentBaselinePolicy::default(),
+            derived_percent_baseline_price: std::cell::RefCell::new(None),
             drawings: DrawingStore::new(),
         }
     }
@@ -163,6 +167,18 @@ impl Chart {
 
     pub fn set_price_axis_mode(&mut self, mode: crate::scale::PriceAxisMode) {
         self.price_axis_mode = mode;
+    }
+
+    pub fn percent_baseline_policy(&self) -> crate::scale::PercentBaselinePolicy {
+        self.percent_baseline_policy
+    }
+
+    pub fn set_percent_baseline_policy(&mut self, policy: crate::scale::PercentBaselinePolicy) {
+        self.percent_baseline_policy = policy;
+    }
+
+    pub fn derived_percent_baseline_price(&self) -> Option<f64> {
+        *self.derived_percent_baseline_price.borrow()
     }
 }
 

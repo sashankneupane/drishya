@@ -55,6 +55,19 @@ impl Chart {
 
     pub fn build_draw_commands(&self) -> Vec<DrawCommand> {
         let mut out = Vec::new();
+        let _layout: ChartLayout = self.current_layout(); // Moved up for `ts` and `baseline_price` calculation
+                                                          // Calculate percent baseline if needed.
+        let mut baseline_price = None;
+        if self.price_axis_mode == crate::scale::PriceAxisMode::Percent {
+            match self.percent_baseline_policy {
+                crate::scale::PercentBaselinePolicy::FirstVisibleBar => {
+                    if let Some(candle) = self.visible_data().first() {
+                        baseline_price = Some(candle.close);
+                    }
+                }
+            }
+        }
+        *self.derived_percent_baseline_price.borrow_mut() = baseline_price;
         if self.candles.is_empty() {
             return out;
         }
