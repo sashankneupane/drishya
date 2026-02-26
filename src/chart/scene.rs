@@ -53,7 +53,25 @@ impl Chart {
         };
         let visible = &self.candles[visible_start..visible_end];
 
-        let plot_series = self.collect_plot_series();
+        let mut plot_series = self.collect_plot_series();
+        if let Some(selected_series_id) = self.selected_series_id() {
+            for s in &mut plot_series {
+                if s.id != selected_series_id {
+                    continue;
+                }
+                for primitive in &mut s.primitives {
+                    match primitive {
+                        PlotPrimitive::Line { style, .. } => {
+                            style.width = (style.width + 1.0).max(2.0);
+                        }
+                        PlotPrimitive::Markers { style, .. } => {
+                            style.size = (style.size + 1.0).max(3.0);
+                        }
+                        PlotPrimitive::Band { .. } | PlotPrimitive::Histogram { .. } => {}
+                    }
+                }
+            }
+        }
 
         let layout: ChartLayout = self.current_layout();
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
@@ -228,6 +246,7 @@ impl Chart {
             ps,
             self.viewport,
             &self.candles,
+            self.selected_drawing_id(),
         ));
 
         if let Some(preview) = self.active_drawing_preview() {
@@ -239,6 +258,7 @@ impl Chart {
             ));
         }
 
+        let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {
             out.push(DrawCommand::PushClip { rect: layout.plot });
             out.extend(build_dotted_vertical(
@@ -258,22 +278,59 @@ impl Chart {
             out.push(DrawCommand::PopClip);
 
             if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, self.candles.len()) {
+                crosshair_index = Some(idx);
                 if let Some(readout) =
                     build_crosshair_readout_commands(&self.candles, idx, crosshair, &layout, ps)
                 {
                     out.extend(readout);
                 }
-
-                out.extend(build_non_price_pane_readout_commands(
-                    &plot_series,
-                    &layout,
-                    idx,
-                ));
             }
+        }
+
+        let fallback_index = visible_end
+            .checked_sub(1)
+            .or_else(|| self.candles.len().checked_sub(1));
+        let readout_index = crosshair_index.or(fallback_index);
+
+        if crosshair_index.is_none() {
+            if let Some(idx) = readout_index {
+                if let Some(close_readout) =
+                    build_last_close_readout_commands(&self.candles, idx, &layout)
+                {
+                    out.extend(close_readout);
+                }
+            }
+        }
+
+        if let Some(idx) = readout_index {
+            out.extend(build_non_price_pane_readout_commands(
+                &plot_series,
+                &layout,
+                idx,
+            ));
         }
 
         out
     }
+}
+
+fn build_last_close_readout_commands(
+    candles: &[Candle],
+    index: usize,
+    layout: &ChartLayout,
+) -> Option<Vec<DrawCommand>> {
+    let candle = candles.get(index)?;
+    Some(vec![DrawCommand::Text {
+        pos: Point {
+            x: layout.plot.x + 8.0,
+            y: layout.plot.y + 14.0,
+        },
+        text: format!(
+            "O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
+            candle.open, candle.high, candle.low, candle.close, candle.volume
+        ),
+        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
+    }])
 }
 
 fn build_crosshair_readout_commands(
