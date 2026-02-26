@@ -14,6 +14,19 @@ export interface ChartAppearanceConfig {
   candle_down: string;
 }
 
+export type StrokeType = "solid" | "dotted" | "dashed";
+
+/** Per-drawing style and lock config (stroke/fill colors, opacity, stroke width, stroke type, locked). */
+export interface DrawingConfig {
+  stroke_color: string | null;
+  fill_color: string | null;
+  fill_opacity: number | null;
+  stroke_width: number | null;
+  stroke_type?: StrokeType | null;
+  locked: boolean;
+  supports_fill: boolean;
+}
+
 export interface PaneLayout {
   id: string;
   x: number;
@@ -87,6 +100,9 @@ export interface WasmChartLike {
   selected_drawing_id?(): number | undefined;
   clear_selected_drawing?(): void;
   delete_selected_drawing?(): boolean;
+  drawing_config?(drawingId: number | bigint): string;
+  set_drawing_config?(drawingId: number | bigint, json: string): void;
+  selected_drawing_config?(): string;
   add_sma_overlay?(period: number): void;
   add_bbands_overlay?(period: number, stdMult: number): void;
   add_rsi_pane_indicator?(period: number): void;

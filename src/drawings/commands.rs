@@ -11,9 +11,12 @@
 //!   store directly.
 //! - The API is intentionally small but structured to support undo/redo later.
 
-use crate::drawings::{store::DrawingStore, types::DrawingId};
+use crate::drawings::{
+    store::DrawingStore,
+    types::{DrawingId, StrokeType},
+};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum DrawingCommand {
     AddHorizontalLine {
         price: f64,
@@ -97,6 +100,30 @@ pub enum DrawingCommand {
         id: DrawingId,
     },
     ClearAll,
+    SetDrawingStrokeColor {
+        id: DrawingId,
+        color: Option<String>,
+    },
+    SetDrawingFillColor {
+        id: DrawingId,
+        color: Option<String>,
+    },
+    SetDrawingLocked {
+        id: DrawingId,
+        locked: bool,
+    },
+    SetDrawingFillOpacity {
+        id: DrawingId,
+        opacity: Option<f32>,
+    },
+    SetDrawingStrokeWidth {
+        id: DrawingId,
+        width: Option<f32>,
+    },
+    SetDrawingStrokeType {
+        id: DrawingId,
+        stroke_type: Option<StrokeType>,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -104,6 +131,7 @@ pub enum DrawingCommandResult {
     Added { id: DrawingId },
     Removed { removed: bool },
     Cleared,
+    Updated,
 }
 
 /// Applies a drawing command to the target store.
@@ -244,6 +272,44 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
         DrawingCommand::ClearAll => {
             store.clear();
             DrawingCommandResult::Cleared
+        }
+        DrawingCommand::SetDrawingStrokeColor { id, color } => {
+            if let Some(d) = store.drawing_mut(id) {
+                d.style_mut().stroke_color = color.filter(|s| !s.trim().is_empty());
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::SetDrawingFillColor { id, color } => {
+            if let Some(d) = store.drawing_mut(id) {
+                if d.supports_fill() {
+                    d.style_mut().fill_color = color.filter(|s| !s.trim().is_empty());
+                }
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::SetDrawingLocked { id, locked } => {
+            if let Some(d) = store.drawing_mut(id) {
+                d.style_mut().locked = locked;
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::SetDrawingFillOpacity { id, opacity } => {
+            if let Some(d) = store.drawing_mut(id) {
+                d.style_mut().fill_opacity = opacity;
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::SetDrawingStrokeWidth { id, width } => {
+            if let Some(d) = store.drawing_mut(id) {
+                d.style_mut().stroke_width = width;
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::SetDrawingStrokeType { id, stroke_type } => {
+            if let Some(d) = store.drawing_mut(id) {
+                d.style_mut().stroke_type = stroke_type;
+            }
+            DrawingCommandResult::Updated
         }
     }
 }

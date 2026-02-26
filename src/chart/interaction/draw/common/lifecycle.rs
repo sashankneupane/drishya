@@ -1,5 +1,6 @@
 use crate::chart::Chart;
 use crate::drawings::commands::{execute_command, DrawingCommand};
+use crate::drawings::types::{DrawingStyle, StrokeType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +81,76 @@ impl Chart {
 
     pub fn set_drawing_group_visible(&mut self, group_id: &str, visible: bool) {
         self.drawings.set_group_visible(group_id, visible);
+    }
+
+    pub fn set_drawing_stroke_color(&mut self, drawing_id: u64, color: Option<&str>) -> bool {
+        let c = color.map(|s| s.to_string());
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingStrokeColor { id: drawing_id, color: c },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_fill_color(&mut self, drawing_id: u64, color: Option<&str>) -> bool {
+        let c = color.map(|s| s.to_string());
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingFillColor { id: drawing_id, color: c },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_locked(&mut self, drawing_id: u64, locked: bool) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingLocked { id: drawing_id, locked },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_fill_opacity(&mut self, drawing_id: u64, opacity: Option<f32>) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingFillOpacity { id: drawing_id, opacity },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_stroke_width(&mut self, drawing_id: u64, width: Option<f32>) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingStrokeWidth { id: drawing_id, width },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_stroke_type(&mut self, drawing_id: u64, stroke_type: Option<StrokeType>) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingStrokeType {
+                id: drawing_id,
+                stroke_type,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn drawing_config(&self, drawing_id: u64) -> Option<DrawingStyle> {
+        self.drawings.drawing(drawing_id).map(|d| d.style().clone())
+    }
+
+    pub fn drawing_config_with_capabilities(&self, drawing_id: u64) -> Option<(DrawingStyle, bool)> {
+        self.drawings
+            .drawing(drawing_id)
+            .map(|d| (d.style().clone(), d.supports_fill()))
+    }
+
+    pub fn is_drawing_locked(&self, drawing_id: u64) -> bool {
+        self.drawings
+            .drawing(drawing_id)
+            .map(|d| d.style().locked)
+            .unwrap_or(false)
     }
 
     pub fn set_drawing_layer_order<I>(&mut self, layers: I)

@@ -15,6 +15,80 @@ use crate::{
     viewport::Viewport,
 };
 
+/// Convert hex color (#RRGGBB or #RGB) to rgba(r,g,b,opacity).
+fn color_with_opacity(hex: &str, opacity: f32) -> String {
+    let s = hex.trim().trim_start_matches('#');
+    let (r, g, b) = if s.len() == 6 {
+        let r = u8::from_str_radix(&s[0..2], 16).unwrap_or(255);
+        let g = u8::from_str_radix(&s[2..4], 16).unwrap_or(255);
+        let b = u8::from_str_radix(&s[4..6], 16).unwrap_or(255);
+        (r, g, b)
+    } else if s.len() == 3 {
+        let r = u8::from_str_radix(&s[0..1].repeat(2), 16).unwrap_or(255);
+        let g = u8::from_str_radix(&s[1..2].repeat(2), 16).unwrap_or(255);
+        let b = u8::from_str_radix(&s[2..3].repeat(2), 16).unwrap_or(255);
+        (r, g, b)
+    } else {
+        return hex.to_string();
+    };
+    format!("rgba({},{},{},{})", r, g, b, opacity.clamp(0.0, 1.0))
+}
+
+fn stroke_dash_from_drawing(d: &Drawing) -> Option<Vec<f64>> {
+    d.style()
+        .stroke_type
+        .and_then(|t| t.dash_array().map(|a| a.iter().map(|&f| f as f64).collect()))
+}
+
+/// Resolve stroke style: drawing override or token fallback.
+fn stroke_for_drawing(
+    d: &Drawing,
+    fallback: ColorToken,
+    default_width: f32,
+) -> StrokeStyle {
+    let width = d.style().stroke_width.unwrap_or(default_width);
+    let dash = stroke_dash_from_drawing(d);
+    if let Some(ref c) = d.style().stroke_color {
+        StrokeStyle::css_with_dash(c.clone(), width, dash)
+    } else {
+        StrokeStyle::token_with_dash(fallback, width, dash)
+    }
+}
+
+/// Resolve stroke style: drawing override or custom fallback (e.g. hardcoded CSS).
+fn stroke_for_drawing_or_fallback(d: &Drawing, fallback: StrokeStyle) -> StrokeStyle {
+    let width = d.style().stroke_width.unwrap_or(fallback.width);
+    let dash = stroke_dash_from_drawing(d).or(fallback.dash.clone());
+    if let Some(ref c) = d.style().stroke_color {
+        StrokeStyle::css_with_dash(c.clone(), width, dash)
+    } else {
+        StrokeStyle {
+            color: fallback.color,
+            width,
+            dash,
+        }
+    }
+}
+
+/// Resolve fill style for fill-capable drawings from drawing override.
+/// Returns None when fill_color is None (transparent) or for non-fill-capable shapes.
+/// Applies fill_opacity when set to make the chart visible underneath.
+fn fill_for_drawing(d: &Drawing) -> Option<FillStyle> {
+    if !d.supports_fill() {
+        return None;
+    }
+    match d.style().fill_color {
+        Some(ref c) => {
+            let color_str = match d.style().fill_opacity {
+                Some(a) => color_with_opacity(c, a.clamp(0.0, 1.0)),
+                None => c.clone(),
+            };
+            Some(FillStyle::css(color_str))
+        }
+        None => None, // Transparent: no fill
+    }
+}
+
 pub fn build_drawing_commands(
     store: &DrawingStore,
     layout: ChartLayout,
@@ -34,6 +108,11 @@ pub fn build_drawing_commands(
         match d {
             Drawing::HorizontalLine(h) => {
                 let selected = selected_drawing_id == Some(h.id);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingPrimary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 let y = ps.y_for_price(h.price);
                 if y >= price_pane.y && y <= price_pane.bottom() {
                     out.push(DrawCommand::PushClip { rect: price_pane });
@@ -43,10 +122,7 @@ pub fn build_drawing_commands(
                             x: price_pane.right(),
                             y,
                         },
-                        stroke: StrokeStyle::token(
-                            ColorToken::DrawingPrimary,
-                            if selected { 2.0 } else { 1.0 },
-                        ),
+                        stroke,
                     });
                     out.push(DrawCommand::PopClip);
 
@@ -79,6 +155,11 @@ pub fn build_drawing_commands(
             }
             Drawing::VerticalLine(v) => {
                 let selected = selected_drawing_id == Some(v.id);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingSecondary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let x = vp.world_x_to_pixel_x(v.index, price_pane.x, price_pane.w);
                     if x >= price_pane.x && x <= price_pane.right() {
@@ -88,10 +169,7 @@ pub fn build_drawing_commands(
                         out.push(DrawCommand::Line {
                             from: Point { x, y: price_pane.y },
                             to: Point { x, y: bottom_y },
-                            stroke: StrokeStyle::token(
-                                ColorToken::DrawingSecondary,
-                                if selected { 2.0 } else { 1.0 },
-                            ),
+                            stroke,
                         });
                         out.push(DrawCommand::PopClip);
 
@@ -127,6 +205,11 @@ pub fn build_drawing_commands(
             }
             Drawing::Ray(ray) => {
                 let selected = selected_drawing_id == Some(ray.id);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingSecondary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let start_x =
                         vp.world_x_to_pixel_x(ray.start_index, price_pane.x, price_pane.w);
@@ -148,10 +231,7 @@ pub fn build_drawing_commands(
                                 x: x_right,
                                 y: y_right,
                             },
-                            stroke: StrokeStyle::token(
-                                ColorToken::DrawingSecondary,
-                                if selected { 2.0 } else { 1.0 },
-                            ),
+                            stroke,
                         });
                         out.push(DrawCommand::PopClip);
                     }
@@ -159,6 +239,12 @@ pub fn build_drawing_commands(
             }
             Drawing::Rectangle(r) => {
                 let selected = selected_drawing_id == Some(r.id);
+                let fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingPrimary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w);
@@ -169,17 +255,20 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Rect {
                         rect,
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingPrimary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        fill,
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::PopClip);
                 }
             }
             Drawing::PriceRange(r) => {
                 let selected = selected_drawing_id == Some(r.id);
+                let fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingSecondary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w);
@@ -190,11 +279,8 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Rect {
                         rect,
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingSecondary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        fill,
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::PopClip);
 
@@ -221,6 +307,12 @@ pub fn build_drawing_commands(
             }
             Drawing::TimeRange(r) => {
                 let selected = selected_drawing_id == Some(r.id);
+                let fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingSecondary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w);
@@ -231,11 +323,8 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Rect {
                         rect,
-                        fill: Some(FillStyle::token(ColorToken::PaneBorder)),
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingSecondary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        fill,
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::PopClip);
 
@@ -259,6 +348,12 @@ pub fn build_drawing_commands(
             }
             Drawing::DateTimeRange(r) => {
                 let selected = selected_drawing_id == Some(r.id);
+                let fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingSecondary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(r.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(r.end_index, price_pane.x, price_pane.w);
@@ -269,11 +364,8 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Rect {
                         rect,
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingSecondary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        fill,
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::PopClip);
 
@@ -306,6 +398,13 @@ pub fn build_drawing_commands(
             }
             Drawing::LongPosition(p) => {
                 let selected = selected_drawing_id == Some(p.id);
+                let reward_fill = fill_for_drawing(d);
+                let risk_fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingPrimary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(p.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(p.end_index, price_pane.x, price_pane.w);
@@ -318,12 +417,12 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Rect {
                         rect: reward_rect,
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
+                        fill: reward_fill,
                         stroke: None,
                     });
                     out.push(DrawCommand::Rect {
                         rect: risk_rect,
-                        fill: Some(FillStyle::token(ColorToken::BearMuted)),
+                        fill: risk_fill,
                         stroke: None,
                     });
                     out.push(DrawCommand::Line {
@@ -335,18 +434,12 @@ pub fn build_drawing_commands(
                             x: reward_rect.right(),
                             y: entry_y,
                         },
-                        stroke: StrokeStyle::token(
-                            ColorToken::DrawingPrimary,
-                            if selected { 2.0 } else { 1.0 },
-                        ),
+                        stroke: stroke.clone(),
                     });
                     out.push(DrawCommand::Rect {
                         rect: rect_from_edges(left_x, right_x, target_y, stop_y),
                         fill: None,
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingPrimary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::Text {
                         pos: Point {
@@ -365,6 +458,13 @@ pub fn build_drawing_commands(
             }
             Drawing::ShortPosition(p) => {
                 let selected = selected_drawing_id == Some(p.id);
+                let reward_fill = fill_for_drawing(d);
+                let risk_fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingSecondary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(p.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(p.end_index, price_pane.x, price_pane.w);
@@ -377,12 +477,12 @@ pub fn build_drawing_commands(
                     out.push(DrawCommand::PushClip { rect: price_pane });
                     out.push(DrawCommand::Rect {
                         rect: reward_rect,
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
+                        fill: reward_fill,
                         stroke: None,
                     });
                     out.push(DrawCommand::Rect {
                         rect: risk_rect,
-                        fill: Some(FillStyle::token(ColorToken::BearMuted)),
+                        fill: risk_fill,
                         stroke: None,
                     });
                     out.push(DrawCommand::Line {
@@ -394,18 +494,12 @@ pub fn build_drawing_commands(
                             x: reward_rect.right(),
                             y: entry_y,
                         },
-                        stroke: StrokeStyle::token(
-                            ColorToken::DrawingSecondary,
-                            if selected { 2.0 } else { 1.0 },
-                        ),
+                        stroke: stroke.clone(),
                     });
                     out.push(DrawCommand::Rect {
                         rect: rect_from_edges(left_x, right_x, stop_y, target_y),
                         fill: None,
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingSecondary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::Text {
                         pos: Point {
@@ -424,6 +518,8 @@ pub fn build_drawing_commands(
             }
             Drawing::FibRetracement(fib) => {
                 let selected = selected_drawing_id == Some(fib.id);
+                let band_fill_override = d.style().fill_color.as_ref().map(|c| FillStyle::css(c.clone()));
+                let edge_stroke_width = if selected { 2.0 } else { 1.25 };
                 if let Some(vp) = viewport {
                     let left_x = vp.world_x_to_pixel_x(fib.start_index, price_pane.x, price_pane.w);
                     let right_x = vp.world_x_to_pixel_x(fib.end_index, price_pane.x, price_pane.w);
@@ -445,14 +541,17 @@ pub fn build_drawing_commands(
                         let y1 = pair[0].2;
                         let y2 = pair[1].2;
                         let band = rect_from_edges(x_left, x_right, y1, y2);
-                        let fill = if i % 2 == 0 {
-                            "rgba(56,189,248,0.10)"
-                        } else {
-                            "rgba(59,130,246,0.06)"
-                        };
+                        let fill = band_fill_override.clone().unwrap_or_else(|| {
+                            let fill = if i % 2 == 0 {
+                                "rgba(56,189,248,0.10)"
+                            } else {
+                                "rgba(59,130,246,0.06)"
+                            };
+                            FillStyle::css(fill.to_string())
+                        });
                         out.push(DrawCommand::Rect {
                             rect: band,
-                            fill: Some(FillStyle::css(fill.to_string())),
+                            fill: Some(fill),
                             stroke: None,
                         });
                     }
@@ -461,24 +560,26 @@ pub fn build_drawing_commands(
                         let major = (level - 0.0).abs() < 1e-9
                             || (level - 0.5).abs() < 1e-9
                             || (level - 1.0).abs() < 1e-9;
+                        let fallback = StrokeStyle::css(
+                            if major {
+                                "rgba(125,211,252,0.88)"
+                            } else {
+                                "rgba(125,211,252,0.62)"
+                            }
+                            .to_string(),
+                            if selected {
+                                2.0
+                            } else if major {
+                                1.25
+                            } else {
+                                1.0
+                            },
+                        );
+                        let stroke = stroke_for_drawing_or_fallback(d, fallback);
                         out.push(DrawCommand::Line {
                             from: Point { x: x_left, y },
                             to: Point { x: x_right, y },
-                            stroke: StrokeStyle::css(
-                                if major {
-                                    "rgba(125,211,252,0.88)"
-                                } else {
-                                    "rgba(125,211,252,0.62)"
-                                }
-                                .to_string(),
-                                if selected {
-                                    2.0
-                                } else if major {
-                                    1.25
-                                } else {
-                                    1.0
-                                },
-                            ),
+                            stroke,
                         });
                         out.push(DrawCommand::Text {
                             pos: Point {
@@ -495,9 +596,9 @@ pub fn build_drawing_commands(
                     }
                     let y_top = ps.y_for_price(fib.start_price);
                     let y_bottom = ps.y_for_price(fib.end_price);
-                    let edge_stroke = StrokeStyle::css(
-                        "rgba(96,165,250,0.92)".to_string(),
-                        if selected { 2.0 } else { 1.25 },
+                    let edge_stroke = stroke_for_drawing_or_fallback(
+                        d,
+                        StrokeStyle::css("rgba(96,165,250,0.92)".to_string(), edge_stroke_width),
                     );
                     out.push(DrawCommand::Line {
                         from: Point {
@@ -526,6 +627,12 @@ pub fn build_drawing_commands(
             }
             Drawing::Circle(c) => {
                 let selected = selected_drawing_id == Some(c.id);
+                let fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingPrimary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let cx = vp.world_x_to_pixel_x(c.center_index, price_pane.x, price_pane.w);
                     let rpx = vp.world_x_to_pixel_x(c.radius_index, price_pane.x, price_pane.w);
@@ -540,17 +647,20 @@ pub fn build_drawing_commands(
                         rx: r_px,
                         ry: r_px,
                         rotation: 0.0,
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingPrimary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        fill,
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::PopClip);
                 }
             }
             Drawing::Triangle(t) => {
                 let selected = selected_drawing_id == Some(t.id);
+                let fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingPrimary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     let x1 = vp.world_x_to_pixel_x(t.p1_index, price_pane.x, price_pane.w);
                     let x2 = vp.world_x_to_pixel_x(t.p2_index, price_pane.x, price_pane.w);
@@ -566,17 +676,20 @@ pub fn build_drawing_commands(
                             Point { x: x2, y: y2 },
                             Point { x: x3, y: y3 },
                         ],
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingPrimary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        fill,
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::PopClip);
                 }
             }
             Drawing::Ellipse(e) => {
                 let selected = selected_drawing_id == Some(e.id);
+                let fill = fill_for_drawing(d);
+                let stroke = stroke_for_drawing(
+                    d,
+                    ColorToken::DrawingPrimary,
+                    if selected { 2.0 } else { 1.0 },
+                );
                 if let Some(vp) = viewport {
                     // Compute center from midpoint of p1/p2 (diameter 1)
                     let x1 = vp.world_x_to_pixel_x(e.p1_index, price_pane.x, price_pane.w);
@@ -601,11 +714,8 @@ pub fn build_drawing_commands(
                         rx,
                         ry,
                         rotation,
-                        fill: Some(FillStyle::token(ColorToken::BullMuted)),
-                        stroke: Some(StrokeStyle::token(
-                            ColorToken::DrawingPrimary,
-                            if selected { 2.0 } else { 1.0 },
-                        )),
+                        fill,
+                        stroke: Some(stroke),
                     });
                     out.push(DrawCommand::PopClip);
                 }

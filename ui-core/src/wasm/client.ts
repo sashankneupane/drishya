@@ -1,6 +1,7 @@
 import type {
   Candle,
   ChartAppearanceConfig,
+  DrawingConfig,
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
@@ -135,7 +136,9 @@ export class DrishyaChartClient {
 
   selectedDrawingId(): number | null {
     const selected = this.wasm.selected_drawing_id?.();
-    return Number.isFinite(selected) ? (selected as number) : null;
+    if (selected === undefined || selected === null) return null;
+    const n = typeof selected === "bigint" ? Number(selected) : selected;
+    return Number.isFinite(n) && Number.isSafeInteger(n) ? n : null;
   }
 
   clearSelectedDrawing(): void {
@@ -188,6 +191,14 @@ export class DrishyaChartClient {
     this.wasm.set_pane_weights_json?.(JSON.stringify(weightMap));
   }
 
+  getPaneStateJson(): string | null {
+    return this.wasm.pane_state_json?.() ?? null;
+  }
+
+  restorePaneStateJson(json: string): void {
+    this.wasm.restore_pane_state_json?.(json);
+  }
+
   paneLayouts(): PaneLayout[] {
     const raw = this.wasm.pane_layouts_json?.();
     if (!raw) return [];
@@ -205,6 +216,57 @@ export class DrishyaChartClient {
       series: Array.isArray(parsed.series) ? parsed.series : [],
       drawings: Array.isArray(parsed.drawings) ? parsed.drawings : []
     };
+  }
+
+  getDrawingConfig(drawingId: number): DrawingConfig | null {
+    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    const raw = this.wasm.drawing_config?.(id);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as DrawingConfig;
+      return {
+        stroke_color: parsed.stroke_color ?? null,
+        fill_color: parsed.fill_color ?? null,
+        fill_opacity: parsed.fill_opacity ?? null,
+        stroke_width: parsed.stroke_width ?? null,
+        stroke_type: parsed.stroke_type ?? "solid",
+        locked: !!parsed.locked,
+        supports_fill: !!parsed.supports_fill
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  setDrawingConfig(drawingId: number, config: Partial<DrawingConfig>): void {
+    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    const payload: Record<string, unknown> = {};
+    if (config.stroke_color !== undefined) payload.stroke_color = config.stroke_color || null;
+    if (config.fill_color !== undefined) payload.fill_color = config.fill_color || null;
+    if (config.fill_opacity !== undefined) payload.fill_opacity = config.fill_opacity;
+    if (config.stroke_width !== undefined) payload.stroke_width = config.stroke_width;
+    if (config.stroke_type !== undefined) payload.stroke_type = config.stroke_type ?? null;
+    if (config.locked !== undefined) payload.locked = config.locked;
+    this.wasm.set_drawing_config?.(id, JSON.stringify(payload));
+  }
+
+  getSelectedDrawingConfig(): DrawingConfig | null {
+    const raw = this.wasm.selected_drawing_config?.();
+    if (!raw || raw === "{}") return null;
+    try {
+      const parsed = JSON.parse(raw) as DrawingConfig;
+      return {
+        stroke_color: parsed.stroke_color ?? null,
+        fill_color: parsed.fill_color ?? null,
+        fill_opacity: parsed.fill_opacity ?? null,
+        stroke_width: parsed.stroke_width ?? null,
+        stroke_type: parsed.stroke_type ?? "solid",
+        locked: !!parsed.locked,
+        supports_fill: !!parsed.supports_fill
+      };
+    } catch {
+      return null;
+    }
   }
 
   applyObjectTreeAction(action: ObjectTreeAction): void {

@@ -10,6 +10,7 @@
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+use crate::drawings::types::StrokeType;
 use crate::{
     chart::appearance::ChartAppearanceConfig,
     chart::plots::PaneLayoutState,
@@ -22,6 +23,18 @@ use crate::{
     types::{Candle, CursorMode},
 };
 use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+struct DrawingConfigJson {
+    stroke_color: Option<String>,
+    fill_color: Option<String>,
+    fill_opacity: Option<f32>,
+    stroke_width: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stroke_type: Option<String>,
+    locked: bool,
+    supports_fill: bool,
+}
 
 #[derive(Debug, Clone, Serialize)]
 struct PaneTreeState {
@@ -283,6 +296,77 @@ impl WasmChart {
     /// Deletes currently selected drawing.
     pub fn delete_selected_drawing(&mut self) -> bool {
         self.chart.delete_selected_drawing()
+    }
+
+    /// Returns drawing config (stroke, fill, locked, supports_fill) as JSON.
+    pub fn drawing_config(&self, drawing_id: u64) -> Result<String, JsValue> {
+        let (style, supports_fill) = self
+            .chart
+            .drawing_config_with_capabilities(drawing_id)
+            .ok_or_else(|| JsValue::from_str("Drawing not found"))?;
+        let cfg = DrawingConfigJson {
+            stroke_color: style.stroke_color,
+            fill_color: style.fill_color,
+            fill_opacity: style.fill_opacity,
+            stroke_width: style.stroke_width,
+            stroke_type: style.stroke_type.map(|t| match t {
+                StrokeType::Solid => "solid".to_string(),
+                StrokeType::Dotted => "dotted".to_string(),
+                StrokeType::Dashed => "dashed".to_string(),
+            }),
+            locked: style.locked,
+            supports_fill,
+        };
+        serde_json::to_string(&cfg).map_err(|e| JsValue::from_str(&format!("Serialize error: {e}")))
+    }
+
+    /// Sets drawing config from JSON. Expects { stroke_color?, fill_color?, fill_opacity?, stroke_width?, locked? }.
+    /// Only fields present in the JSON are updated; absent fields leave existing values unchanged.
+    pub fn set_drawing_config(&mut self, drawing_id: u64, json: &str) -> Result<(), JsValue> {
+        let val: serde_json::Value = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid drawing config JSON: {e}")))?;
+        let obj = val.as_object().ok_or_else(|| JsValue::from_str("Config must be a JSON object"))?;
+
+        if obj.contains_key("stroke_color") {
+            let v = obj.get("stroke_color").and_then(|x| x.as_str()).map(String::from);
+            self.chart.set_drawing_stroke_color(drawing_id, v.as_deref());
+        }
+        if obj.contains_key("fill_color") {
+            let v = obj.get("fill_color").and_then(|x| x.as_str()).map(String::from);
+            self.chart.set_drawing_fill_color(drawing_id, v.as_deref());
+        }
+        if obj.contains_key("fill_opacity") {
+            let v = obj.get("fill_opacity").and_then(|x| x.as_f64()).map(|f| f as f32);
+            self.chart.set_drawing_fill_opacity(drawing_id, v);
+        }
+        if obj.contains_key("stroke_width") {
+            let v = obj.get("stroke_width").and_then(|x| x.as_f64()).map(|f| f as f32);
+            self.chart.set_drawing_stroke_width(drawing_id, v);
+        }
+        if obj.contains_key("stroke_type") {
+            let v = obj
+                .get("stroke_type")
+                .and_then(|x| x.as_str())
+                .and_then(|s| match s.trim().to_ascii_lowercase().as_str() {
+                    "dotted" => Some(StrokeType::Dotted),
+                    "dashed" => Some(StrokeType::Dashed),
+                    "solid" | _ => Some(StrokeType::Solid),
+                });
+            self.chart.set_drawing_stroke_type(drawing_id, v);
+        }
+        if obj.contains_key("locked") {
+            let locked = obj.get("locked").and_then(|x| x.as_bool()).unwrap_or(false);
+            self.chart.set_drawing_locked(drawing_id, locked);
+        }
+        Ok(())
+    }
+
+    /// Returns selected drawing config as JSON, or empty object if none selected.
+    pub fn selected_drawing_config(&self) -> Result<String, JsValue> {
+        match self.chart.selected_drawing_id() {
+            Some(id) => self.drawing_config(id),
+            None => Ok("{}".to_string()),
+        }
     }
 
     // -------- Drawing tools --------

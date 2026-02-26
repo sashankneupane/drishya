@@ -52,7 +52,11 @@ pub fn build_candle_commands(
         let body_bottom = y + h;
 
         // Wick / bar spine
-        let stroke_color = |c: &ColorRef| StrokeStyle { color: c.clone(), width: 1.0 };
+        let stroke_color = |c: &ColorRef| StrokeStyle {
+            color: c.clone(),
+            width: 1.0,
+            dash: None,
+        };
         let fill_color = |c: &ColorRef| FillStyle { color: c.clone() };
         match body_style {
             CandleBodyStyle::Solid => {

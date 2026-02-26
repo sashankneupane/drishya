@@ -3,11 +3,50 @@
 //! These types are serializable candidates later, so they stay simple and
 //! explicit rather than embedding behavior.
 
+use serde::{Deserialize, Serialize};
+
 pub type DrawingId = u64;
 pub type DrawingLayerId = String;
 pub type DrawingGroupId = String;
 
 pub const DEFAULT_DRAWING_LAYER: &str = "drawings";
+
+/// Stroke line style (solid, dotted, dashed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StrokeType {
+    #[default]
+    Solid,
+    Dotted,
+    Dashed,
+}
+
+impl StrokeType {
+    pub fn dash_array(&self) -> Option<&[f32]> {
+        match self {
+            StrokeType::Solid => None,
+            StrokeType::Dotted => Some(&[2.0, 2.0]),
+            StrokeType::Dashed => Some(&[6.0, 3.0]),
+        }
+    }
+}
+
+/// Per-drawing style and lock metadata (stroke/fill colors, opacity, stroke width, stroke type, locked).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DrawingStyle {
+    pub stroke_color: Option<String>,
+    pub fill_color: Option<String>,
+    /// Fill opacity 0.0–1.0; None means 1.0 (opaque).
+    #[serde(default)]
+    pub fill_opacity: Option<f32>,
+    /// Stroke width in pixels; None means default (1.0).
+    #[serde(default)]
+    pub stroke_width: Option<f32>,
+    /// Stroke line style (solid, dotted, dashed); None means solid.
+    #[serde(default)]
+    pub stroke_type: Option<StrokeType>,
+    pub locked: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct HorizontalLine {
@@ -15,6 +54,7 @@ pub struct HorizontalLine {
     pub price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +63,7 @@ pub struct VerticalLine {
     pub index: f32,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +75,7 @@ pub struct Ray {
     pub end_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +87,7 @@ pub struct Rectangle {
     pub bottom_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +99,7 @@ pub struct PriceRange {
     pub bottom_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +111,7 @@ pub struct TimeRange {
     pub bottom_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +123,7 @@ pub struct DateTimeRange {
     pub bottom_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +136,7 @@ pub struct LongPosition {
     pub target_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +149,7 @@ pub struct ShortPosition {
     pub target_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +161,7 @@ pub struct FibRetracement {
     pub end_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +173,7 @@ pub struct Circle {
     pub radius_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +187,7 @@ pub struct Triangle {
     pub p3_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -150,6 +201,7 @@ pub struct Ellipse {
     pub p3_price: f64,
     pub layer_id: DrawingLayerId,
     pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -258,6 +310,59 @@ impl Drawing {
             Drawing::Circle(item) => item.group_id = next,
             Drawing::Triangle(item) => item.group_id = next,
             Drawing::Ellipse(item) => item.group_id = next,
+        }
+    }
+
+    /// Returns true if this drawing type supports fill color customization.
+    pub fn supports_fill(&self) -> bool {
+        matches!(
+            self,
+            Drawing::Rectangle(_)
+                | Drawing::PriceRange(_)
+                | Drawing::TimeRange(_)
+                | Drawing::DateTimeRange(_)
+                | Drawing::LongPosition(_)
+                | Drawing::ShortPosition(_)
+                | Drawing::FibRetracement(_)
+                | Drawing::Circle(_)
+                | Drawing::Triangle(_)
+                | Drawing::Ellipse(_)
+        )
+    }
+
+    pub fn style(&self) -> &DrawingStyle {
+        match self {
+            Drawing::HorizontalLine(item) => &item.style,
+            Drawing::VerticalLine(item) => &item.style,
+            Drawing::Ray(item) => &item.style,
+            Drawing::Rectangle(item) => &item.style,
+            Drawing::PriceRange(item) => &item.style,
+            Drawing::TimeRange(item) => &item.style,
+            Drawing::DateTimeRange(item) => &item.style,
+            Drawing::LongPosition(item) => &item.style,
+            Drawing::ShortPosition(item) => &item.style,
+            Drawing::FibRetracement(item) => &item.style,
+            Drawing::Circle(item) => &item.style,
+            Drawing::Triangle(item) => &item.style,
+            Drawing::Ellipse(item) => &item.style,
+        }
+    }
+
+    pub fn style_mut(&mut self) -> &mut DrawingStyle {
+        match self {
+            Drawing::HorizontalLine(item) => &mut item.style,
+            Drawing::VerticalLine(item) => &mut item.style,
+            Drawing::Ray(item) => &mut item.style,
+            Drawing::Rectangle(item) => &mut item.style,
+            Drawing::PriceRange(item) => &mut item.style,
+            Drawing::TimeRange(item) => &mut item.style,
+            Drawing::DateTimeRange(item) => &mut item.style,
+            Drawing::LongPosition(item) => &mut item.style,
+            Drawing::ShortPosition(item) => &mut item.style,
+            Drawing::FibRetracement(item) => &mut item.style,
+            Drawing::Circle(item) => &mut item.style,
+            Drawing::Triangle(item) => &mut item.style,
+            Drawing::Ellipse(item) => &mut item.style,
         }
     }
 }
