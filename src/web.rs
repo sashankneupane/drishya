@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 use crate::{
+    chart::appearance::ChartAppearanceConfig,
     chart::plots::PaneLayoutState,
     chart::tools::DrawingToolMode,
     chart::Chart,
@@ -148,6 +149,25 @@ impl WasmChart {
             "light" => self.chart.set_theme(ThemeId::Light),
             _ => self.chart.set_theme(ThemeId::Dark),
         }
+    }
+
+    /// Sets chart appearance config from JSON.
+    /// Expects: {"background":"#030712","candle_up":"#22c55e","candle_down":"#ef4444"}
+    /// Invalid values are rejected silently.
+    pub fn set_appearance_config(&mut self, json: &str) -> Result<(), JsValue> {
+        let config: ChartAppearanceConfig = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid appearance config JSON: {e}")))?;
+        config
+            .validate()
+            .map_err(|e| JsValue::from_str(&e))?;
+        self.chart.set_appearance_config(config);
+        Ok(())
+    }
+
+    /// Returns current chart appearance config as JSON.
+    pub fn appearance_config(&self) -> Result<String, JsValue> {
+        serde_json::to_string(self.chart.appearance_config())
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize appearance config: {e}")))
     }
 
     /// Sets candle body style (`solid` | `hollow`).
