@@ -1,5 +1,6 @@
 import type {
   Candle,
+  ChartStateSnapshot,
   ChartAppearanceConfig,
   DrawingConfig,
   ObjectTreeState,
@@ -199,6 +200,23 @@ export class DrishyaChartClient {
 
   restorePaneStateJson(json: string): void {
     this.wasm.restore_pane_state_json?.(json);
+  }
+
+  exportChartState(): ChartStateSnapshot {
+    const raw = this.wasm.chart_state_snapshot_json?.();
+    const parsed = raw ? safeJsonParse<ChartStateSnapshot>(raw) : null;
+    if (!parsed) {
+      throw new Error("WASM persistence export is unavailable or returned invalid JSON");
+    }
+    return parsed;
+  }
+
+  importChartState(snapshot: ChartStateSnapshot): void {
+    this.wasm.restore_chart_state_json?.(JSON.stringify(snapshot));
+  }
+
+  importChartStateJson(json: string): void {
+    this.wasm.restore_chart_state_json?.(json);
   }
 
   paneLayouts(): PaneLayout[] {
