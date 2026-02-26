@@ -4,6 +4,9 @@ export type DrawingToolId =
   | "vline"
   | "ray"
   | "rectangle"
+  | "price_range"
+  | "time_range"
+  | "date_time_range"
   | "fib"
   | "long"
   | "short";
@@ -20,6 +23,9 @@ export const DRAWING_TOOLS: readonly DrawingToolDef[] = [
   { id: "vline", label: "V-Line", hotkey: "L" },
   { id: "ray", label: "Ray", hotkey: "R" },
   { id: "rectangle", label: "Rect", hotkey: "B" },
+  { id: "price_range", label: "P-Range", hotkey: "G" },
+  { id: "time_range", label: "T-Range", hotkey: "Y" },
+  { id: "date_time_range", label: "DT-Range", hotkey: "U" },
   { id: "fib", label: "Fib", hotkey: "F" },
   { id: "long", label: "Long", hotkey: "N" },
   { id: "short", label: "Short", hotkey: "S" }
