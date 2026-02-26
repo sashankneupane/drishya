@@ -213,6 +213,30 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   leftSide.appendChild(indBtn);
 
   // Right Side - Objects Toggle
+  const replayGroup = document.createElement("div");
+  replayGroup.className = "flex items-center h-full border-r border-workspace-border";
+
+  const replayStateLabel = document.createElement("span");
+  replayStateLabel.className = "px-2 text-[10px] text-zinc-500";
+
+  const mkReplayBtn = (label: string, onClick: () => void) => {
+    const btn = document.createElement("button");
+    btn.className = BTN_MINIMAL;
+    btn.textContent = label;
+    btn.onclick = onClick;
+    return btn;
+  };
+
+  const replayApi = controller.replay();
+  const playBtn = mkReplayBtn("Play", () => replayApi.play());
+  const pauseBtn = mkReplayBtn("Pause", () => replayApi.pause());
+  const stopBtn = mkReplayBtn("Stop", () => replayApi.stop());
+  const stepBarBtn = mkReplayBtn("Step Bar", () => replayApi.stepBar());
+  const stepEventBtn = mkReplayBtn("Step Event", () => replayApi.stepEvent());
+
+  replayGroup.append(playBtn, pauseBtn, stopBtn, stepBarBtn, stepEventBtn, replayStateLabel);
+  rightSide.appendChild(replayGroup);
+
   const objectsBtn = document.createElement("button");
   objectsBtn.className = BTN_MINIMAL;
   objectsBtn.appendChild(makeSvgIcon("eye", "h-3.5 w-3.5 mr-2"));
@@ -228,6 +252,8 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
 
   root.append(leftSide, rightSide);
 
+  replayStateLabel.textContent = "Replay: Paused @ -";
+
   const unsubscribe = controller.subscribe((state) => {
     if (state.isObjectTreeOpen) {
       objectsBtn.classList.add("text-zinc-100", "bg-zinc-900");
@@ -235,6 +261,9 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
       objectsBtn.classList.remove("text-zinc-100", "bg-zinc-900");
     }
     updateAxisLabel();
+    replayStateLabel.textContent = state.replay.playing
+      ? `Replay: Playing @ ${state.replay.cursor_ts ?? "-"}`
+      : `Replay: Paused @ ${state.replay.cursor_ts ?? "-"}`;
   });
 
   const globalClick = () => closePopup();
