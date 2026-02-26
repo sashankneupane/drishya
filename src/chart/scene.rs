@@ -258,6 +258,9 @@ impl Chart {
             ));
         }
 
+        // Drop-point dots: pending construction clicks + selected vertex handles
+        out.extend(self.build_anchor_commands());
+
         let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {
             out.push(DrawCommand::PushClip { rect: layout.plot });

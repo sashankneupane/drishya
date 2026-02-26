@@ -8,6 +8,7 @@
 //! Keeping the public `Chart` type here provides a stable surface for callers
 //! while allowing internals to evolve without creating a monolithic file.
 
+pub mod anchors;
 pub mod hit_test;
 pub mod interaction;
 pub mod plots;
