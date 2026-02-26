@@ -10,6 +10,11 @@
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+use crate::api::wasm::dto::drawings::{
+    DrawingConfigJson, DrawingTreeState, GroupTreeState, LayerTreeState, ObjectTreeState,
+    PaneTreeState, SeriesTreeState,
+};
+use crate::api::wasm::parse::json::parse_json;
 use crate::drawings::types::StrokeType;
 use crate::{
     chart::appearance::ChartAppearanceConfig,
@@ -22,77 +27,6 @@ use crate::{
     render::{backends::canvas2d::paint_canvas2d, candles::CandleBodyStyle, styles::ThemeId},
     types::{Candle, CursorMode},
 };
-use serde::Serialize;
-
-#[derive(Debug, Clone, Serialize)]
-struct DrawingConfigJson {
-    stroke_color: Option<String>,
-    fill_color: Option<String>,
-    fill_opacity: Option<f32>,
-    stroke_width: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stroke_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    font_size: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    text_content: Option<String>,
-    locked: bool,
-    supports_fill: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct PaneTreeState {
-    id: String,
-    visible: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct SeriesTreeState {
-    id: String,
-    name: String,
-    pane_id: String,
-    visible: bool,
-    deleted: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct DrawingTreeState {
-    id: u64,
-    kind: String,
-    layer_id: String,
-    group_id: Option<String>,
-    visible: bool,
-    locked: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct LayerTreeState {
-    id: String,
-    name: String,
-    visible: bool,
-    locked: bool,
-    order: i32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct GroupTreeState {
-    id: String,
-    name: String,
-    layer_id: String,
-    parent_group_id: Option<String>,
-    visible: bool,
-    locked: bool,
-    order: i32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ObjectTreeState {
-    panes: Vec<PaneTreeState>,
-    series: Vec<SeriesTreeState>,
-    layers: Vec<LayerTreeState>,
-    groups: Vec<GroupTreeState>,
-    drawings: Vec<DrawingTreeState>,
-}
 
 #[wasm_bindgen]
 pub struct WasmChart {
@@ -138,8 +72,7 @@ impl WasmChart {
     /// Pass JSON array of candles:
     /// [{"ts":1,"open":100.0,"high":101.0,"low":99.5,"close":100.5,"volume":1200.0}, ...]
     pub fn set_ohlcv_json(&mut self, json: &str) -> Result<(), JsValue> {
-        let data: Vec<Candle> = serde_json::from_str(json)
-            .map_err(|e| JsValue::from_str(&format!("Invalid OHLCV JSON: {e}")))?;
+        let data: Vec<Candle> = parse_json(json, "OHLCV JSON")?;
         self.chart.set_data(data);
         Ok(())
     }
