@@ -53,15 +53,11 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
-        let price = self.price_from_y(y_pixels, ps);
+        let price = ps.price_for_y(y_pixels);
         let span = (max_price - min_price).abs().max(1e-6);
         Some((world_x, price, span))
-    }
-
-    pub(crate) fn price_from_y(&self, y: f32, ps: PriceScale) -> f64 {
-        let t = 1.0 - ((y - ps.pane.y) / ps.pane.h).clamp(0.0, 1.0);
-        ps.min + (ps.max - ps.min) * t as f64
     }
 }
 

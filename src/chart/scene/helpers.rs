@@ -1,6 +1,6 @@
 use crate::{
     plots::model::{PaneId, PlotPrimitive, PlotSeries},
-    scale::{PriceScale, TimeScale},
+    scale::TimeScale,
     types::Candle,
 };
 
@@ -95,11 +95,6 @@ fn inferred_time_step_seconds(candles: &[Candle]) -> i64 {
         }
     }
     60
-}
-
-pub(super) fn price_at_y(y: f32, ps: PriceScale) -> f64 {
-    let t = 1.0 - ((y - ps.pane.y) / ps.pane.h).clamp(0.0, 1.0);
-    ps.min + (ps.max - ps.min) * t as f64
 }
 
 pub(super) fn compute_pane_value_bounds(

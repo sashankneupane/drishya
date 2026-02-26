@@ -32,8 +32,8 @@ use crate::{
 };
 
 use self::helpers::{
-    compute_pane_value_bounds, nearest_candle_index, price_at_y, series_value_at_index,
-    timestamp_for_world_x, world_x_at_pixel,
+    compute_pane_value_bounds, nearest_candle_index, series_value_at_index, timestamp_for_world_x,
+    world_x_at_pixel,
 };
 use super::Chart;
 
@@ -115,6 +115,7 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
 
         let mut pane_scales: Vec<(PaneId, PriceScale)> = vec![(PaneId::Price, ps)];
@@ -138,6 +139,7 @@ impl Chart {
                         pane: pane.rect,
                         min: min_v,
                         max: max_v,
+                        mode: self.price_axis_mode, // Apply same mode to indicator panes for consistency in beta
                     },
                 ));
             }
@@ -394,6 +396,7 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
 
         let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w);
@@ -469,7 +472,7 @@ fn build_crosshair_readout_commands(
         style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
     });
 
-    let price_at_cursor = price_at_y(crosshair.y, ps);
+    let price_at_cursor = ps.price_for_y(crosshair.y);
     let price_label_h = 16.0f32;
     let price_label_y = (crosshair.y - price_label_h * 0.5)
         .clamp(layout.y_axis.y, layout.y_axis.bottom() - price_label_h);

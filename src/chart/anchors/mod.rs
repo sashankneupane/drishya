@@ -205,6 +205,7 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
 
         let mut out = Vec::new();
@@ -254,6 +255,7 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
         let anchors = anchor_positions(drawing, &vp, price_pane, ps);
         hit_anchor(&anchors, Point { x, y })
@@ -341,6 +343,7 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
 
         let (cx_px, cy_px, r_px) = {
@@ -417,6 +420,7 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
 
         // Snapshot pixel coords

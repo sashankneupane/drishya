@@ -57,14 +57,48 @@ pub struct PriceScale {
     pub pane: Rect,
     pub min: f64,
     pub max: f64,
+    pub mode: crate::chart::axis_mode::PriceAxisMode,
 }
 
 impl PriceScale {
     pub fn y_for_price(&self, price: f64) -> f32 {
-        // Clamp tiny ranges to avoid division blow-ups on flat data windows.
-        let range = (self.max - self.min).max(1e-9);
-        let t = ((price - self.min) / range) as f32;
+        use crate::chart::axis_mode::PriceAxisMode;
+
+        let (val, min_v, max_v) = match self.mode {
+            PriceAxisMode::Linear | PriceAxisMode::Percent => (price, self.min, self.max),
+            PriceAxisMode::Log => {
+                // Log mode requires strictly positive values.
+                // We clamp to a tiny positive epsilon if data is non-positive.
+                let epsilon = 1e-9;
+                (
+                    price.max(epsilon).ln(),
+                    self.min.max(epsilon).ln(),
+                    self.max.max(epsilon + 1e-9).ln(),
+                )
+            }
+        };
+
+        let range = (max_v - min_v).max(1e-9);
+        let t = ((val - min_v) / range) as f32;
         self.pane.y + self.pane.h * (1.0 - t)
+    }
+
+    pub fn price_for_y(&self, y: f32) -> f64 {
+        use crate::chart::axis_mode::PriceAxisMode;
+
+        let t = 1.0 - ((y - self.pane.y) / self.pane.h).clamp(0.0, 1.0);
+
+        match self.mode {
+            PriceAxisMode::Linear | PriceAxisMode::Percent => {
+                self.min + (self.max - self.min) * t as f64
+            }
+            PriceAxisMode::Log => {
+                let epsilon = 1e-9;
+                let log_min = self.min.max(epsilon).ln();
+                let log_max = self.max.max(epsilon + 1e-9).ln();
+                (log_min + (log_max - log_min) * t as f64).exp()
+            }
+        }
     }
 }
 

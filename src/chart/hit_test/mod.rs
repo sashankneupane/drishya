@@ -81,6 +81,7 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
         };
 
         let target_pane_rect = layout

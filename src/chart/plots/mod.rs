@@ -137,6 +137,7 @@ impl Chart {
                 pane: pane_rect,
                 min: min_v,
                 max: max_v,
+                mode: self.price_axis_mode,
             })
         } else {
             let (min_v, max_v) = compute_pane_value_bounds_for_hit_test(
@@ -155,6 +156,7 @@ impl Chart {
                 pane: pane_rect,
                 min: min_v,
                 max: max_v,
+                mode: self.price_axis_mode,
             })
         }?;
 
