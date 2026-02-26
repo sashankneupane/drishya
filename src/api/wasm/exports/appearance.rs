@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::WasmChart;
+use crate::api::wasm::dto::persistence::AppearanceSnapshotDto;
 use crate::api::wasm::parse::json::parse_json;
 use crate::{
     chart::appearance::ChartAppearanceConfig,
@@ -73,5 +74,20 @@ impl WasmChart {
             CursorMode::Normal => "normal",
         }
         .to_string()
+    }
+
+    /// Exports appearance snapshot state as JSON.
+    pub fn appearance_snapshot_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.export_appearance_snapshot()).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize appearance snapshot: {e}"))
+        })
+    }
+
+    /// Restores appearance snapshot state from JSON.
+    pub fn restore_appearance_snapshot_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let snapshot: AppearanceSnapshotDto = parse_json(json, "appearance-snapshot JSON")?;
+        self.chart
+            .restore_appearance_snapshot(&snapshot)
+            .map_err(|e| JsValue::from_str(&e))
     }
 }

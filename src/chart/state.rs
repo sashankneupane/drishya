@@ -129,6 +129,21 @@ impl Chart {
             }
         }
     }
+
+    pub(crate) fn set_viewport_world_range(&mut self, start_x: f64, end_x: f64) {
+        let mut viewport = Viewport::new(self.candles.len().max(1));
+        let span = (end_x - start_x)
+            .max(Viewport::MIN_VISIBLE_BARS)
+            .min(self.candles.len().max(1) as f64);
+        let clamped_start = start_x.min(end_x - 1e-6);
+        viewport.pan_world(
+            clamped_start - viewport.world_start_x(),
+            self.candles.len().max(1),
+        );
+        let zoom_factor = viewport.world_span() / span;
+        viewport.zoom_at_unit(0.0, zoom_factor as f32, self.candles.len().max(1));
+        self.viewport = Some(viewport);
+    }
 }
 
 #[cfg(test)]
