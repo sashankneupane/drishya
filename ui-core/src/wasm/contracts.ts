@@ -58,6 +58,8 @@ export interface WasmChartLike {
   zoom_y_axis_at?(y: number, zoomFactor: number): void;
   reset_y_axis_zoom?(paneId: string): void;
   set_theme?(theme: string): void;
+  set_candle_style?(style: "solid" | "hollow" | "bars" | "volume" | string): void;
+  candle_style?(): string;
   set_crosshair_at?(x: number, y: number): void;
   clear_crosshair?(): void;
   clear_drawings?(): void;
@@ -68,6 +70,10 @@ export interface WasmChartLike {
   drawing_pointer_up?(x: number, y: number): boolean;
   drawing_cursor_hint?(x: number, y: number): string;
   cancel_drawing_interaction?(): void;
+  select_drawing_at?(x: number, y: number): number | undefined;
+  selected_drawing_id?(): number | undefined;
+  clear_selected_drawing?(): void;
+  delete_selected_drawing?(): boolean;
   add_sma_overlay?(period: number): void;
   add_bbands_overlay?(period: number, stdMult: number): void;
   add_rsi_pane_indicator?(period: number): void;
@@ -94,7 +100,10 @@ export interface WasmChartLike {
   set_series_visible?(seriesId: string, visible: boolean): void;
   delete_series?(seriesId: string): void;
   restore_series?(seriesId: string): void;
+  select_series_at?(x: number, y: number): string | undefined;
+  selected_series_id?(): string | undefined;
+  clear_selected_series?(): void;
+  delete_selected_series?(): boolean;
   set_drawing_visible?(drawingId: number, visible: boolean): boolean;
   remove_drawing?(drawingId: number): boolean;
 }
-

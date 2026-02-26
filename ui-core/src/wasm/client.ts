@@ -69,6 +69,14 @@ export class DrishyaChartClient {
     this.wasm.set_theme?.(theme);
   }
 
+  setCandleStyle(style: "solid" | "hollow" | "bars" | "volume"): void {
+    this.wasm.set_candle_style?.(style);
+  }
+
+  candleStyle(): string {
+    return this.wasm.candle_style?.() ?? "solid";
+  }
+
   setDrawingTool(mode: string): void {
     this.wasm.set_drawing_tool_mode?.(mode);
   }
@@ -95,6 +103,42 @@ export class DrishyaChartClient {
 
   clearDrawings(): void {
     this.wasm.clear_drawings?.();
+  }
+
+  selectDrawingAt(x: number, y: number): number | null {
+    const selected = this.wasm.select_drawing_at?.(x, y);
+    return Number.isFinite(selected) ? (selected as number) : null;
+  }
+
+  selectedDrawingId(): number | null {
+    const selected = this.wasm.selected_drawing_id?.();
+    return Number.isFinite(selected) ? (selected as number) : null;
+  }
+
+  clearSelectedDrawing(): void {
+    this.wasm.clear_selected_drawing?.();
+  }
+
+  deleteSelectedDrawing(): boolean {
+    return this.wasm.delete_selected_drawing?.() ?? false;
+  }
+
+  selectSeriesAt(x: number, y: number): string | null {
+    const selected = this.wasm.select_series_at?.(x, y);
+    return typeof selected === "string" && selected.length > 0 ? selected : null;
+  }
+
+  selectedSeriesId(): string | null {
+    const selected = this.wasm.selected_series_id?.();
+    return typeof selected === "string" && selected.length > 0 ? selected : null;
+  }
+
+  clearSelectedSeries(): void {
+    this.wasm.clear_selected_series?.();
+  }
+
+  deleteSelectedSeries(): boolean {
+    return this.wasm.delete_selected_series?.() ?? false;
   }
 
   addSmaOverlay(period: number): void {
