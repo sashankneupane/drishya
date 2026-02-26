@@ -55,4 +55,12 @@ impl Rect {
     pub fn bottom(self) -> f32 {
         self.y + self.h
     }
+
+    /// Center point of the rectangle.
+    pub fn center(self) -> Point {
+        Point {
+            x: self.x + self.w * 0.5,
+            y: self.y + self.h * 0.5,
+        }
+    }
 }
