@@ -124,3 +124,103 @@ impl VolumeScale {
         self.pane.y + self.pane.h * (1.0 - t)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Rect;
+
+    #[test]
+    fn price_scale_linear_mapping() {
+        let ps = PriceScale {
+            pane: Rect {
+                x: 0.0,
+                y: 100.0,
+                w: 100.0,
+                h: 200.0,
+            },
+            min: 10.0,
+            max: 30.0,
+            mode: PriceAxisMode::Linear,
+        };
+
+        // Middle of range
+        assert_eq!(ps.y_for_price(20.0), 200.0);
+        assert_eq!(ps.price_for_y(200.0), 20.0);
+
+        // Bottom of range (highest y)
+        assert_eq!(ps.y_for_price(10.0), 300.0);
+        assert_eq!(ps.price_for_y(300.0), 10.0);
+
+        // Top of range (lowest y)
+        assert_eq!(ps.y_for_price(30.0), 100.0);
+        assert_eq!(ps.price_for_y(100.0), 30.0);
+    }
+
+    #[test]
+    fn price_scale_log_mapping() {
+        let ps = PriceScale {
+            pane: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 100.0,
+                h: 100.0,
+            },
+            min: 10.0,
+            max: 100.0,
+            mode: PriceAxisMode::Log,
+        };
+
+        let mid_price = (10.0f64 * 100.0f64).sqrt(); // Geometrical mean
+        assert!((ps.y_for_price(mid_price) - 50.0).abs() < 1e-5);
+        assert!((ps.price_for_y(50.0) - mid_price).abs() < 1e-5);
+
+        assert!((ps.y_for_price(10.0) - 100.0).abs() < 1e-5);
+        assert!((ps.y_for_price(100.0) - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn price_scale_log_handles_non_positive() {
+        let ps = PriceScale {
+            pane: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 100.0,
+                h: 100.0,
+            },
+            min: 10.0,
+            max: 100.0,
+            mode: PriceAxisMode::Log,
+        };
+
+        let y_neg = ps.y_for_price(-10.0);
+        let y_zero = ps.y_for_price(0.0);
+        assert!(y_neg >= 100.0);
+        assert!(y_zero >= 100.0);
+    }
+
+    #[test]
+    fn price_scale_roundtrip() {
+        let ps = PriceScale {
+            pane: Rect {
+                x: 50.0,
+                y: 50.0,
+                w: 500.0,
+                h: 500.0,
+            },
+            min: 123.45,
+            max: 678.90,
+            mode: PriceAxisMode::Log,
+        };
+
+        let prices = [150.0, 300.0, 450.0, 600.0];
+        for &p in &prices {
+            let y = ps.y_for_price(p);
+            let roundtrip = ps.price_for_y(y);
+            assert!(
+                (p - roundtrip).abs() < 1e-4,
+                "Failed roundtrip for price {p}"
+            );
+        }
+    }
+}
