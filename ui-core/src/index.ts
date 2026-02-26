@@ -8,4 +8,4 @@ export * from "./wasm/contracts.js";
 export * from "./wasm/client.js";
 export * from "./workspace/index.js";
 export * from "./workspace/WorkspaceController.js";
-
+export * from "./workspace/replay/index.js";

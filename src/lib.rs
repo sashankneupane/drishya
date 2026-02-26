@@ -6,10 +6,12 @@
 pub mod api;
 pub mod chart;
 pub mod drawings;
+pub mod events;
 pub mod indicators;
 pub mod layout;
 pub mod plots;
 pub mod render;
+pub mod replay;
 pub mod scale;
 pub mod types;
 pub mod viewport;

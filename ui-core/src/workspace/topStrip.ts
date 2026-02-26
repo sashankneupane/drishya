@@ -213,6 +213,29 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   leftSide.appendChild(indBtn);
 
   // Right Side - Objects Toggle
+  const replayGroup = document.createElement("div");
+  replayGroup.className = "flex items-center h-full border-r border-workspace-border px-1.5 gap-0.5";
+
+  const mkReplayBtn = (icon: string, title: string, onClick: () => void) => {
+    const btn = document.createElement("button");
+    btn.className = "h-7 w-7 inline-flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/70 transition-all border-none outline-none bg-transparent cursor-pointer";
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+    btn.appendChild(makeSvgIcon(icon, "h-3.5 w-3.5"));
+    btn.onclick = onClick;
+    return btn;
+  };
+
+  const replayApi = controller.replay();
+  const playBtn = mkReplayBtn("play", "Play Replay", () => replayApi.play());
+  const pauseBtn = mkReplayBtn("pause", "Pause Replay", () => replayApi.pause());
+  const stopBtn = mkReplayBtn("stop", "Stop Replay", () => replayApi.stop());
+  const stepBarBtn = mkReplayBtn("step-forward", "Step Bar", () => replayApi.stepBar());
+  const stepEventBtn = mkReplayBtn("skip-forward", "Step Event", () => replayApi.stepEvent());
+
+  replayGroup.append(playBtn, pauseBtn, stopBtn, stepBarBtn, stepEventBtn);
+  rightSide.appendChild(replayGroup);
+
   const objectsBtn = document.createElement("button");
   objectsBtn.className = BTN_MINIMAL;
   objectsBtn.appendChild(makeSvgIcon("eye", "h-3.5 w-3.5 mr-2"));
@@ -235,6 +258,13 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
       objectsBtn.classList.remove("text-zinc-100", "bg-zinc-900");
     }
     updateAxisLabel();
+    if (state.replay.playing) {
+      playBtn.classList.add(BTN_ACTIVE);
+      pauseBtn.classList.remove(BTN_ACTIVE);
+    } else {
+      playBtn.classList.remove(BTN_ACTIVE);
+      pauseBtn.classList.add(BTN_ACTIVE);
+    }
   });
 
   const globalClick = () => closePopup();

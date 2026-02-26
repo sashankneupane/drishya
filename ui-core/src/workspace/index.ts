@@ -5,5 +5,5 @@ export * from "./icons.js";
 export * from "./interactions.js";
 export * from "./leftStrip.js";
 export * from "./objectTreePanel.js";
+export * from "./replay/index.js";
 export * from "./types.js";
-

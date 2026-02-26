@@ -78,6 +78,7 @@ impl Chart {
         self.selected_series_id = selected.clone();
         if selected.is_some() {
             self.selected_drawing_id = None;
+            self.selected_event_id = None;
         }
         selected
     }

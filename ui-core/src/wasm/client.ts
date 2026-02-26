@@ -2,10 +2,12 @@ import type {
   Candle,
   ChartStateSnapshot,
   ChartAppearanceConfig,
+  ChartEvent,
   DrawingConfig,
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
+  ReplayState,
   RestoreChartStateOptions,
   WasmChartLike
 } from "./contracts";
@@ -81,6 +83,66 @@ export class DrishyaChartClient {
 
   setPriceAxisMode(mode: "linear" | "log" | "percent"): void {
     this.wasm.set_price_axis_mode?.(mode);
+  }
+
+  setEvents(events: ChartEvent[]): void {
+    this.wasm.set_events_json?.(JSON.stringify(events));
+  }
+
+  clearEvents(): void {
+    this.wasm.clear_events?.();
+  }
+
+  selectEventAt(x: number, y: number): string | null {
+    const id = this.wasm.select_event_at?.(x, y);
+    return typeof id === "string" && id.length > 0 ? id : null;
+  }
+
+  selectedEvent(): ChartEvent | null {
+    const raw = this.wasm.selected_event_json?.();
+    if (!raw) return null;
+    const parsed = safeJsonParse<ChartEvent | null>(raw);
+    return parsed ?? null;
+  }
+
+  replayPlay(): void {
+    this.wasm.replay_play?.();
+  }
+
+  replayPause(): void {
+    this.wasm.replay_pause?.();
+  }
+
+  replayStop(): void {
+    this.wasm.replay_stop?.();
+  }
+
+  replayStepBar(): number | null {
+    const ts = this.wasm.replay_step_bar?.();
+    return Number.isFinite(ts) ? (ts as number) : null;
+  }
+
+  replayStepEvent(): number | null {
+    const ts = this.wasm.replay_step_event?.();
+    return Number.isFinite(ts) ? (ts as number) : null;
+  }
+
+  replaySeekTs(ts: number): void {
+    this.wasm.replay_seek_ts?.(ts);
+  }
+
+  replayTick(): number | null {
+    const ts = this.wasm.replay_tick?.();
+    return Number.isFinite(ts) ? (ts as number) : null;
+  }
+
+  replayState(): ReplayState {
+    const raw = this.wasm.replay_state_json?.();
+    const parsed = raw ? safeJsonParse<ReplayState>(raw) : null;
+    return {
+      playing: !!parsed?.playing,
+      cursor_ts: typeof parsed?.cursor_ts === "number" ? parsed.cursor_ts : null
+    };
   }
 
   priceAxisMode(): string {

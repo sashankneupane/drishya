@@ -12,11 +12,13 @@ pub mod anchors;
 pub mod appearance;
 pub mod compare;
 pub mod compare_alignment;
+pub mod events;
 pub mod hit_test;
 pub mod interaction;
 pub mod panes;
 pub mod persistence;
 pub mod plots;
+pub mod replay;
 pub mod scene;
 pub mod state;
 pub mod tools;
@@ -26,10 +28,12 @@ use self::compare::CompareRegistry;
 use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
+    events::EventStore,
     plots::model::PaneId,
     plots::provider::PlotDataProvider,
     render::candles::CandleBodyStyle,
     render::styles::ThemeId,
+    replay::ReplayState,
     types::{Candle, CursorMode, Point, Size},
     viewport::Viewport,
 };
@@ -68,6 +72,9 @@ pub struct Chart {
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
     compare_registry: CompareRegistry,
+    events: EventStore,
+    selected_event_id: Option<String>,
+    replay: ReplayState,
 }
 
 impl Chart {
@@ -103,6 +110,9 @@ impl Chart {
             derived_percent_baseline_price: std::cell::RefCell::new(None),
             drawings: DrawingStore::new(),
             compare_registry: CompareRegistry::new(),
+            events: EventStore::new(),
+            selected_event_id: None,
+            replay: ReplayState::default(),
         }
     }
 

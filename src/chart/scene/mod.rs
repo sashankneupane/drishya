@@ -41,6 +41,7 @@ use self::helpers::{
 use super::compare_alignment::{
     align_compare_series, normalize_aligned_series, rebase_normalized_series_to_primary_price,
 };
+use super::events::replay_cursor_commands;
 use super::Chart;
 
 impl Chart {
@@ -78,10 +79,13 @@ impl Chart {
             return out;
         }
 
-        let (visible_start, visible_end) = match self.viewport {
+        let (raw_visible_start, raw_visible_end) = match self.viewport {
             Some(vp) => vp.visible_range(self.candles.len()),
             None => (0, self.candles.len()),
         };
+        let replay_end = self.replay_visible_end(self.candles.len());
+        let visible_end = raw_visible_end.min(replay_end);
+        let visible_start = raw_visible_start.min(visible_end);
         let visible = &self.candles[visible_start..visible_end];
 
         let mut plot_series = self.collect_plot_series();
@@ -218,12 +222,16 @@ impl Chart {
         ));
         out.push(DrawCommand::PopClip);
 
-        if let Some(last) = self.candles.last() {
+        if let Some(last) = replay_end
+            .checked_sub(1)
+            .and_then(|idx| self.candles.get(idx))
+        {
             let live_y = ps.y_for_price(last.close);
             if live_y >= price_pane.y && live_y <= price_pane.bottom() {
                 let prev_close = self
                     .candles
                     .iter()
+                    .take(replay_end)
                     .rev()
                     .nth(1)
                     .map(|c| c.close)
@@ -321,6 +329,8 @@ impl Chart {
 
         // Drop-point dots: pending construction clicks + selected vertex handles
         out.extend(self.build_anchor_commands());
+        out.extend(self.build_event_marker_commands(&layout));
+        out.extend(replay_cursor_commands(self, &layout));
 
         let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {
@@ -361,7 +371,7 @@ impl Chart {
             }
             out.push(DrawCommand::PopClip);
 
-            if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, self.candles.len()) {
+            if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, visible_end) {
                 crosshair_index = Some(idx);
                 if let Some(readout) = build_crosshair_readout_commands(
                     &self.candles,
@@ -378,7 +388,7 @@ impl Chart {
 
         let fallback_index = visible_end
             .checked_sub(1)
-            .or_else(|| self.candles.len().checked_sub(1));
+            .or_else(|| replay_end.checked_sub(1));
         let readout_index = crosshair_index.or(fallback_index);
 
         if crosshair_index.is_none() {

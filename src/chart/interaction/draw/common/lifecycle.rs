@@ -37,6 +37,10 @@ impl Chart {
             crate::drawings::hit_test::InteractionMode::Select,
         );
         self.selected_drawing_id = hit.map(|h| h.primitive_id);
+        if self.selected_drawing_id.is_some() {
+            self.selected_series_id = None;
+            self.selected_event_id = None;
+        }
         self.selected_drawing_id
     }
 
