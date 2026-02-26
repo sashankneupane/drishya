@@ -1,6 +1,7 @@
 import { makeSvgIcon } from "./icons.js";
 import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import { createIndicatorModal } from "./IndicatorModal.js";
+import { createConfigModal } from "./ConfigModal.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import type { CursorMode } from "../wasm/contracts.js";
@@ -17,6 +18,8 @@ interface TopStripOptions {
   onCandleTypeChange?: (type: "solid" | "hollow" | "bars" | "volume") => void;
   onLayout: () => void;
   onMutate?: () => void;
+  getAppearanceConfig?: () => { background: string; candle_up: string; candle_down: string } | null;
+  applyAppearanceConfig?: (config: { background: string; candle_up: string; candle_down: string }) => void;
 }
 
 export interface TopStripHandle {
@@ -155,6 +158,30 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
     });
   };
   leftSide.appendChild(cursorBtn);
+
+  // Config (appearance)
+  const configBtn = document.createElement("button");
+  configBtn.className = BTN_MINIMAL;
+  configBtn.appendChild(makeSvgIcon("settings", "h-3.5 w-3.5 mr-1.5"));
+  const configLabel = document.createElement("span");
+  configLabel.textContent = "Config";
+  configBtn.appendChild(configLabel);
+  configBtn.onclick = () => {
+    const current = options.getAppearanceConfig?.() ?? {
+      background: "#030712",
+      candle_up: "#22c55e",
+      candle_down: "#ef4444"
+    };
+    createConfigModal({
+      initialConfig: current,
+      onApply: (cfg) => {
+        options.applyAppearanceConfig?.(cfg);
+        options.onMutate?.();
+      },
+      onClose: () => {}
+    });
+  };
+  leftSide.appendChild(configBtn);
 
   // Indicators
   const indBtn = document.createElement("button");
