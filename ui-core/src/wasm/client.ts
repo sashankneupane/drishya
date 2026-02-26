@@ -442,6 +442,22 @@ export class DrishyaChartClient {
       return;
     }
   }
+
+  registerCompareSeries(symbol: string, name: string, color: string): string {
+    return this.wasm.register_compare_series?.(symbol, name, color) ?? "";
+  }
+
+  removeCompareSeries(id: string): boolean {
+    return this.wasm.remove_compare_series?.(id) ?? false;
+  }
+
+  setCompareSeriesVisible(id: string, visible: boolean): boolean {
+    return this.wasm.set_compare_series_visible?.(id, visible) ?? false;
+  }
+
+  setCompareSeriesCandles(seriesId: string, candles: Candle[]): void {
+    this.wasm.set_compare_series_ohlcv_json?.(seriesId, JSON.stringify(candles));
+  }
 }
 
 function safeJsonParse<T>(value: string): T | null {

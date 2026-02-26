@@ -16,7 +16,7 @@ use crate::{
     drawings::render::{build_drawing_commands, build_preview_drawing_commands},
     layout::ChartLayout,
     plots::{
-        model::{PaneId, PlotPrimitive, PlotSeries},
+        model::{LinePattern, PaneId, PlotPrimitive, PlotSeries},
         render::{build_plot_draw_commands, PlotRenderContext, ValueScaleRange},
     },
     render::{
@@ -35,6 +35,7 @@ use self::helpers::{
     compute_pane_value_bounds, nearest_candle_index, series_value_at_index, timestamp_for_world_x,
     world_x_at_pixel,
 };
+use super::compare_alignment::{align_compare_series, normalize_aligned_series};
 use super::Chart;
 
 impl Chart {
@@ -79,6 +80,8 @@ impl Chart {
         let visible = &self.candles[visible_start..visible_end];
 
         let mut plot_series = self.collect_plot_series();
+        let compare_series = self.collect_compare_series(visible_start);
+        plot_series.extend(compare_series);
         if let Some(selected_series_id) = self.selected_series_id() {
             for s in &mut plot_series {
                 if s.id != selected_series_id {
@@ -376,6 +379,7 @@ impl Chart {
         }
 
         if let Some(idx) = readout_index {
+            out.extend(build_compare_readout_commands(&plot_series, &layout, idx));
             out.extend(build_non_price_pane_readout_commands(
                 &plot_series,
                 &layout,
@@ -438,6 +442,79 @@ impl Chart {
 
         Some((caret_x, caret_y, size, color))
     }
+
+    pub(crate) fn collect_compare_series(&self, visible_start: usize) -> Vec<PlotSeries> {
+        let registry = self.compare_registry();
+        if registry.series.is_empty() {
+            return Vec::new();
+        }
+
+        let mut aligned = align_compare_series(&self.candles, &registry.series);
+
+        // Multi-symbol compare always implies percentage normalization relative
+        // to the first visible bar in multi-symbol overlay charts.
+        normalize_aligned_series(&mut aligned, visible_start);
+
+        aligned
+            .into_iter()
+            .zip(&registry.series)
+            .map(|(a, s)| PlotSeries {
+                id: s.id.clone(),
+                name: s.name.clone(),
+                pane: PaneId::Price,
+                visible: s.visible,
+                primitives: vec![PlotPrimitive::Line {
+                    values: a.values,
+                    style: crate::plots::model::LineStyle {
+                        color: s.color.clone(),
+                        width: 1.5,
+                        pattern: LinePattern::Solid,
+                    },
+                }],
+            })
+            .collect()
+    }
+}
+
+fn build_compare_readout_commands(
+    series: &[PlotSeries],
+    layout: &ChartLayout,
+    index: usize,
+) -> Vec<DrawCommand> {
+    let mut out = Vec::new();
+    let registry_prefix = "compare-";
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut colors: Vec<String> = Vec::new();
+
+    for s in series {
+        if !s.visible || s.pane != PaneId::Price || !s.id.starts_with(registry_prefix) {
+            continue;
+        }
+
+        if let Some(value) = series_value_at_index(s, index) {
+            lines.push(format!("{}: {:.2}%", s.name, value));
+            // Extract color from first primitive
+            if let Some(PlotPrimitive::Line { style, .. }) = s.primitives.first() {
+                colors.push(style.color.clone());
+            } else {
+                colors.push("#ffffff".to_string());
+            }
+        }
+    }
+
+    for (i, (text, color)) in lines.into_iter().zip(colors).enumerate() {
+        out.push(DrawCommand::Text {
+            pos: Point {
+                x: layout.plot.x + 8.0,
+                y: layout.plot.y + 28.0 + i as f32 * 12.0,
+            },
+            text,
+            style: TextStyle::css(color, 11.0, TextAlign::Left),
+        });
+    }
+
+    out
 }
 
 fn build_last_close_readout_commands(

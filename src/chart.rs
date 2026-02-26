@@ -10,6 +10,8 @@
 
 pub mod anchors;
 pub mod appearance;
+pub mod compare;
+pub mod compare_alignment;
 pub mod hit_test;
 pub mod interaction;
 pub mod panes;
@@ -20,6 +22,7 @@ pub mod state;
 pub mod tools;
 
 use self::appearance::ChartAppearanceConfig;
+use self::compare::CompareRegistry;
 use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
@@ -64,6 +67,7 @@ pub struct Chart {
     // Drawings are intentionally private so all changes can flow through the
     // command layer (`drawings::commands`) instead of ad-hoc mutations.
     drawings: DrawingStore,
+    compare_registry: CompareRegistry,
 }
 
 impl Chart {
@@ -98,6 +102,7 @@ impl Chart {
             percent_baseline_policy: crate::scale::PercentBaselinePolicy::default(),
             derived_percent_baseline_price: std::cell::RefCell::new(None),
             drawings: DrawingStore::new(),
+            compare_registry: CompareRegistry::new(),
         }
     }
 
@@ -179,6 +184,26 @@ impl Chart {
 
     pub fn derived_percent_baseline_price(&self) -> Option<f64> {
         *self.derived_percent_baseline_price.borrow()
+    }
+
+    pub fn register_compare_series(&mut self, symbol: &str, name: &str, color: &str) -> String {
+        self.compare_registry.register(symbol, name, color)
+    }
+
+    pub fn remove_compare_series(&mut self, id: &str) -> bool {
+        self.compare_registry.remove(id)
+    }
+
+    pub fn set_compare_series_candles(&mut self, id: &str, candles: Vec<Candle>) -> bool {
+        self.compare_registry.set_candles(id, candles)
+    }
+
+    pub fn set_compare_series_visible(&mut self, id: &str, visible: bool) -> bool {
+        self.compare_registry.set_visible(id, visible)
+    }
+
+    pub(crate) fn compare_registry(&self) -> &CompareRegistry {
+        &self.compare_registry
     }
 }
 
