@@ -1064,6 +1064,98 @@ mod tests {
     }
 
     #[test]
+    fn reproject_roundtrip_preserves_future_anchors_for_all_drawing_kinds() {
+        let old = vec![candle(0), candle(60), candle(120), candle(180)];
+        let new = vec![candle(0), candle(300), candle(600), candle(900)];
+
+        let mut store = DrawingStore::new();
+        let ids = vec![
+            store.add_vertical_line(8.0),
+            store.add_ray(2.0, 8.0, 100.0, 101.0),
+            store.add_rectangle(2.0, 8.0, 110.0, 90.0),
+            store.add_price_range(2.0, 8.0, 110.0, 90.0, true),
+            store.add_time_range(2.0, 8.0, 110.0, 90.0, true),
+            store.add_date_time_range(2.0, 8.0, 110.0, 90.0, true),
+            store.add_long_position(2.0, 8.0, 5.0, 100.0, 95.0, 110.0),
+            store.add_short_position(2.0, 8.0, 5.0, 100.0, 105.0, 90.0),
+            store.add_fib_retracement(2.0, 8.0, 100.0, 101.0),
+            store.add_circle(2.0, 8.0, 100.0, 101.0),
+            store.add_triangle(2.0, 8.0, 10.0, 100.0, 101.0, 102.0),
+            store.add_ellipse(2.0, 8.0, 10.0, 100.0, 101.0, 102.0),
+            store.add_text(8.0, 100.0, "x".to_string()),
+            store.add_brush_stroke(vec![
+                StrokePoint {
+                    index: 2.0,
+                    price: 100.0,
+                },
+                StrokePoint {
+                    index: 8.0,
+                    price: 101.0,
+                },
+                StrokePoint {
+                    index: 10.0,
+                    price: 102.0,
+                },
+            ]),
+            store.add_highlight_stroke(vec![
+                StrokePoint {
+                    index: 2.0,
+                    price: 100.0,
+                },
+                StrokePoint {
+                    index: 8.0,
+                    price: 101.0,
+                },
+                StrokePoint {
+                    index: 10.0,
+                    price: 102.0,
+                },
+            ]),
+        ];
+
+        let before: Vec<Vec<f32>> = ids
+            .iter()
+            .map(|id| x_indices(store.drawing(*id).expect("drawing exists")))
+            .collect();
+
+        store.reproject_x_to_timestamps(&old, &new);
+        store.reproject_x_to_timestamps(&new, &old);
+
+        let after: Vec<Vec<f32>> = ids
+            .iter()
+            .map(|id| x_indices(store.drawing(*id).expect("drawing exists")))
+            .collect();
+
+        for (lhs, rhs) in before.iter().zip(after.iter()) {
+            assert_eq!(lhs.len(), rhs.len());
+            for (a, b) in lhs.iter().zip(rhs.iter()) {
+                assert!((a - b).abs() < 1e-6);
+            }
+        }
+    }
+
+    fn x_indices(d: &Drawing) -> Vec<f32> {
+        match d {
+            Drawing::HorizontalLine(_) => Vec::new(),
+            Drawing::VerticalLine(v) => vec![v.index],
+            Drawing::Ray(r) => vec![r.start_index, r.end_index],
+            Drawing::Rectangle(r) => vec![r.start_index, r.end_index],
+            Drawing::PriceRange(r) => vec![r.start_index, r.end_index],
+            Drawing::TimeRange(r) => vec![r.start_index, r.end_index],
+            Drawing::DateTimeRange(r) => vec![r.start_index, r.end_index],
+            Drawing::LongPosition(p) => vec![p.start_index, p.end_index, p.entry_index],
+            Drawing::ShortPosition(p) => vec![p.start_index, p.end_index, p.entry_index],
+            Drawing::FibRetracement(f) => vec![f.start_index, f.end_index],
+            Drawing::Circle(c) => vec![c.center_index, c.radius_index],
+            Drawing::Triangle(t) => vec![t.p1_index, t.p2_index, t.p3_index],
+            Drawing::Ellipse(e) => vec![e.p1_index, e.p2_index, e.p3_index],
+            Drawing::Text(t) => vec![t.index],
+            Drawing::BrushStroke(s) => s.points.iter().map(|p| p.index).collect(),
+            Drawing::HighlightStroke(s) => s.points.iter().map(|p| p.index).collect(),
+        }
+    }
+
+    #[test]
     fn layer_visibility_filters_items() {
         let mut store = DrawingStore::new();
         let a = store.add_horizontal_line(100.0);
