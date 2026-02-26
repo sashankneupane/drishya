@@ -116,6 +116,43 @@ pub struct FibRetracement {
 }
 
 #[derive(Debug, Clone)]
+pub struct Circle {
+    pub id: DrawingId,
+    pub center_index: f32,
+    pub center_price: f64,
+    pub radius_index: f32,
+    pub radius_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Triangle {
+    pub id: DrawingId,
+    pub p1_index: f32,
+    pub p1_price: f64,
+    pub p2_index: f32,
+    pub p2_price: f64,
+    pub p3_index: f32,
+    pub p3_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Ellipse {
+    pub id: DrawingId,
+    pub p1_index: f32, // first end of diameter 1
+    pub p1_price: f64,
+    pub p2_index: f32, // second end of diameter 1
+    pub p2_price: f64,
+    pub p3_index: f32, // point on the perpendicular axis (defines 2nd radius)
+    pub p3_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Drawing {
     HorizontalLine(HorizontalLine),
     VerticalLine(VerticalLine),
@@ -127,6 +164,9 @@ pub enum Drawing {
     LongPosition(LongPosition),
     ShortPosition(ShortPosition),
     FibRetracement(FibRetracement),
+    Circle(Circle),
+    Triangle(Triangle),
+    Ellipse(Ellipse),
 }
 
 impl Drawing {
@@ -142,6 +182,9 @@ impl Drawing {
             Drawing::LongPosition(item) => item.id,
             Drawing::ShortPosition(item) => item.id,
             Drawing::FibRetracement(item) => item.id,
+            Drawing::Circle(item) => item.id,
+            Drawing::Triangle(item) => item.id,
+            Drawing::Ellipse(item) => item.id,
         }
     }
 
@@ -157,6 +200,9 @@ impl Drawing {
             Drawing::LongPosition(item) => item.layer_id.as_str(),
             Drawing::ShortPosition(item) => item.layer_id.as_str(),
             Drawing::FibRetracement(item) => item.layer_id.as_str(),
+            Drawing::Circle(item) => item.layer_id.as_str(),
+            Drawing::Triangle(item) => item.layer_id.as_str(),
+            Drawing::Ellipse(item) => item.layer_id.as_str(),
         }
     }
 
@@ -172,6 +218,9 @@ impl Drawing {
             Drawing::LongPosition(item) => item.group_id.as_deref(),
             Drawing::ShortPosition(item) => item.group_id.as_deref(),
             Drawing::FibRetracement(item) => item.group_id.as_deref(),
+            Drawing::Circle(item) => item.group_id.as_deref(),
+            Drawing::Triangle(item) => item.group_id.as_deref(),
+            Drawing::Ellipse(item) => item.group_id.as_deref(),
         }
     }
 
@@ -187,6 +236,9 @@ impl Drawing {
             Drawing::LongPosition(item) => item.layer_id = layer_id.to_string(),
             Drawing::ShortPosition(item) => item.layer_id = layer_id.to_string(),
             Drawing::FibRetracement(item) => item.layer_id = layer_id.to_string(),
+            Drawing::Circle(item) => item.layer_id = layer_id.to_string(),
+            Drawing::Triangle(item) => item.layer_id = layer_id.to_string(),
+            Drawing::Ellipse(item) => item.layer_id = layer_id.to_string(),
         }
     }
 
@@ -203,6 +255,9 @@ impl Drawing {
             Drawing::LongPosition(item) => item.group_id = next,
             Drawing::ShortPosition(item) => item.group_id = next,
             Drawing::FibRetracement(item) => item.group_id = next,
+            Drawing::Circle(item) => item.group_id = next,
+            Drawing::Triangle(item) => item.group_id = next,
+            Drawing::Ellipse(item) => item.group_id = next,
         }
     }
 }

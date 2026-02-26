@@ -287,6 +287,74 @@ impl DrawingStore {
         id
     }
 
+    pub fn add_circle(
+        &mut self,
+        center_index: f32,
+        radius_index: f32,
+        center_price: f64,
+        radius_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Circle(Circle {
+            id,
+            center_index,
+            center_price,
+            radius_index,
+            radius_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+        }));
+        id
+    }
+
+    pub fn add_triangle(
+        &mut self,
+        p1_index: f32,
+        p2_index: f32,
+        p3_index: f32,
+        p1_price: f64,
+        p2_price: f64,
+        p3_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Triangle(Triangle {
+            id,
+            p1_index,
+            p1_price,
+            p2_index,
+            p2_price,
+            p3_index,
+            p3_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+        }));
+        id
+    }
+
+    pub fn add_ellipse(
+        &mut self,
+        p1_index: f32,
+        p2_index: f32,
+        p3_index: f32,
+        p1_price: f64,
+        p2_price: f64,
+        p3_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Ellipse(Ellipse {
+            id,
+            p1_index,
+            p1_price,
+            p2_index,
+            p2_price,
+            p3_index,
+            p3_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+        }));
+        id
+    }
+
     pub fn items(&self) -> &[Drawing] {
         &self.items
     }

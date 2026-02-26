@@ -193,6 +193,9 @@ impl WasmChart {
             DrawingToolMode::FibRetracement => "fib",
             DrawingToolMode::LongPosition => "long",
             DrawingToolMode::ShortPosition => "short",
+            DrawingToolMode::Triangle => "triangle",
+            DrawingToolMode::Circle => "circle",
+            DrawingToolMode::Ellipse => "ellipse",
         }
         .to_string()
     }
@@ -701,8 +704,11 @@ fn parse_drawing_tool_mode(mode: &str) -> Result<DrawingToolMode, JsValue> {
         "fib" => Ok(DrawingToolMode::FibRetracement),
         "long" => Ok(DrawingToolMode::LongPosition),
         "short" => Ok(DrawingToolMode::ShortPosition),
+        "triangle" => Ok(DrawingToolMode::Triangle),
+        "circle" => Ok(DrawingToolMode::Circle),
+        "ellipse" => Ok(DrawingToolMode::Ellipse),
         other => Err(JsValue::from_str(&format!(
-            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, price_range, time_range, date_time_range, fib, long, short"
+            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, price_range, time_range, date_time_range, fib, long, short, triangle, circle, ellipse"
         ))),
     }
 }

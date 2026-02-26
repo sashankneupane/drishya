@@ -71,6 +71,28 @@ pub enum DrawingCommand {
         start_price: f64,
         end_price: f64,
     },
+    AddCircle {
+        center_index: f32,
+        radius_index: f32,
+        center_price: f64,
+        radius_price: f64,
+    },
+    AddTriangle {
+        p1_index: f32,
+        p2_index: f32,
+        p3_index: f32,
+        p1_price: f64,
+        p2_price: f64,
+        p3_price: f64,
+    },
+    AddEllipse {
+        p1_index: f32,
+        p2_index: f32,
+        p3_index: f32,
+        p1_price: f64,
+        p2_price: f64,
+        p3_price: f64,
+    },
     RemoveById {
         id: DrawingId,
     },
@@ -182,6 +204,37 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             end_price,
         } => {
             let id = store.add_fib_retracement(start_index, end_index, start_price, end_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddCircle {
+            center_index,
+            radius_index,
+            center_price,
+            radius_price,
+        } => {
+            let id = store.add_circle(center_index, radius_index, center_price, radius_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddTriangle {
+            p1_index,
+            p2_index,
+            p3_index,
+            p1_price,
+            p2_price,
+            p3_price,
+        } => {
+            let id = store.add_triangle(p1_index, p2_index, p3_index, p1_price, p2_price, p3_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddEllipse {
+            p1_index,
+            p2_index,
+            p3_index,
+            p1_price,
+            p2_price,
+            p3_price,
+        } => {
+            let id = store.add_ellipse(p1_index, p2_index, p3_index, p1_price, p2_price, p3_price);
             DrawingCommandResult::Added { id }
         }
         DrawingCommand::RemoveById { id } => {
