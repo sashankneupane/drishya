@@ -409,7 +409,11 @@ impl DrawingStore {
             id,
             index,
             price,
-            text: text.is_empty().then(|| "Text".to_string()).unwrap_or(text),
+            text: if text.is_empty() {
+                "Text".to_string()
+            } else {
+                text
+            },
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
             style: DrawingStyle::default(),
@@ -503,6 +507,9 @@ impl DrawingStore {
 
     pub fn set_layer_visible(&mut self, layer_id: &str, visible: bool) {
         self.ensure_layer(layer_id);
+        if let Some(layer) = self.layers.get_mut(layer_id) {
+            layer.visible = visible;
+        }
         if visible {
             self.hidden_layers.remove(layer_id);
         } else {
@@ -513,6 +520,9 @@ impl DrawingStore {
     pub fn set_group_visible(&mut self, group_id: &str, visible: bool) {
         if group_id.trim().is_empty() {
             return;
+        }
+        if let Some(group) = self.groups.get_mut(group_id) {
+            group.visible = visible;
         }
 
         if visible {
@@ -702,6 +712,9 @@ impl DrawingStore {
     }
 
     pub fn group_effective_visible(&self, group_id: &str) -> bool {
+        if self.hidden_groups.contains(group_id) {
+            return false;
+        }
         if let Some(group) = self.groups.get(group_id) {
             if !group.visible {
                 return false;
@@ -730,7 +743,8 @@ impl DrawingStore {
     }
 
     pub fn layer_effective_visible(&self, layer_id: &str) -> bool {
-        self.layers.get(layer_id).map(|l| l.visible).unwrap_or(true)
+        !self.hidden_layers.contains(layer_id)
+            && self.layers.get(layer_id).map(|l| l.visible).unwrap_or(true)
     }
 
     pub fn layer_effective_locked(&self, layer_id: &str) -> bool {
@@ -781,20 +795,18 @@ impl DrawingStore {
                 }
 
                 for drawing in &layer_drawings {
-                    if drawing.group_id() == Some(&group.id) {
-                        if !self.hidden_drawings.contains(&drawing.id()) {
-                            out.push(*drawing);
-                        }
+                    if drawing.group_id() == Some(&group.id)
+                        && !self.hidden_drawings.contains(&drawing.id())
+                    {
+                        out.push(*drawing);
                     }
                 }
             }
 
             // Second: Ungrouped drawings
             for drawing in &layer_drawings {
-                if drawing.group_id().is_none() {
-                    if !self.hidden_drawings.contains(&drawing.id()) {
-                        out.push(*drawing);
-                    }
+                if drawing.group_id().is_none() && !self.hidden_drawings.contains(&drawing.id()) {
+                    out.push(*drawing);
                 }
             }
         }
@@ -829,6 +841,18 @@ mod tests {
         let a = store.add_horizontal_line(100.0);
         let b = store.add_vertical_line(4.0);
 
+        store.create_group(
+            "group-a".to_string(),
+            "Group A".to_string(),
+            DEFAULT_DRAWING_LAYER.to_string(),
+            None,
+        );
+        store.create_group(
+            "group-b".to_string(),
+            "Group B".to_string(),
+            DEFAULT_DRAWING_LAYER.to_string(),
+            None,
+        );
         assert!(store.set_drawing_group(a, Some("group-a")));
         assert!(store.set_drawing_group(b, Some("group-b")));
         store.set_group_visible("group-b", false);
