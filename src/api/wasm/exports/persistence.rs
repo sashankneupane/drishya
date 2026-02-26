@@ -56,6 +56,7 @@ impl WasmChart {
         snapshot: ChartStateSnapshotDto,
         options: RestoreChartStateOptionsDto,
     ) -> Result<(), JsValue> {
+        validate_snapshot(&snapshot, &options).map_err(|e| JsValue::from_str(&e))?;
         let state = snapshot.chart_state;
         if options.appearance {
             self.chart
@@ -80,6 +81,78 @@ impl WasmChart {
         }
         Ok(())
     }
+}
+
+fn validate_snapshot(
+    snapshot: &ChartStateSnapshotDto,
+    options: &RestoreChartStateOptionsDto,
+) -> Result<(), String> {
+    if options.viewport {
+        let vp = &snapshot.chart_state.viewport;
+        if !vp.world_start_x.is_finite() || !vp.world_end_x.is_finite() {
+            return Err(
+                "Invalid chart-state snapshot: viewport world range must be finite numbers"
+                    .to_string(),
+            );
+        }
+        if vp.world_end_x <= vp.world_start_x {
+            return Err(
+                "Invalid chart-state snapshot: viewport.world_end_x must be greater than viewport.world_start_x"
+                    .to_string(),
+            );
+        }
+        if let Some(zoom) = vp.y_zoom_factor {
+            if !zoom.is_finite() || zoom <= 0.0 {
+                return Err(
+                    "Invalid chart-state snapshot: viewport.y_zoom_factor must be a positive finite number"
+                        .to_string(),
+                );
+            }
+        }
+        if let Some(pan) = vp.y_pan_offset {
+            if !pan.is_finite() {
+                return Err(
+                    "Invalid chart-state snapshot: viewport.y_pan_offset must be a finite number"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    if options.panes {
+        for pane in &snapshot.chart_state.panes.panes {
+            if pane.id.trim().is_empty() {
+                return Err(
+                    "Invalid chart-state snapshot: pane.id must be a non-empty string".to_string(),
+                );
+            }
+            if !pane.weight.is_finite() || pane.weight <= 0.0 {
+                return Err(format!(
+                    "Invalid chart-state snapshot: pane '{}' has invalid weight (must be > 0)",
+                    pane.id
+                ));
+            }
+        }
+    }
+
+    if options.drawings {
+        for drawing in &snapshot.chart_state.drawings {
+            if drawing.kind.trim().is_empty() {
+                return Err(format!(
+                    "Invalid chart-state snapshot: drawing {} has empty kind",
+                    drawing.id
+                ));
+            }
+            if drawing.layer_id.trim().is_empty() {
+                return Err(format!(
+                    "Invalid chart-state snapshot: drawing {} has empty layer_id",
+                    drawing.id
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn build_object_tree(chart: &crate::chart::Chart) -> ObjectTreeSnapshotDto {
