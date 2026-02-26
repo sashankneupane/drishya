@@ -1,89 +1,153 @@
-import type { DrawingToolId } from "../toolbar/model.js";
 import { makeSvgIcon } from "./icons.js";
+import type { WorkspaceController } from "./WorkspaceController.js";
 import type { WorkspaceToolDef } from "./types.js";
+import type { DrawingToolId } from "../toolbar/model.js";
 
-interface CreateLeftStripOptions {
+interface LeftStripOptions {
   tools: readonly WorkspaceToolDef[];
-  activeTool: DrawingToolId;
-  drawingToolsEnabled: boolean;
-  onSelectTool: (toolId: DrawingToolId) => void;
-  onClear: () => void;
-  onToggleTheme: () => void;
+  controller: WorkspaceController;
+  drawingToolsEnabled?: boolean;
+  onClear?: () => void;
 }
 
 export interface LeftStripHandle {
   root: HTMLElement;
-  setActiveTool: (toolId: DrawingToolId) => void;
+  destroy: () => void;
 }
 
-export function createLeftStrip(options: CreateLeftStripOptions): LeftStripHandle {
-  const root = document.createElement("aside");
-  root.className = "drishya-strip";
-  root.setAttribute("aria-label", "Chart controls");
+const BTN_BASE = "w-10 h-10 flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed border-none outline-none bg-transparent";
+const ICON_SIZE = "h-4 w-4";
 
-  const brand = document.createElement("div");
-  brand.className = "drishya-strip-brand";
-  brand.textContent = "DR";
-  root.appendChild(brand);
+// Visibility classes: subtle when idle, high visibility when active/hover
+const BTN_IDLE = "text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50";
+const BTN_ACTIVE = "text-zinc-100 bg-zinc-800/40 border-l-2 border-zinc-100";
 
-  const toolList = document.createElement("div");
-  toolList.className = "drishya-strip-tools";
-  root.appendChild(toolList);
+export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
+  const { controller } = options;
+  const root = document.createElement("div");
+  root.className = "w-10 flex flex-col bg-workspace-bg border-r border-workspace-border h-full shrink-0 z-30 overflow-y-auto no-scrollbar";
 
-  const divider = document.createElement("div");
-  divider.className = "drishya-strip-divider";
-  root.appendChild(divider);
+  const toolButtons: Map<string, HTMLElement> = new Map();
+  const activePopups: HTMLElement[] = [];
 
-  const actionList = document.createElement("div");
-  actionList.className = "drishya-strip-actions";
-  root.appendChild(actionList);
+  const closeAllPopups = () => {
+    activePopups.forEach(p => p.remove());
+    activePopups.length = 0;
+  };
 
-  const toolButtons = new Map<DrawingToolId, HTMLButtonElement>();
-  let activeTool = options.activeTool;
+  options.tools.forEach((tool) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `${BTN_BASE} ${BTN_IDLE} relative group`;
 
-  for (const tool of options.tools) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "drishya-strip-btn";
-    button.dataset.active = "false";
-    button.title = `${tool.title} (${tool.hotkey})`;
-    button.disabled = !options.drawingToolsEnabled;
-    button.appendChild(makeSvgIcon(tool.id));
-    button.addEventListener("click", () => options.onSelectTool(tool.id));
-    toolList.appendChild(button);
-    toolButtons.set(tool.id, button);
-  }
-
-  const clearBtn = document.createElement("button");
-  clearBtn.type = "button";
-  clearBtn.className = "drishya-strip-btn";
-  clearBtn.title = "Clear drawings (C)";
-  clearBtn.appendChild(makeSvgIcon("trash"));
-  clearBtn.addEventListener("click", options.onClear);
-  actionList.appendChild(clearBtn);
-
-  const themeBtn = document.createElement("button");
-  themeBtn.type = "button";
-  themeBtn.className = "drishya-strip-btn";
-  themeBtn.title = "Toggle theme (T)";
-  themeBtn.appendChild(makeSvgIcon("theme"));
-  themeBtn.addEventListener("click", options.onToggleTheme);
-  actionList.appendChild(themeBtn);
-
-  function setActiveTool(toolId: DrawingToolId): void {
-    activeTool = toolId;
-    for (const [id, button] of toolButtons.entries()) {
-      const active = id === activeTool;
-      button.dataset.active = active ? "true" : "false";
-      button.setAttribute("aria-pressed", active ? "true" : "false");
+    // Default icon
+    let currentIconName = tool.id;
+    if (tool.children && tool.children.length > 0) {
+      currentIconName = tool.children[0].id; // Show first child by default or last used
     }
+
+    const iconContainer = document.createElement("div");
+    iconContainer.replaceChildren(makeSvgIcon(currentIconName, ICON_SIZE));
+    btn.appendChild(iconContainer);
+
+    // Indicator for groups
+    if (tool.children) {
+      const arrow = document.createElement("div");
+      arrow.className = "absolute bottom-1 right-1 w-0 h-0 border-t-2 border-l-2 border-transparent border-t-zinc-700 border-l-zinc-700 rotate-45 group-hover:border-zinc-500";
+      btn.appendChild(arrow);
+    }
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (tool.children) {
+        if (activePopups.some(p => p.dataset.owner === tool.id)) {
+          closeAllPopups();
+        } else {
+          showGroupPopup(tool, btn);
+        }
+      } else {
+        closeAllPopups();
+        if (tool.id === "clear") options.onClear?.();
+        else if (tool.id === "theme") controller.toggleTheme();
+        else controller.setActiveTool(tool.id as DrawingToolId);
+      }
+    });
+
+    root.appendChild(btn);
+    toolButtons.set(tool.id, btn);
+  });
+
+  function showGroupPopup(tool: WorkspaceToolDef, ownerBtn: HTMLElement) {
+    closeAllPopups();
+    const popup = document.createElement("div");
+    popup.dataset.owner = tool.id;
+    popup.className = "fixed left-10 bg-zinc-950 border border-workspace-border py-1 flex flex-col shadow-2xl z-50 animate-in fade-in slide-in-from-left-1 duration-150 min-w-[220px]";
+
+    const rect = ownerBtn.getBoundingClientRect();
+    popup.style.top = `${rect.top}px`;
+
+    tool.children?.forEach(child => {
+      const cbtn = document.createElement("button");
+      cbtn.className = "h-9 flex items-center px-3 gap-3 text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors border-none outline-none bg-transparent cursor-pointer group w-full";
+
+      const icon = makeSvgIcon(child.id, ICON_SIZE);
+
+      const label = document.createElement("span");
+      label.className = "flex-1 text-left text-[12px] font-medium";
+      label.textContent = child.title;
+
+      const hotkey = document.createElement("span");
+      hotkey.className = "text-[10px] text-zinc-700 font-mono uppercase group-hover:text-zinc-500 transition-colors";
+      hotkey.textContent = child.hotkey || "";
+
+      cbtn.append(icon, label, hotkey);
+      cbtn.onclick = () => {
+        controller.setActiveTool(child.id as DrawingToolId);
+        // Update owner icon
+        const iconContainer = ownerBtn.querySelector("div");
+        if (iconContainer) iconContainer.replaceChildren(makeSvgIcon(child.id, ICON_SIZE));
+        closeAllPopups();
+      };
+      popup.appendChild(cbtn);
+    });
+
+    document.body.appendChild(popup);
+    activePopups.push(popup);
   }
 
-  setActiveTool(options.activeTool);
+  const unsubscribe = controller.subscribe((state) => {
+    const activeTool = state.activeTool;
+
+    // Update active states
+    options.tools.forEach(tool => {
+      const btn = toolButtons.get(tool.id);
+      if (!btn) return;
+
+      const isActive = tool.id === activeTool || (tool.children?.some(c => c.id === activeTool));
+      if (isActive) {
+        btn.className = `${BTN_BASE} ${BTN_ACTIVE} relative group`;
+      } else {
+        btn.className = `${BTN_BASE} ${BTN_IDLE} relative group`;
+      }
+
+      // Update theme icon
+      if (tool.id === "theme") {
+        const container = btn.querySelector("div");
+        if (container) container.replaceChildren(makeSvgIcon(state.theme === "dark" ? "theme" : "theme-off", ICON_SIZE));
+      }
+    });
+  });
+
+  // Global click to close popups
+  const globalClick = () => closeAllPopups();
+  window.addEventListener("click", globalClick);
 
   return {
     root,
-    setActiveTool
+    destroy: () => {
+      unsubscribe();
+      window.removeEventListener("click", globalClick);
+      closeAllPopups();
+    }
   };
 }
-
