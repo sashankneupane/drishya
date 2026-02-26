@@ -18,6 +18,7 @@ export interface CreateChartWorkspaceFromModuleOptions {
   initialTheme?: WorkspaceTheme;
   initialTool?: DrawingToolId;
   injectStyles?: boolean;
+  marketControls?: CreateChartWorkspaceOptions["marketControls"];
 }
 
 export async function createChartWorkspaceFromModule(
@@ -41,5 +42,6 @@ export async function createChartWorkspaceFromModule(
     initialTheme: options.initialTheme,
     initialTool: options.initialTool,
     injectStyles: options.injectStyles,
+    marketControls: options.marketControls,
   });
 }

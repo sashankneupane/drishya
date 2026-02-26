@@ -4,10 +4,11 @@ import { WORKSPACE_DRAW_TOOLS } from "./constants.js";
 import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
+import { createTopStrip } from "./topStrip.js";
+import { WorkspaceController } from "./WorkspaceController.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
-  WorkspaceTheme,
 } from "./types.js";
 
 const WORKSPACE_STYLE_LINK_ID = "drishya-workspace-styles";
@@ -20,53 +21,76 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   ensureHostHasViewport(host);
   host.innerHTML = "";
 
+  const controller = new WorkspaceController({
+    theme: options.initialTheme,
+    activeTool: options.initialTool
+  });
+
+  // root element fills host completely and hides any overflow
   const root = document.createElement("div");
-  root.className = "drishya-workspace";
+  // vertical layout: top strip, then main workspace row
+  root.className = "h-full w-full min-h-0 min-w-0 flex flex-col bg-workspace-bg text-workspace-text overflow-hidden font-sans select-none";
+
+  const mainRow = document.createElement("div");
+  mainRow.className = "flex flex-1 min-h-0 min-w-0 relative";
 
   const stage = document.createElement("div");
-  stage.className = "drishya-stage";
+  stage.className = "flex-1 min-h-0 min-w-0 bg-chart-bg flex-shrink-0 relative overflow-hidden";
 
   const canvas = document.createElement("canvas");
+  canvas.className = "block h-full w-full bg-transparent";
   const canvasId = `drishya-canvas-${Math.random().toString(36).slice(2, 10)}`;
   canvas.id = canvasId;
   stage.appendChild(canvas);
 
-  // The WASM constructor resolves canvas by id from the live document,
-  // so mount stage/canvas before instantiating the chart.
-  root.appendChild(stage);
+  // Mount elements to documented DOM before WASM initialization
+  mainRow.appendChild(stage);
+  root.appendChild(mainRow);
   host.appendChild(root);
 
-  let theme: WorkspaceTheme = options.initialTheme === "light" ? "light" : "dark";
-  let activeTool: DrawingToolId = options.initialTool ?? "select";
+  // WASM Chart setup - NOW canvas is in DOM
   let rawChart = createWasmChart(canvasId, 300, 300);
   const chart = new DrishyaChartClient(rawChart);
-  chart.setTheme(theme);
+  chart.setTheme(controller.getState().theme);
+
+  // top control strip
+  const topHandle = createTopStrip({
+    chart,
+    controller,
+    symbols: options.marketControls?.symbols ?? [],
+    timeframes: options.marketControls?.timeframes ?? [],
+    selectedSymbol: options.marketControls?.selectedSymbol,
+    selectedTimeframe: options.marketControls?.selectedTimeframe,
+    onSymbolChange: options.marketControls?.onSymbolChange,
+    onTimeframeChange: options.marketControls?.onTimeframeChange,
+    onCandleTypeChange: (mode) => {
+      chart.setCandleStyle(mode);
+      chart.draw();
+    },
+    onLayout: () => { },
+    onMutate: () => draw()
+  });
 
   const stripHandle = createLeftStrip({
     tools: WORKSPACE_DRAW_TOOLS,
-    activeTool,
+    controller,
     drawingToolsEnabled: typeof rawChart.set_drawing_tool_mode === "function",
-    onSelectTool: (toolId) => {
-      setTool(toolId);
-      draw();
-    },
     onClear: () => {
       clearDrawings();
-      draw();
-    },
-    onToggleTheme: () => {
-      toggleTheme();
       draw();
     }
   });
 
   const treeHandle = createObjectTreePanel({
     chart,
+    controller,
     onMutate: () => draw()
   });
 
-  root.insertBefore(stripHandle.root, stage);
-  root.appendChild(treeHandle.root);
+  // Final assembly of UI pieces
+  root.insertBefore(topHandle.root, mainRow);
+  mainRow.insertBefore(stripHandle.root, stage);
+  mainRow.appendChild(treeHandle.root);
 
   const setupCanvasBackingStore = () => {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -80,24 +104,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chart.resize(width, height);
   };
 
-  const setTool = (toolId: DrawingToolId) => {
-    activeTool = toolId;
-    chart.setDrawingTool(toolId);
-    stripHandle.setActiveTool(toolId);
-  };
-
   const clearDrawings = () => {
     chart.clearDrawings();
     if (typeof rawChart.cancel_drawing_interaction === "function") {
       rawChart.cancel_drawing_interaction();
     }
-    setTool("select");
-  };
-
-  const toggleTheme = (): WorkspaceTheme => {
-    theme = theme === "dark" ? "light" : "dark";
-    chart.setTheme(theme);
-    return theme;
+    controller.setActiveTool("select");
   };
 
   const draw = () => {
@@ -113,19 +125,41 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     getPaneLayouts: () => chart.paneLayouts()
   });
 
-  const hotkeyToolMap = Object.fromEntries(
-    WORKSPACE_DRAW_TOOLS.map((tool) => [tool.hotkey.toLowerCase(), tool.id as DrawingToolId])
-  );
+  // Controller subscriptions
+  const unsubscribe = controller.subscribe((state) => {
+    chart.setTheme(state.theme);
+    chart.setDrawingTool(state.activeTool);
+    draw();
+  });
+
+  // hotkeyToolMap
+  const hotkeyToolMap: Record<string, DrawingToolId> = {};
+  for (const tool of WORKSPACE_DRAW_TOOLS) {
+    if (tool.children && Array.isArray(tool.children)) {
+      for (const child of tool.children) {
+        hotkeyToolMap[child.hotkey.toLowerCase()] = child.id as DrawingToolId;
+      }
+    } else {
+      hotkeyToolMap[tool.hotkey.toLowerCase()] = tool.id as DrawingToolId;
+    }
+  }
 
   const onKeyDown = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    const isEditableTarget =
+      !!target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable);
+    if (isEditableTarget) return;
+
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const key = event.key.toLowerCase();
 
     const mode = hotkeyToolMap[key];
     if (mode) {
       event.preventDefault();
-      setTool(mode);
-      draw();
+      controller.setActiveTool(mode);
       return;
     }
 
@@ -139,14 +173,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (typeof rawChart.cancel_drawing_interaction === "function") {
         rawChart.cancel_drawing_interaction();
       }
-      setTool("select");
+      chart.clearSelectedDrawing();
+      chart.clearSelectedSeries();
+      controller.setActiveTool("select");
       draw();
       return;
     }
 
+    if (event.key === "Backspace" || event.key === "Delete") {
+      if (chart.deleteSelectedDrawing() || chart.deleteSelectedSeries()) {
+        event.preventDefault();
+        draw();
+      }
+      return;
+    }
+
     if (key === "t") {
-      toggleTheme();
-      draw();
+      controller.toggleTheme();
     }
   };
   window.addEventListener("keydown", onKeyDown);
@@ -163,26 +206,31 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
 
   setupCanvasBackingStore();
-  setTool(activeTool);
+  chart.setDrawingTool(controller.getState().activeTool);
   draw();
 
   return {
-    root,
+    root: root as HTMLDivElement,
     strip: stripHandle.root,
     tree: treeHandle.root,
     canvas,
     chart,
     rawChart,
+    controller,
     draw,
     resize: () => {
       setupCanvasBackingStore();
       draw();
     },
-    setTool,
+    setTool: (toolId) => controller.setActiveTool(toolId),
     clearDrawings,
-    toggleTheme,
+    toggleTheme: () => controller.toggleTheme(),
     refreshObjectTree: treeHandle.refresh,
     destroy: () => {
+      unsubscribe();
+      topHandle.destroy();
+      stripHandle.destroy();
+      treeHandle.destroy();
       unbindInteractions();
       window.removeEventListener("keydown", onKeyDown);
       if (resizeObserver) {
@@ -207,11 +255,11 @@ function ensureWorkspaceStyles(): void {
 }
 
 function ensureHostHasViewport(host: HTMLElement): void {
-  const rect = host.getBoundingClientRect();
-  if (rect.width === 0 && !host.style.width) {
+  if (!host.style.width) {
     host.style.width = "100%";
   }
-  if (rect.height === 0 && !host.style.height) {
+  if (!host.style.height) {
     host.style.height = "100vh";
   }
+  host.style.overflow = "hidden";
 }

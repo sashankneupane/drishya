@@ -26,6 +26,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let pointerInCanvas = false;
   let lastX = 0;
   let lastY = 0;
+  let panAnchorY: number | null = null;
   let axisZoomDrag: { axis: "x" | "y"; lastClient: number; anchor: number } | null = null;
   let paneResizeDrag: { index: number } | null = null;
 
@@ -136,6 +137,15 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
         lastY = event.clientY;
         return;
       }
+      if (chart.drawingToolMode() === "select") {
+        const selectedSeries = chart.selectSeriesAt(x, y);
+        if (selectedSeries) {
+          redraw();
+          lastX = event.clientX;
+          lastY = event.clientY;
+          return;
+        }
+      }
     }
 
     const zones = axisZones();
@@ -149,12 +159,67 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     dragging = true;
+    panAnchorY = y;
     lastX = event.clientX;
     lastY = event.clientY;
     applyCursor("grabbing");
   };
 
-  const onMouseUp = () => {
+  const onTouchStart = (event: TouchEvent) => {
+    if (!hasDrawingInteraction) return;
+    if (event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    if (chart.drawingToolMode() === "select") {
+      const selectedDrawing = chart.selectDrawingAt(x, y);
+      if (!selectedDrawing) {
+        chart.selectSeriesAt(x, y);
+      }
+    }
+    chart.drawingPointerDown(x, y);
+    redraw();
+    event.preventDefault();
+  };
+
+  const onTouchMove = (event: TouchEvent) => {
+    if (!hasDrawingInteraction) return;
+    if (event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    if (chart.drawingPointerMove(x, y)) {
+      redraw();
+      event.preventDefault();
+    }
+  };
+
+  const onTouchEnd = (event: TouchEvent) => {
+    if (!hasDrawingInteraction) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    if (chart.drawingPointerUp(x, y)) {
+      redraw();
+    }
+    event.preventDefault();
+  };
+
+  const onMouseUp = (event: MouseEvent) => {
+    // update last coordinates from the release event so we don't rely solely on
+    // intermediate mousemove events (important for clicks without movement)
+    lastX = event.clientX;
+    lastY = event.clientY;
+
     if (hasDrawingInteraction) {
       const rect = canvas.getBoundingClientRect();
       if (chart.drawingPointerUp(lastX - rect.left, lastY - rect.top)) {
@@ -165,6 +230,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     axisZoomDrag = null;
     paneResizeDrag = null;
     dragging = false;
+    panAnchorY = null;
 
     if (pointerInCanvas) {
       const rect = canvas.getBoundingClientRect();
@@ -217,7 +283,8 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
 
     if (!dragging) return;
     const rect = canvas.getBoundingClientRect();
-    chart.pan2d(event.clientX - prevX, event.clientY - prevY, event.clientY - rect.top);
+    const anchorY = panAnchorY ?? (event.clientY - rect.top);
+    chart.pan2d(event.clientX - prevX, event.clientY - prevY, anchorY);
     redraw();
   };
 
@@ -270,6 +337,9 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   canvas.addEventListener("mousemove", onCanvasMouseMove);
   canvas.addEventListener("mouseleave", onMouseLeave);
   canvas.addEventListener("wheel", onWheel, { passive: false });
+  canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+  canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+  canvas.addEventListener("touchend", onTouchEnd, { passive: false });
   window.addEventListener("mousemove", onWindowMouseMove);
   window.addEventListener("mouseup", onMouseUp);
 
@@ -279,8 +349,10 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     canvas.removeEventListener("mousemove", onCanvasMouseMove);
     canvas.removeEventListener("mouseleave", onMouseLeave);
     canvas.removeEventListener("wheel", onWheel);
+    canvas.removeEventListener("touchstart", onTouchStart);
+    canvas.removeEventListener("touchmove", onTouchMove);
+    canvas.removeEventListener("touchend", onTouchEnd);
     window.removeEventListener("mousemove", onWindowMouseMove);
     window.removeEventListener("mouseup", onMouseUp);
   };
 }
-
