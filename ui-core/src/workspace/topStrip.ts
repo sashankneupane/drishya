@@ -214,27 +214,26 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
 
   // Right Side - Objects Toggle
   const replayGroup = document.createElement("div");
-  replayGroup.className = "flex items-center h-full border-r border-workspace-border";
+  replayGroup.className = "flex items-center h-full border-r border-workspace-border px-1.5 gap-0.5";
 
-  const replayStateLabel = document.createElement("span");
-  replayStateLabel.className = "px-2 text-[10px] text-zinc-500";
-
-  const mkReplayBtn = (label: string, onClick: () => void) => {
+  const mkReplayBtn = (icon: string, title: string, onClick: () => void) => {
     const btn = document.createElement("button");
-    btn.className = BTN_MINIMAL;
-    btn.textContent = label;
+    btn.className = "h-7 w-7 inline-flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/70 transition-all border-none outline-none bg-transparent cursor-pointer";
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+    btn.appendChild(makeSvgIcon(icon, "h-3.5 w-3.5"));
     btn.onclick = onClick;
     return btn;
   };
 
   const replayApi = controller.replay();
-  const playBtn = mkReplayBtn("Play", () => replayApi.play());
-  const pauseBtn = mkReplayBtn("Pause", () => replayApi.pause());
-  const stopBtn = mkReplayBtn("Stop", () => replayApi.stop());
-  const stepBarBtn = mkReplayBtn("Step Bar", () => replayApi.stepBar());
-  const stepEventBtn = mkReplayBtn("Step Event", () => replayApi.stepEvent());
+  const playBtn = mkReplayBtn("play", "Play Replay", () => replayApi.play());
+  const pauseBtn = mkReplayBtn("pause", "Pause Replay", () => replayApi.pause());
+  const stopBtn = mkReplayBtn("stop", "Stop Replay", () => replayApi.stop());
+  const stepBarBtn = mkReplayBtn("step-forward", "Step Bar", () => replayApi.stepBar());
+  const stepEventBtn = mkReplayBtn("skip-forward", "Step Event", () => replayApi.stepEvent());
 
-  replayGroup.append(playBtn, pauseBtn, stopBtn, stepBarBtn, stepEventBtn, replayStateLabel);
+  replayGroup.append(playBtn, pauseBtn, stopBtn, stepBarBtn, stepEventBtn);
   rightSide.appendChild(replayGroup);
 
   const objectsBtn = document.createElement("button");
@@ -252,8 +251,6 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
 
   root.append(leftSide, rightSide);
 
-  replayStateLabel.textContent = "Replay: Paused @ -";
-
   const unsubscribe = controller.subscribe((state) => {
     if (state.isObjectTreeOpen) {
       objectsBtn.classList.add("text-zinc-100", "bg-zinc-900");
@@ -261,9 +258,13 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
       objectsBtn.classList.remove("text-zinc-100", "bg-zinc-900");
     }
     updateAxisLabel();
-    replayStateLabel.textContent = state.replay.playing
-      ? `Replay: Playing @ ${state.replay.cursor_ts ?? "-"}`
-      : `Replay: Paused @ ${state.replay.cursor_ts ?? "-"}`;
+    if (state.replay.playing) {
+      playBtn.classList.add(BTN_ACTIVE);
+      pauseBtn.classList.remove(BTN_ACTIVE);
+    } else {
+      playBtn.classList.remove(BTN_ACTIVE);
+      pauseBtn.classList.add(BTN_ACTIVE);
+    }
   });
 
   const globalClick = () => closePopup();
