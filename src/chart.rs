@@ -12,6 +12,7 @@ pub mod anchors;
 pub mod appearance;
 pub mod hit_test;
 pub mod interaction;
+pub mod panes;
 pub mod plots;
 pub mod scene;
 pub mod state;

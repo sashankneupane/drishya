@@ -3,6 +3,11 @@
 //! This bridges chart state/layout into backend-agnostic drawing primitives and
 //! delegates geometric matching to `drawings::hit_test`.
 
+pub mod drawings;
+pub mod mapper;
+pub mod series;
+pub mod zoom;
+
 use crate::{
     drawings::{
         hit_test::{
@@ -16,6 +21,7 @@ use crate::{
     types::Point,
 };
 
+use self::zoom::apply_y_zoom;
 use super::Chart;
 
 impl Chart {
@@ -554,15 +560,4 @@ impl Chart {
             tolerance_profile,
         )
     }
-}
-
-fn apply_y_zoom(min: f64, max: f64, zoom_factor: f32, pan_factor: f32) -> (f64, f64) {
-    let center = (min + max) * 0.5;
-    let half = ((max - min) * 0.5).max(1e-9);
-    let zoomed_half = half / zoom_factor.max(1e-6) as f64;
-    let pan_delta = zoomed_half * pan_factor as f64;
-    (
-        center - zoomed_half - pan_delta,
-        center + zoomed_half - pan_delta,
-    )
 }

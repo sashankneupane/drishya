@@ -3,6 +3,7 @@
 //! This file only declares module boundaries so domain logic stays distributed
 //! in focused files instead of accumulating here.
 
+pub mod api;
 pub mod chart;
 pub mod drawings;
 pub mod indicators;
@@ -12,4 +13,3 @@ pub mod render;
 pub mod scale;
 pub mod types;
 pub mod viewport;
-pub mod web;

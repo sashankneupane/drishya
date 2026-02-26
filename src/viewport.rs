@@ -2,7 +2,7 @@
 //!
 //! World-space x coordinates are currently **index based**:
 //! - bar `i` occupies world interval `[i, i + 1)`
-//! - bar center is `i + 0.5`
+//! - bar center is rendered at `i` (mapped as `i + 0.5` in viewport projection)
 //! - viewport stores a half-open x-range `[start_x, end_x)`
 //!
 //! This explicit contract keeps pan/zoom math deterministic and allows a future
@@ -43,7 +43,8 @@ impl Viewport {
             return pane_x;
         }
 
-        let u = self.unit_from_world_x(world_x as f64);
+        // Keep integer drawing/crosshair indices centered on candles.
+        let u = self.unit_from_world_x(world_x as f64 + 0.5);
         pane_x + (u as f32) * pane_w
     }
 
@@ -53,7 +54,8 @@ impl Viewport {
         }
 
         let u = (pixel_x - pane_x) as f64 / pane_w as f64;
-        self.world_x_from_unit(u) as f32
+        // Inverse of center projection: pixel maps back to index-space anchor.
+        (self.world_x_from_unit(u) - 0.5) as f32
     }
 
     pub fn pan_pixels(&mut self, dx_pixels: f32, pane_w: f32, total_bars: usize) {

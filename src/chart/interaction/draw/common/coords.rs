@@ -32,7 +32,11 @@ impl Chart {
         }
 
         let vp = self.viewport?;
-        let world_x = vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0));
+        let world_x = self
+            .snap_pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
+            .unwrap_or_else(|| {
+                vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
+            });
 
         let visible = self.visible_data();
         if visible.is_empty() {

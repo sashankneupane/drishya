@@ -30,7 +30,11 @@ impl Chart {
         let Some(vp) = self.viewport else {
             return;
         };
-        let index = vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0));
+        let index = self
+            .snap_pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
+            .unwrap_or_else(|| {
+                vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
+            });
 
         let _ = execute_command(
             &mut self.drawings,

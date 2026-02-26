@@ -3,7 +3,19 @@
 //! This store is intentionally minimal and deterministic: append, remove,
 //! iterate. Higher-level semantics live in the command layer.
 
-use crate::drawings::types::{DrawingStyle, *};
+pub mod create;
+pub mod ordering;
+pub mod queries;
+#[cfg(test)]
+#[path = "tests.rs"]
+mod regression_tests;
+pub mod update;
+pub mod visibility;
+
+use crate::{
+    drawings::types::{DrawingStyle, *},
+    types::Candle,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default)]
@@ -16,6 +28,7 @@ pub struct DrawingStore {
     hidden_layers: HashSet<DrawingLayerId>,
     hidden_groups: HashSet<DrawingGroupId>,
     hidden_drawings: HashSet<DrawingId>,
+    x_anchor_timestamps: HashMap<DrawingId, Vec<i64>>,
 }
 
 impl DrawingStore {
@@ -42,6 +55,7 @@ impl DrawingStore {
             hidden_layers: HashSet::new(),
             hidden_groups: HashSet::new(),
             hidden_drawings: HashSet::new(),
+            x_anchor_timestamps: HashMap::new(),
         }
     }
 
@@ -454,17 +468,20 @@ impl DrawingStore {
     }
 
     pub fn drawing_mut(&mut self, id: DrawingId) -> Option<&mut Drawing> {
+        self.x_anchor_timestamps.remove(&id);
         self.items.iter_mut().find(|item| item.id() == id)
     }
 
     pub fn remove(&mut self, id: DrawingId) -> bool {
         let before = self.items.len();
         self.items.retain(|item| item.id() != id);
+        self.x_anchor_timestamps.remove(&id);
         self.items.len() != before
     }
 
     pub fn clear(&mut self) {
         self.items.clear();
+        self.x_anchor_timestamps.clear();
     }
 
     pub fn ensure_layer(&mut self, layer_id: &str) {
@@ -711,113 +728,432 @@ impl DrawingStore {
         }
     }
 
-    pub fn group_effective_visible(&self, group_id: &str) -> bool {
-        if self.hidden_groups.contains(group_id) {
-            return false;
+    pub fn reproject_x_to_timestamps(&mut self, old_candles: &[Candle], new_candles: &[Candle]) {
+        if old_candles.is_empty() || new_candles.is_empty() {
+            return;
         }
-        if let Some(group) = self.groups.get(group_id) {
-            if !group.visible {
-                return false;
-            }
-            if let Some(parent_id) = &group.parent_group_id {
-                return self.group_effective_visible(parent_id);
-            }
-            true
-        } else {
-            true // If group not found, assume visible (or ignore)
-        }
-    }
 
-    pub fn group_effective_locked(&self, group_id: &str) -> bool {
-        if let Some(group) = self.groups.get(group_id) {
-            if group.locked {
-                return true;
-            }
-            if let Some(parent_id) = &group.parent_group_id {
-                return self.group_effective_locked(parent_id);
-            }
-            false
-        } else {
-            false
+        for drawing in &mut self.items {
+            let id = drawing.id();
+            let anchor_timestamps = if let Some(cached) = self.x_anchor_timestamps.get(&id) {
+                cached.clone()
+            } else {
+                let collected = collect_anchor_timestamps(drawing, old_candles);
+                self.x_anchor_timestamps.insert(id, collected.clone());
+                collected
+            };
+            apply_anchor_timestamps(drawing, &anchor_timestamps, new_candles);
         }
     }
+}
 
-    pub fn layer_effective_visible(&self, layer_id: &str) -> bool {
-        !self.hidden_layers.contains(layer_id)
-            && self.layers.get(layer_id).map(|l| l.visible).unwrap_or(true)
+fn index_to_timestamp(index: f32, candles: &[Candle]) -> Option<i64> {
+    if candles.is_empty() {
+        return None;
+    }
+    let idx = index.round() as i64;
+    let first = candles.first()?;
+    let last = candles.last()?;
+    if idx <= 0 {
+        return Some(first.ts);
+    }
+    let last_idx = candles.len().saturating_sub(1) as i64;
+    if idx <= last_idx {
+        return candles.get(idx as usize).map(|c| c.ts);
+    }
+    let step = inferred_time_step_seconds(candles);
+    let future_steps = idx - last_idx;
+    Some(last.ts.saturating_add(future_steps.saturating_mul(step)))
+}
+
+fn nearest_index_for_timestamp(ts: i64, candles: &[Candle]) -> Option<f32> {
+    if candles.is_empty() {
+        return None;
+    }
+    let first = candles.first()?;
+    let last = candles.last()?;
+    if ts <= first.ts {
+        return Some(0.0);
+    }
+    if ts >= last.ts {
+        let step = inferred_time_step_seconds(candles);
+        if step <= 0 {
+            return Some(candles.len().saturating_sub(1) as f32);
+        }
+        let offset_steps = ((ts - last.ts) as f64 / step as f64).round() as f32;
+        return Some(candles.len().saturating_sub(1) as f32 + offset_steps.max(0.0));
     }
 
-    pub fn layer_effective_locked(&self, layer_id: &str) -> bool {
-        self.layers.get(layer_id).map(|l| l.locked).unwrap_or(false)
+    match candles.binary_search_by_key(&ts, |c| c.ts) {
+        Ok(idx) => Some(idx as f32),
+        Err(insert) => {
+            let idx = if insert == 0 {
+                0
+            } else if insert >= candles.len() {
+                candles.len() - 1
+            } else {
+                let left = candles[insert - 1].ts;
+                let right = candles[insert].ts;
+                if (ts - left).abs() <= (right - ts).abs() {
+                    insert - 1
+                } else {
+                    insert
+                }
+            };
+            Some(idx as f32)
+        }
     }
+}
 
-    pub fn drawing_effective_locked(&self, drawing_id: DrawingId) -> bool {
-        if let Some(drawing) = self.drawing(drawing_id) {
-            if self.layer_effective_locked(drawing.layer_id()) {
-                return true;
+fn inferred_time_step_seconds(candles: &[Candle]) -> i64 {
+    for pair in candles.windows(2).rev() {
+        let delta = pair[1].ts - pair[0].ts;
+        if delta > 0 {
+            return delta;
+        }
+    }
+    60
+}
+
+fn collect_anchor_timestamps(drawing: &Drawing, candles: &[Candle]) -> Vec<i64> {
+    let mut out = Vec::new();
+    let mut collect = |index: f32| {
+        if let Some(ts) = index_to_timestamp(index, candles) {
+            out.push(ts);
+        }
+    };
+    match drawing {
+        Drawing::HorizontalLine(_) => {}
+        Drawing::VerticalLine(item) => collect(item.index),
+        Drawing::Ray(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+        }
+        Drawing::Rectangle(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+        }
+        Drawing::PriceRange(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+        }
+        Drawing::TimeRange(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+        }
+        Drawing::DateTimeRange(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+        }
+        Drawing::LongPosition(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+            collect(item.entry_index);
+        }
+        Drawing::ShortPosition(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+            collect(item.entry_index);
+        }
+        Drawing::FibRetracement(item) => {
+            collect(item.start_index);
+            collect(item.end_index);
+        }
+        Drawing::Circle(item) => {
+            collect(item.center_index);
+            collect(item.radius_index);
+        }
+        Drawing::Triangle(item) => {
+            collect(item.p1_index);
+            collect(item.p2_index);
+            collect(item.p3_index);
+        }
+        Drawing::Ellipse(item) => {
+            collect(item.p1_index);
+            collect(item.p2_index);
+            collect(item.p3_index);
+        }
+        Drawing::Text(item) => collect(item.index),
+        Drawing::BrushStroke(item) => {
+            for p in &item.points {
+                collect(p.index);
             }
-            if let Some(group_id) = drawing.group_id() {
-                if self.group_effective_locked(group_id) {
-                    return true;
+        }
+        Drawing::HighlightStroke(item) => {
+            for p in &item.points {
+                collect(p.index);
+            }
+        }
+    }
+    out
+}
+
+fn apply_anchor_timestamps(drawing: &mut Drawing, anchor_timestamps: &[i64], candles: &[Candle]) {
+    let mut cursor = 0usize;
+    let mut map_next = || {
+        let ts = *anchor_timestamps.get(cursor)?;
+        cursor += 1;
+        nearest_index_for_timestamp(ts, candles)
+    };
+
+    match drawing {
+        Drawing::HorizontalLine(_) => {}
+        Drawing::VerticalLine(item) => {
+            if let Some(x) = map_next() {
+                item.index = x;
+            }
+        }
+        Drawing::Ray(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::Rectangle(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::PriceRange(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::TimeRange(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::DateTimeRange(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::LongPosition(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.entry_index = x;
+            }
+        }
+        Drawing::ShortPosition(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.entry_index = x;
+            }
+        }
+        Drawing::FibRetracement(item) => {
+            if let Some(x) = map_next() {
+                item.start_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.end_index = x;
+            }
+        }
+        Drawing::Circle(item) => {
+            if let Some(x) = map_next() {
+                item.center_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.radius_index = x;
+            }
+        }
+        Drawing::Triangle(item) => {
+            if let Some(x) = map_next() {
+                item.p1_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p2_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p3_index = x;
+            }
+        }
+        Drawing::Ellipse(item) => {
+            if let Some(x) = map_next() {
+                item.p1_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p2_index = x;
+            }
+            if let Some(x) = map_next() {
+                item.p3_index = x;
+            }
+        }
+        Drawing::Text(item) => {
+            if let Some(x) = map_next() {
+                item.index = x;
+            }
+        }
+        Drawing::BrushStroke(item) => {
+            for p in &mut item.points {
+                if let Some(x) = map_next() {
+                    p.index = x;
                 }
             }
         }
-        false
-    }
-
-    pub fn visible_items_in_paint_order(&self) -> Vec<&Drawing> {
-        let mut out = Vec::new();
-
-        for layer_id in &self.layer_order {
-            if !self.layer_effective_visible(layer_id) {
-                continue;
-            }
-
-            // Get groups in this layer, sorted by order
-            let mut layer_groups: Vec<&DrawingGroup> = self
-                .groups
-                .values()
-                .filter(|g| g.layer_id == *layer_id)
-                .collect();
-            layer_groups.sort_by_key(|g| g.order);
-
-            // Drawings in this layer
-            let layer_drawings: Vec<&Drawing> = self
-                .items
-                .iter()
-                .filter(|d| d.layer_id() == layer_id)
-                .collect();
-
-            // First: Grouped drawings (by group order)
-            for group in layer_groups {
-                if !self.group_effective_visible(&group.id) {
-                    continue;
-                }
-
-                for drawing in &layer_drawings {
-                    if drawing.group_id() == Some(&group.id)
-                        && !self.hidden_drawings.contains(&drawing.id())
-                    {
-                        out.push(*drawing);
-                    }
-                }
-            }
-
-            // Second: Ungrouped drawings
-            for drawing in &layer_drawings {
-                if drawing.group_id().is_none() && !self.hidden_drawings.contains(&drawing.id()) {
-                    out.push(*drawing);
+        Drawing::HighlightStroke(item) => {
+            for p in &mut item.points {
+                if let Some(x) = map_next() {
+                    p.index = x;
                 }
             }
         }
-
-        out
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn candle(ts: i64) -> Candle {
+        Candle {
+            ts,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1000.0,
+        }
+    }
+
+    #[test]
+    fn reproject_preserves_future_anchor_indices_across_roundtrip() {
+        let old = vec![candle(0), candle(60), candle(120), candle(180)];
+        let new = vec![
+            candle(0),
+            candle(300),
+            candle(600),
+            candle(900),
+            candle(1200),
+        ];
+
+        let mut store = DrawingStore::new();
+        let id = store.add_rectangle(2.0, 8.0, 110.0, 90.0);
+
+        store.reproject_x_to_timestamps(&old, &new);
+        store.reproject_x_to_timestamps(&new, &old);
+
+        let Some(Drawing::Rectangle(r)) = store.drawing(id) else {
+            panic!("expected rectangle");
+        };
+        assert!((r.start_index - 2.0).abs() < 1e-6);
+        assert!((r.end_index - 8.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn reproject_roundtrip_preserves_future_anchors_for_all_drawing_kinds() {
+        let old = vec![candle(0), candle(60), candle(120), candle(180)];
+        let new = vec![candle(0), candle(300), candle(600), candle(900)];
+
+        let mut store = DrawingStore::new();
+        let ids = vec![
+            store.add_vertical_line(8.0),
+            store.add_ray(2.0, 8.0, 100.0, 101.0),
+            store.add_rectangle(2.0, 8.0, 110.0, 90.0),
+            store.add_price_range(2.0, 8.0, 110.0, 90.0, true),
+            store.add_time_range(2.0, 8.0, 110.0, 90.0, true),
+            store.add_date_time_range(2.0, 8.0, 110.0, 90.0, true),
+            store.add_long_position(2.0, 8.0, 5.0, 100.0, 95.0, 110.0),
+            store.add_short_position(2.0, 8.0, 5.0, 100.0, 105.0, 90.0),
+            store.add_fib_retracement(2.0, 8.0, 100.0, 101.0),
+            store.add_circle(2.0, 8.0, 100.0, 101.0),
+            store.add_triangle(2.0, 8.0, 10.0, 100.0, 101.0, 102.0),
+            store.add_ellipse(2.0, 8.0, 10.0, 100.0, 101.0, 102.0),
+            store.add_text(8.0, 100.0, "x".to_string()),
+            store.add_brush_stroke(vec![
+                StrokePoint {
+                    index: 2.0,
+                    price: 100.0,
+                },
+                StrokePoint {
+                    index: 8.0,
+                    price: 101.0,
+                },
+                StrokePoint {
+                    index: 10.0,
+                    price: 102.0,
+                },
+            ]),
+            store.add_highlight_stroke(vec![
+                StrokePoint {
+                    index: 2.0,
+                    price: 100.0,
+                },
+                StrokePoint {
+                    index: 8.0,
+                    price: 101.0,
+                },
+                StrokePoint {
+                    index: 10.0,
+                    price: 102.0,
+                },
+            ]),
+        ];
+
+        let before: Vec<Vec<f32>> = ids
+            .iter()
+            .map(|id| x_indices(store.drawing(*id).expect("drawing exists")))
+            .collect();
+
+        store.reproject_x_to_timestamps(&old, &new);
+        store.reproject_x_to_timestamps(&new, &old);
+
+        let after: Vec<Vec<f32>> = ids
+            .iter()
+            .map(|id| x_indices(store.drawing(*id).expect("drawing exists")))
+            .collect();
+
+        for (lhs, rhs) in before.iter().zip(after.iter()) {
+            assert_eq!(lhs.len(), rhs.len());
+            for (a, b) in lhs.iter().zip(rhs.iter()) {
+                assert!((a - b).abs() < 1e-6);
+            }
+        }
+    }
+
+    fn x_indices(d: &Drawing) -> Vec<f32> {
+        match d {
+            Drawing::HorizontalLine(_) => Vec::new(),
+            Drawing::VerticalLine(v) => vec![v.index],
+            Drawing::Ray(r) => vec![r.start_index, r.end_index],
+            Drawing::Rectangle(r) => vec![r.start_index, r.end_index],
+            Drawing::PriceRange(r) => vec![r.start_index, r.end_index],
+            Drawing::TimeRange(r) => vec![r.start_index, r.end_index],
+            Drawing::DateTimeRange(r) => vec![r.start_index, r.end_index],
+            Drawing::LongPosition(p) => vec![p.start_index, p.end_index, p.entry_index],
+            Drawing::ShortPosition(p) => vec![p.start_index, p.end_index, p.entry_index],
+            Drawing::FibRetracement(f) => vec![f.start_index, f.end_index],
+            Drawing::Circle(c) => vec![c.center_index, c.radius_index],
+            Drawing::Triangle(t) => vec![t.p1_index, t.p2_index, t.p3_index],
+            Drawing::Ellipse(e) => vec![e.p1_index, e.p2_index, e.p3_index],
+            Drawing::Text(t) => vec![t.index],
+            Drawing::BrushStroke(s) => s.points.iter().map(|p| p.index).collect(),
+            Drawing::HighlightStroke(s) => s.points.iter().map(|p| p.index).collect(),
+        }
+    }
 
     #[test]
     fn layer_visibility_filters_items() {
