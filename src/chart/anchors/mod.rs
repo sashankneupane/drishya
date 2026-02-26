@@ -11,8 +11,6 @@ pub mod line_like;
 pub mod rectangle;
 pub mod triangle;
 
-use std::f32::consts::FRAC_1_SQRT_2;
-
 use crate::{
     drawings::types::Drawing,
     render::{
@@ -94,19 +92,15 @@ pub(crate) fn anchor_positions(
             },
         ],
 
-        // ── Circle: 1 anchor at 45° on circumference ───────────────────────
-        // Anchor index 0 = the 45° handle. Dragging it resizes the radius.
+        // ── Circle: 2 anchors (center, right-radius) ───────────────────────
+        // 0 = center (moves whole circle), 1 = right-side radius handle.
         Drawing::Circle(c) => {
             let cx = vp.world_x_to_pixel_x(c.center_index, price_pane.x, price_pane.w);
             let cy = ps.y_for_price(c.center_price);
             let rx = vp.world_x_to_pixel_x(c.radius_index, price_pane.x, price_pane.w);
             let ry = ps.y_for_price(c.radius_price);
-            let r = ((rx - cx).powi(2) + (ry - cy).powi(2)).sqrt();
-            // 45° in screen space (y-down)
-            vec![Point {
-                x: cx + r * FRAC_1_SQRT_2,
-                y: cy + r * FRAC_1_SQRT_2,
-            }]
+            let r = ((rx - cx).powi(2) + (ry - cy).powi(2)).sqrt().max(1.0);
+            vec![Point { x: cx, y: cy }, Point { x: cx + r, y: cy }]
         }
 
         // -- Ellipse: 4 properly rotated axis extremes --
@@ -268,7 +262,10 @@ impl Chart {
     /// Move a single anchor to an absolute pixel position.
     /// For shapes where control points can be set directly from a pixel coordinate
     /// (Triangle, Ellipse, Rectangle), we use `drawing_world_price_at` to convert.
-    /// For Circle we compute the new radius from the pixel distance.
+    /// Circle anchors:
+    /// - center anchor moves whole shape
+    /// - right-side radius anchor resizes deterministically along +x axis
+    ///
     /// Locked drawings cannot be edited; returns early.
     pub(crate) fn move_anchor_to_pixel(
         &mut self,
@@ -284,7 +281,9 @@ impl Chart {
             Some(ShapeTag::Triangle) => {
                 self.move_triangle_anchor(drawing_id, anchor_idx, pixel_x, pixel_y)
             }
-            Some(ShapeTag::Circle) => self.move_circle_anchor(drawing_id, pixel_x, pixel_y),
+            Some(ShapeTag::Circle) => {
+                self.move_circle_anchor(drawing_id, anchor_idx, pixel_x, pixel_y)
+            }
             Some(ShapeTag::Ellipse) => {
                 self.move_ellipse_anchor(drawing_id, anchor_idx, pixel_x, pixel_y)
             }
@@ -320,8 +319,8 @@ impl Chart {
         }
     }
 
-    // ── Circle: single 45° anchor → resize radius ───────────────────────────
-    fn move_circle_anchor(&mut self, id: u64, px: f32, py: f32) {
+    // ── Circle anchors: 0=center move, 1=right-radius resize ────────────────
+    fn move_circle_anchor(&mut self, id: u64, idx: usize, px: f32, py: f32) {
         let layout = self.current_layout();
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
         let Some(vp) = self.viewport else {
@@ -344,8 +343,7 @@ impl Chart {
             max: max_price,
         };
 
-        // Read circle state before borrowing mutably
-        let (cx, cy, old_rx, old_ry) = {
+        let (cx_px, cy_px, r_px) = {
             let Some(Drawing::Circle(c)) = self.drawings.drawing(id) else {
                 return;
             };
@@ -353,30 +351,46 @@ impl Chart {
             let cy = ps.y_for_price(c.center_price);
             let rx = vp.world_x_to_pixel_x(c.radius_index, price_pane.x, price_pane.w);
             let ry = ps.y_for_price(c.radius_price);
-            (cx, cy, rx, ry)
+            (
+                cx,
+                cy,
+                ((rx - cx).powi(2) + (ry - cy).powi(2)).sqrt().max(1.0),
+            )
         };
-        let old_r = ((old_rx - cx).powi(2) + (old_ry - cy).powi(2)).sqrt();
-        if old_r < 1e-3 {
-            return;
+
+        match idx {
+            0 => {
+                let Some((world_x, price)) = self.drawing_world_price_at(px, py) else {
+                    return;
+                };
+                let Some((next_r_world_x, next_r_price)) =
+                    self.drawing_world_price_at(px + r_px, py)
+                else {
+                    return;
+                };
+                let Some(Drawing::Circle(c)) = self.drawings.drawing_mut(id) else {
+                    return;
+                };
+                c.center_index = world_x;
+                c.center_price = price;
+                // Keep circle deterministic: radius handle stays on +x axis.
+                c.radius_index = next_r_world_x.max(c.center_index);
+                c.radius_price = next_r_price;
+            }
+            1 => {
+                let new_r = (px - cx_px).abs().max(1.0);
+                let Some((radius_world_x, _)) = self.drawing_world_price_at(cx_px + new_r, cy_px)
+                else {
+                    return;
+                };
+                let Some(Drawing::Circle(c)) = self.drawings.drawing_mut(id) else {
+                    return;
+                };
+                c.radius_index = radius_world_x.max(c.center_index);
+                c.radius_price = c.center_price;
+            }
+            _ => {}
         }
-
-        // New radius = distance from center to the dragged pixel
-        let new_r = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt().max(1.0);
-        let scale = new_r / old_r;
-
-        // Scale radius_point from center in pixel space, then convert back to world
-        let new_rx_px = cx + (old_rx - cx) * scale;
-        let new_ry_px = cy + (old_ry - cy) * scale;
-        let Some((new_r_world_x, new_r_price)) = self.drawing_world_price_at(new_rx_px, new_ry_px)
-        else {
-            return;
-        };
-
-        let Some(Drawing::Circle(c)) = self.drawings.drawing_mut(id) else {
-            return;
-        };
-        c.radius_index = new_r_world_x;
-        c.radius_price = new_r_price;
     }
 
     // ── Ellipse: 4 extreme anchors ──────────────────────────────────────────
