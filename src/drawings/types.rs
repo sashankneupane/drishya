@@ -48,6 +48,39 @@ pub struct Rectangle {
 }
 
 #[derive(Debug, Clone)]
+pub struct PriceRange {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub top_price: f64,
+    pub bottom_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TimeRange {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub top_price: f64,
+    pub bottom_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DateTimeRange {
+    pub id: DrawingId,
+    pub start_index: f32,
+    pub end_index: f32,
+    pub top_price: f64,
+    pub bottom_price: f64,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+}
+
+#[derive(Debug, Clone)]
 pub struct LongPosition {
     pub id: DrawingId,
     pub start_index: f32,
@@ -88,6 +121,9 @@ pub enum Drawing {
     VerticalLine(VerticalLine),
     Ray(Ray),
     Rectangle(Rectangle),
+    PriceRange(PriceRange),
+    TimeRange(TimeRange),
+    DateTimeRange(DateTimeRange),
     LongPosition(LongPosition),
     ShortPosition(ShortPosition),
     FibRetracement(FibRetracement),
@@ -100,6 +136,9 @@ impl Drawing {
             Drawing::VerticalLine(item) => item.id,
             Drawing::Ray(item) => item.id,
             Drawing::Rectangle(item) => item.id,
+            Drawing::PriceRange(item) => item.id,
+            Drawing::TimeRange(item) => item.id,
+            Drawing::DateTimeRange(item) => item.id,
             Drawing::LongPosition(item) => item.id,
             Drawing::ShortPosition(item) => item.id,
             Drawing::FibRetracement(item) => item.id,
@@ -112,6 +151,9 @@ impl Drawing {
             Drawing::VerticalLine(item) => item.layer_id.as_str(),
             Drawing::Ray(item) => item.layer_id.as_str(),
             Drawing::Rectangle(item) => item.layer_id.as_str(),
+            Drawing::PriceRange(item) => item.layer_id.as_str(),
+            Drawing::TimeRange(item) => item.layer_id.as_str(),
+            Drawing::DateTimeRange(item) => item.layer_id.as_str(),
             Drawing::LongPosition(item) => item.layer_id.as_str(),
             Drawing::ShortPosition(item) => item.layer_id.as_str(),
             Drawing::FibRetracement(item) => item.layer_id.as_str(),
@@ -124,6 +166,9 @@ impl Drawing {
             Drawing::VerticalLine(item) => item.group_id.as_deref(),
             Drawing::Ray(item) => item.group_id.as_deref(),
             Drawing::Rectangle(item) => item.group_id.as_deref(),
+            Drawing::PriceRange(item) => item.group_id.as_deref(),
+            Drawing::TimeRange(item) => item.group_id.as_deref(),
+            Drawing::DateTimeRange(item) => item.group_id.as_deref(),
             Drawing::LongPosition(item) => item.group_id.as_deref(),
             Drawing::ShortPosition(item) => item.group_id.as_deref(),
             Drawing::FibRetracement(item) => item.group_id.as_deref(),
@@ -136,6 +181,9 @@ impl Drawing {
             Drawing::VerticalLine(item) => item.layer_id = layer_id.to_string(),
             Drawing::Ray(item) => item.layer_id = layer_id.to_string(),
             Drawing::Rectangle(item) => item.layer_id = layer_id.to_string(),
+            Drawing::PriceRange(item) => item.layer_id = layer_id.to_string(),
+            Drawing::TimeRange(item) => item.layer_id = layer_id.to_string(),
+            Drawing::DateTimeRange(item) => item.layer_id = layer_id.to_string(),
             Drawing::LongPosition(item) => item.layer_id = layer_id.to_string(),
             Drawing::ShortPosition(item) => item.layer_id = layer_id.to_string(),
             Drawing::FibRetracement(item) => item.layer_id = layer_id.to_string(),
@@ -149,6 +197,9 @@ impl Drawing {
             Drawing::VerticalLine(item) => item.group_id = next,
             Drawing::Ray(item) => item.group_id = next,
             Drawing::Rectangle(item) => item.group_id = next,
+            Drawing::PriceRange(item) => item.group_id = next,
+            Drawing::TimeRange(item) => item.group_id = next,
+            Drawing::DateTimeRange(item) => item.group_id = next,
             Drawing::LongPosition(item) => item.group_id = next,
             Drawing::ShortPosition(item) => item.group_id = next,
             Drawing::FibRetracement(item) => item.group_id = next,

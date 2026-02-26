@@ -114,6 +114,99 @@ impl DrawingStore {
         id
     }
 
+    pub fn add_price_range(
+        &mut self,
+        start_index: f32,
+        end_index: f32,
+        top_price: f64,
+        bottom_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        let (start_index, end_index) = if start_index <= end_index {
+            (start_index, end_index)
+        } else {
+            (end_index, start_index)
+        };
+        let (top_price, bottom_price) = if top_price >= bottom_price {
+            (top_price, bottom_price)
+        } else {
+            (bottom_price, top_price)
+        };
+
+        self.items.push(Drawing::PriceRange(PriceRange {
+            id,
+            start_index,
+            end_index,
+            top_price,
+            bottom_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+        }));
+        id
+    }
+
+    pub fn add_time_range(
+        &mut self,
+        start_index: f32,
+        end_index: f32,
+        top_price: f64,
+        bottom_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        let (start_index, end_index) = if start_index <= end_index {
+            (start_index, end_index)
+        } else {
+            (end_index, start_index)
+        };
+        let (top_price, bottom_price) = if top_price >= bottom_price {
+            (top_price, bottom_price)
+        } else {
+            (bottom_price, top_price)
+        };
+
+        self.items.push(Drawing::TimeRange(TimeRange {
+            id,
+            start_index,
+            end_index,
+            top_price,
+            bottom_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+        }));
+        id
+    }
+
+    pub fn add_date_time_range(
+        &mut self,
+        start_index: f32,
+        end_index: f32,
+        top_price: f64,
+        bottom_price: f64,
+    ) -> DrawingId {
+        let id = self.alloc_id();
+        let (start_index, end_index) = if start_index <= end_index {
+            (start_index, end_index)
+        } else {
+            (end_index, start_index)
+        };
+        let (top_price, bottom_price) = if top_price >= bottom_price {
+            (top_price, bottom_price)
+        } else {
+            (bottom_price, top_price)
+        };
+
+        self.items.push(Drawing::DateTimeRange(DateTimeRange {
+            id,
+            start_index,
+            end_index,
+            top_price,
+            bottom_price,
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+        }));
+        id
+    }
+
     pub fn add_long_position(
         &mut self,
         start_index: f32,

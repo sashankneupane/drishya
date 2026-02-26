@@ -33,6 +33,24 @@ pub enum DrawingCommand {
         top_price: f64,
         bottom_price: f64,
     },
+    AddPriceRange {
+        start_index: f32,
+        end_index: f32,
+        top_price: f64,
+        bottom_price: f64,
+    },
+    AddTimeRange {
+        start_index: f32,
+        end_index: f32,
+        top_price: f64,
+        bottom_price: f64,
+    },
+    AddDateTimeRange {
+        start_index: f32,
+        end_index: f32,
+        top_price: f64,
+        bottom_price: f64,
+    },
     AddLongPosition {
         start_index: f32,
         end_index: f32,
@@ -96,6 +114,33 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             bottom_price,
         } => {
             let id = store.add_rectangle(start_index, end_index, top_price, bottom_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddPriceRange {
+            start_index,
+            end_index,
+            top_price,
+            bottom_price,
+        } => {
+            let id = store.add_price_range(start_index, end_index, top_price, bottom_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddTimeRange {
+            start_index,
+            end_index,
+            top_price,
+            bottom_price,
+        } => {
+            let id = store.add_time_range(start_index, end_index, top_price, bottom_price);
+            DrawingCommandResult::Added { id }
+        }
+        DrawingCommand::AddDateTimeRange {
+            start_index,
+            end_index,
+            top_price,
+            bottom_price,
+        } => {
+            let id = store.add_date_time_range(start_index, end_index, top_price, bottom_price);
             DrawingCommandResult::Added { id }
         }
         DrawingCommand::AddLongPosition {
