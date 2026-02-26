@@ -62,6 +62,19 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   configPanelOverlay.className = "absolute inset-0 pointer-events-none z-40";
   stage.appendChild(configPanelOverlay);
 
+  const caretOverlay = document.createElement("div");
+  caretOverlay.className = "absolute inset-0 pointer-events-none z-50";
+  caretOverlay.setAttribute("aria-hidden", "true");
+  caretOverlay.style.display = "none";
+  stage.appendChild(caretOverlay);
+
+  if (typeof document !== "undefined" && !document.getElementById("drishya-caret-style")) {
+    const caretStyle = document.createElement("style");
+    caretStyle.id = "drishya-caret-style";
+    caretStyle.textContent = "@keyframes drishya-caret-blink{0%,49%{opacity:1}50%,100%{opacity:0}}";
+    document.head.appendChild(caretStyle);
+  }
+
   // Mount elements to documented DOM before WASM initialization
   mainRow.appendChild(stage);
   root.appendChild(mainRow);
@@ -243,10 +256,31 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     configPanelOverlay.appendChild(configPanelEl);
   };
 
+  const updateTextCaret = () => {
+    const bounds = chart.selectedTextCaretBounds?.() ?? null;
+    caretOverlay.innerHTML = "";
+    if (bounds) {
+      const caret = document.createElement("div");
+      caret.style.position = "absolute";
+      caret.style.left = `${bounds.x}px`;
+      caret.style.top = `${bounds.y}px`;
+      caret.style.width = "2px";
+      caret.style.height = `${bounds.height}px`;
+      caret.style.backgroundColor = bounds.color;
+      caret.style.animation = "drishya-caret-blink 1s step-end infinite";
+      caret.style.pointerEvents = "none";
+      caretOverlay.appendChild(caret);
+      caretOverlay.style.display = "";
+    } else {
+      caretOverlay.style.display = "none";
+    }
+  };
+
   const draw = () => {
     chart.draw();
     treeHandle.refresh();
     refreshConfigPanel();
+    updateTextCaret();
     savePersistedState();
   };
 
@@ -289,9 +323,49 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     if (isEditableTarget) return;
 
     if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const key = event.key.toLowerCase();
+    const key = event.key;
 
-    const mode = hotkeyToolMap[key];
+    // Inline text editing: when a Text drawing is selected and not locked, type directly
+    const selectedId = chart.selectedDrawingId();
+    if (selectedId !== null) {
+      const config = chart.getSelectedDrawingConfig();
+      const isTextDrawing =
+        config && typeof config.text_content === "string" && !config.locked;
+      if (isTextDrawing && config) {
+        let text = config.text_content ?? "";
+        if (event.key === "Escape") {
+          chart.clearSelectedDrawing();
+          draw();
+          event.preventDefault();
+          return;
+        }
+        if (event.key === "Backspace") {
+          text = text.slice(0, -1);
+          chart.setDrawingConfig(selectedId, { text_content: text });
+          draw();
+          event.preventDefault();
+          return;
+        }
+        // Delete is not intercepted here; it falls through to delete the drawing
+        if (event.key === "Enter") {
+          text += "\n";
+          chart.setDrawingConfig(selectedId, { text_content: text });
+          draw();
+          event.preventDefault();
+          return;
+        }
+        if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          text += key;
+          chart.setDrawingConfig(selectedId, { text_content: text });
+          draw();
+          event.preventDefault();
+          return;
+        }
+      }
+    }
+
+    const keyLower = key.toLowerCase();
+    const mode = hotkeyToolMap[keyLower];
     if (mode) {
       event.preventDefault();
       const m = mode as string;
@@ -304,7 +378,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       return;
     }
 
-    if (key === "c") {
+    if (keyLower === "c") {
       clearDrawings();
       draw();
       return;
@@ -329,7 +403,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       return;
     }
 
-    if (key === "t") {
+    if (keyLower === "t") {
       controller.toggleTheme();
     }
   };

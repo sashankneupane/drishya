@@ -230,6 +230,8 @@ export class DrishyaChartClient {
         fill_opacity: parsed.fill_opacity ?? null,
         stroke_width: parsed.stroke_width ?? null,
         stroke_type: parsed.stroke_type ?? "solid",
+        font_size: parsed.font_size ?? null,
+        text_content: parsed.text_content ?? null,
         locked: !!parsed.locked,
         supports_fill: !!parsed.supports_fill
       };
@@ -246,8 +248,27 @@ export class DrishyaChartClient {
     if (config.fill_opacity !== undefined) payload.fill_opacity = config.fill_opacity;
     if (config.stroke_width !== undefined) payload.stroke_width = config.stroke_width;
     if (config.stroke_type !== undefined) payload.stroke_type = config.stroke_type ?? null;
+    if (config.font_size !== undefined) payload.font_size = config.font_size;
+    if (config.text_content !== undefined) payload.text_content = config.text_content ?? "";
     if (config.locked !== undefined) payload.locked = config.locked;
     this.wasm.set_drawing_config?.(id, JSON.stringify(payload));
+  }
+
+  selectedTextCaretBounds(): { x: number; y: number; height: number; color: string } | null {
+    const raw = this.wasm.selected_text_caret_bounds?.();
+    if (!raw || raw === "null") return null;
+    try {
+      const parsed = JSON.parse(raw) as { x: number; y: number; height: number; color: string };
+      if (typeof parsed.x !== "number" || typeof parsed.y !== "number") return null;
+      return {
+        x: parsed.x,
+        y: parsed.y,
+        height: parsed.height ?? 14,
+        color: parsed.color ?? "#e5e7eb"
+      };
+    } catch {
+      return null;
+    }
   }
 
   getSelectedDrawingConfig(): DrawingConfig | null {
@@ -261,6 +282,8 @@ export class DrishyaChartClient {
         fill_opacity: parsed.fill_opacity ?? null,
         stroke_width: parsed.stroke_width ?? null,
         stroke_type: parsed.stroke_type ?? "solid",
+        font_size: parsed.font_size ?? null,
+        text_content: parsed.text_content ?? null,
         locked: !!parsed.locked,
         supports_fill: !!parsed.supports_fill
       };

@@ -7,4 +7,5 @@ mod preview;
 mod range;
 mod ray;
 mod rectangle;
+mod text;
 mod triangle;

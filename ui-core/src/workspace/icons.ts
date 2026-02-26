@@ -18,6 +18,7 @@ export type WorkspaceIconName =
   | "triangle"
   | "circle"
   | "ellipse"
+  | "text"
   | "trash"
   | "theme"
   | "theme-off"
@@ -29,7 +30,11 @@ export type WorkspaceIconName =
   | "search"
   | "crosshair"
   | "dot"
-  | "settings";
+  | "settings"
+  | "grip-vertical"
+  | "grip-horizontal"
+  | "lock"
+  | "lock-open";
 
 export function makeSvgIcon(name: WorkspaceIconName | string, className = "drishya-icon"): SVGSVGElement {
   const svg = document.createElementNS(NS, "svg");
@@ -77,7 +82,12 @@ export function makeSvgIcon(name: WorkspaceIconName | string, className = "drish
     "settings": ["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"],
     "triangle": ["M12 3l9 17H3L12 3z"],
     "circle": ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"],
-    "ellipse": ["M22 12c0 4.418-4.477 8-10 8s-10-3.582-10-8 4.477-8 10-8 10 3.582 10 8z"]
+    "ellipse": ["M22 12c0 4.418-4.477 8-10 8s-10-3.582-10-8 4.477-8 10-8 10 3.582 10 8z"],
+    "text": ["M4 7V4h16v3", "M9 20h6", "M12 4v16"],
+    "grip-vertical": ["M8 4h2", "M8 12h2", "M8 20h2", "M14 4h2", "M14 12h2", "M14 20h2"],
+    "grip-horizontal": ["M4 8h2", "M4 14h2", "M12 8h2", "M12 14h2", "M20 8h2", "M20 14h2"],
+    "lock": ["M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2z", "M7 11V7a5 5 0 0110 0v4"],
+    "lock-open": ["M7 11V7a5 5 0 019.9-1", "M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2z"]
   };
 
   const ds = icons[name] || [];

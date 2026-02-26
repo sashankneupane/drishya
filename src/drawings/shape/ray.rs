@@ -1,6 +1,6 @@
 use crate::drawings::{
     commands::DrawingCommand,
-    types::{Drawing, Ray, DEFAULT_DRAWING_LAYER},
+    types::{Drawing, DrawingStyle, Ray, DEFAULT_DRAWING_LAYER},
 };
 
 pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> Ray {
@@ -12,6 +12,7 @@ pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> Ray {
         end_price: price + price_span * 0.04,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -25,6 +26,7 @@ pub fn from_points(start_index: f32, start_price: f64, end_index: f32, end_price
             end_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }
     } else {
         Ray {
@@ -35,6 +37,7 @@ pub fn from_points(start_index: f32, start_price: f64, end_index: f32, end_price
             end_price: start_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }
     }
 }

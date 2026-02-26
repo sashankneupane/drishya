@@ -254,6 +254,7 @@ impl Chart {
             self.viewport,
             &self.candles,
             self.selected_drawing_id(),
+            Some(self.appearance_config()),
         ));
 
         if let Some(preview) = self.active_drawing_preview() {
@@ -341,6 +342,52 @@ impl Chart {
         }
 
         out
+    }
+
+    /// Returns caret bounds for the selected Text drawing when not locked, for inline edit mode.
+    /// Returns (x, y, height, color) in layout pixels, or None.
+    pub fn selected_text_caret_bounds(&self) -> Option<(f32, f32, f32, String)> {
+        use crate::drawings::types::Drawing;
+
+        let id = self.selected_drawing_id()?;
+        let drawing = self.drawings.drawing(id)?;
+        let Drawing::Text(t) = drawing else {
+            return None;
+        };
+        if t.style.locked {
+            return None;
+        }
+
+        let layout = self.current_layout();
+        let price_pane = layout.price_pane()?;
+        let vp = self.viewport?;
+
+        let visible = self.visible_data();
+        if visible.is_empty() {
+            return None;
+        }
+        let (min_price, max_price, _) = self.compute_visible_bounds(&visible);
+        let (min_price, max_price) = apply_y_zoom(
+            min_price,
+            max_price,
+            self.pane_y_zoom_factor(&PaneId::Price),
+            self.pane_y_pan_factor(&PaneId::Price),
+        );
+        let ps = crate::scale::PriceScale {
+            pane: price_pane,
+            min: min_price,
+            max: max_price,
+        };
+
+        let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w);
+        let y = ps.y_for_price(t.price);
+        let size = t.style.font_size.unwrap_or(14.0);
+        let text_width = (t.text.chars().count() as f32 * size * 0.6).max(0.0);
+        let caret_x = x + 4.0 + text_width;
+        let caret_y = y - size * 0.5;
+        let color = t.style.stroke_color.as_deref().unwrap_or("#e5e7eb").to_string();
+
+        Some((caret_x, caret_y, size, color))
     }
 }
 

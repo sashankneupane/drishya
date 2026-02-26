@@ -454,6 +454,31 @@ impl Chart {
                         paint_order: paint_order as u32,
                     }));
                 }
+                Drawing::Text(t) => {
+                    if !matches!(target_pane, PaneId::Price) {
+                        continue;
+                    }
+                    let Some(vp) = self.viewport else {
+                        continue;
+                    };
+                    let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w.max(1.0));
+                    let y = ps.y_for_price(t.price);
+                    let size = t.style.font_size.unwrap_or(14.0);
+                    let pad = 4.0;
+                    let est_w = (t.text.len() as f32 * size * 0.6).max(40.0) + pad;
+                    let h = size + pad * 2.0;
+                    primitives.push(HitPrimitive::Rect(RectPrimitive {
+                        primitive_id: t.id,
+                        pane_id: PaneId::Price,
+                        rect: crate::types::Rect {
+                            x: x - 2.0,
+                            y: y - h * 0.5,
+                            w: est_w,
+                            h,
+                        },
+                        paint_order: paint_order as u32,
+                    }));
+                }
             }
         }
 

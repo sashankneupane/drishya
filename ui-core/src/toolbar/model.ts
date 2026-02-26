@@ -9,7 +9,11 @@ export type DrawingToolId =
   | "date_time_range"
   | "fib"
   | "long"
-  | "short";
+  | "short"
+  | "triangle"
+  | "circle"
+  | "ellipse"
+  | "text";
 
 export interface DrawingToolDef {
   id: DrawingToolId;
@@ -28,7 +32,11 @@ export const DRAWING_TOOLS: readonly DrawingToolDef[] = [
   { id: "date_time_range", label: "DT-Range", hotkey: "U" },
   { id: "fib", label: "Fib", hotkey: "F" },
   { id: "long", label: "Long", hotkey: "N" },
-  { id: "short", label: "Short", hotkey: "S" }
+  { id: "short", label: "Short", hotkey: "S" },
+  { id: "triangle", label: "Triangle", hotkey: "T" },
+  { id: "circle", label: "Circle", hotkey: "C" },
+  { id: "ellipse", label: "Ellipse", hotkey: "E" },
+  { id: "text", label: "Text", hotkey: "X" }
 ];
 
 export function isDrawingToolId(value: string): value is DrawingToolId {

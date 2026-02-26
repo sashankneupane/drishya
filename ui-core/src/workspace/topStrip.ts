@@ -4,7 +4,6 @@ import { createIndicatorModal } from "./IndicatorModal.js";
 import { createConfigModal } from "./ConfigModal.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
-import type { CursorMode } from "../wasm/contracts.js";
 
 interface TopStripOptions {
   chart: DrishyaChartClient;
@@ -133,31 +132,6 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
     });
   };
   leftSide.appendChild(candleBtn);
-
-  // 4. Cursor Selector
-  const cursorBtn = document.createElement("button");
-  cursorBtn.className = BTN_MINIMAL;
-  const updateCursorIcon = (mode: CursorMode) => {
-    cursorBtn.innerHTML = "";
-    cursorBtn.appendChild(makeSvgIcon(mode === "normal" ? "select" : mode, "h-3.5 w-3.5"));
-  };
-  updateCursorIcon(controller.getState().cursorMode);
-  cursorBtn.onclick = (e) => {
-    e.stopPropagation();
-    const modes: { label: string, value: string }[] = [
-      { label: "Crosshair", value: "crosshair" },
-      { label: "Dot", value: "dot" },
-      { label: "Normal (No Lines)", value: "normal" }
-    ];
-    createDropdown(cursorBtn, modes, (val) => {
-      const mode = val as CursorMode;
-      controller.setCursorMode(mode);
-      options.chart.setCursorMode(mode);
-      updateCursorIcon(mode);
-      options.onMutate?.();
-    });
-  };
-  leftSide.appendChild(cursorBtn);
 
   // Config (appearance)
   const configBtn = document.createElement("button");

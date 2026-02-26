@@ -6,4 +6,5 @@ pub mod position;
 pub mod range;
 pub mod ray;
 pub mod rectangle;
+pub mod text;
 pub mod triangle;

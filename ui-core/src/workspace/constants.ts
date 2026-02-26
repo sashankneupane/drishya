@@ -60,5 +60,6 @@ export const WORKSPACE_DRAW_TOOLS: readonly WorkspaceToolDef[] = [
       { id: "long", hotkey: "N", title: "Long position" },
       { id: "short", hotkey: "S", title: "Short position" }
     ]
-  }
+  },
+  { id: "text", hotkey: "X", title: "Text" }
 ];

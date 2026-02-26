@@ -3,7 +3,7 @@
 //! This store is intentionally minimal and deterministic: append, remove,
 //! iterate. Higher-level semantics live in the command layer.
 
-use crate::drawings::types::*;
+use crate::drawings::types::{DrawingStyle, *};
 use std::collections::HashSet;
 
 #[derive(Debug, Default)]
@@ -42,6 +42,7 @@ impl DrawingStore {
             price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -53,6 +54,7 @@ impl DrawingStore {
             index,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -79,6 +81,7 @@ impl DrawingStore {
             end_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -110,6 +113,7 @@ impl DrawingStore {
             bottom_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -141,6 +145,7 @@ impl DrawingStore {
             bottom_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -172,6 +177,7 @@ impl DrawingStore {
             bottom_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -203,6 +209,7 @@ impl DrawingStore {
             bottom_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -233,6 +240,7 @@ impl DrawingStore {
             target_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -263,6 +271,7 @@ impl DrawingStore {
             target_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -283,6 +292,7 @@ impl DrawingStore {
             end_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -303,6 +313,7 @@ impl DrawingStore {
             radius_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -327,6 +338,7 @@ impl DrawingStore {
             p3_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }
@@ -351,6 +363,21 @@ impl DrawingStore {
             p3_price,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
+        }));
+        id
+    }
+
+    pub fn add_text(&mut self, index: f32, price: f64, text: String) -> DrawingId {
+        let id = self.alloc_id();
+        self.items.push(Drawing::Text(Text {
+            id,
+            index,
+            price,
+            text: text.is_empty().then(|| "Text".to_string()).unwrap_or(text),
+            layer_id: DEFAULT_DRAWING_LAYER.to_string(),
+            group_id: None,
+            style: DrawingStyle::default(),
         }));
         id
     }

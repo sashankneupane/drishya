@@ -96,6 +96,11 @@ pub enum DrawingCommand {
         p2_price: f64,
         p3_price: f64,
     },
+    AddText {
+        index: f32,
+        price: f64,
+        text: String,
+    },
     RemoveById {
         id: DrawingId,
     },
@@ -123,6 +128,14 @@ pub enum DrawingCommand {
     SetDrawingStrokeType {
         id: DrawingId,
         stroke_type: Option<StrokeType>,
+    },
+    SetDrawingFontSize {
+        id: DrawingId,
+        font_size: Option<f32>,
+    },
+    SetDrawingTextContent {
+        id: DrawingId,
+        text: String,
     },
 }
 
@@ -265,6 +278,14 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
             let id = store.add_ellipse(p1_index, p2_index, p3_index, p1_price, p2_price, p3_price);
             DrawingCommandResult::Added { id }
         }
+        DrawingCommand::AddText {
+            index,
+            price,
+            text,
+        } => {
+            let id = store.add_text(index, price, text);
+            DrawingCommandResult::Added { id }
+        }
         DrawingCommand::RemoveById { id } => {
             let removed = store.remove(id);
             DrawingCommandResult::Removed { removed }
@@ -308,6 +329,20 @@ pub fn execute_command(store: &mut DrawingStore, cmd: DrawingCommand) -> Drawing
         DrawingCommand::SetDrawingStrokeType { id, stroke_type } => {
             if let Some(d) = store.drawing_mut(id) {
                 d.style_mut().stroke_type = stroke_type;
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::SetDrawingFontSize { id, font_size } => {
+            if let Some(d) = store.drawing_mut(id) {
+                d.style_mut().font_size = font_size;
+            }
+            DrawingCommandResult::Updated
+        }
+        DrawingCommand::SetDrawingTextContent { id, text } => {
+            if let Some(d) = store.drawing_mut(id) {
+                if let crate::drawings::types::Drawing::Text(t) = d {
+                    t.text = text;
+                }
             }
             DrawingCommandResult::Updated
         }

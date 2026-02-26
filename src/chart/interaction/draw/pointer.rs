@@ -57,13 +57,15 @@ impl Chart {
             crate::chart::tools::DrawingToolMode::Select => {
                 // First: check if clicking on an anchor of the currently selected shape
                 if let Some(sel_id) = self.selected_drawing_id {
-                    if let Some(anchor_idx) = self.anchor_index_at(x_pixels, y_pixels) {
-                        self.drawing_interaction.pointer_down = true;
-                        self.drawing_interaction.dragged = false;
-                        self.drawing_interaction.dragging_drawing_id = Some(sel_id);
-                        self.drawing_interaction.dragging_anchor_index = Some(anchor_idx);
-                        self.drawing_interaction.last_pointer = Some(point);
-                        return true;
+                    if !self.is_drawing_locked(sel_id) {
+                        if let Some(anchor_idx) = self.anchor_index_at(x_pixels, y_pixels) {
+                            self.drawing_interaction.pointer_down = true;
+                            self.drawing_interaction.dragged = false;
+                            self.drawing_interaction.dragging_drawing_id = Some(sel_id);
+                            self.drawing_interaction.dragging_anchor_index = Some(anchor_idx);
+                            self.drawing_interaction.last_pointer = Some(point);
+                            return true;
+                        }
                     }
                 }
 
@@ -73,39 +75,46 @@ impl Chart {
                     self.selected_drawing_id = Some(hit.primitive_id);
                     self.selected_series_id = None;
                     self.drawing_interaction.pointer_down = true;
-                    self.drawing_interaction.dragging_drawing_id = Some(hit.primitive_id);
-                    self.drawing_interaction.dragging_anchor_index = None;
-                    // For anchor-managed shapes, disable edge/corner resize so
-                    // that dragging the body always moves the whole shape.
-                    let is_anchor_shape = self
-                        .drawings
-                        .drawing(hit.primitive_id)
-                        .map(|d| {
-                            matches!(
-                                d,
-                                crate::drawings::types::Drawing::Triangle(_)
-                                    | crate::drawings::types::Drawing::Circle(_)
-                                    | crate::drawings::types::Drawing::Ellipse(_)
-                                    | crate::drawings::types::Drawing::Rectangle(_)
-                            )
-                        })
-                        .unwrap_or(false);
-                    self.drawing_interaction.dragging_resize_target = if is_anchor_shape {
-                        None
-                    } else {
-                        match hit.local {
-                            LocalHitInfo::Rect { target }
-                                if self.is_resizable_primitive(hit.primitive_id) =>
-                            {
-                                if matches!(target, RectHitTarget::Inside) {
-                                    None
-                                } else {
-                                    Some(target)
+                    // Only start drag/resize if drawing is not locked
+                    if !self.is_drawing_locked(hit.primitive_id) {
+                        self.drawing_interaction.dragging_drawing_id = Some(hit.primitive_id);
+                        self.drawing_interaction.dragging_anchor_index = None;
+                        // For anchor-managed shapes, disable edge/corner resize so
+                        // that dragging the body always moves the whole shape.
+                        let is_anchor_shape = self
+                            .drawings
+                            .drawing(hit.primitive_id)
+                            .map(|d| {
+                                matches!(
+                                    d,
+                                    crate::drawings::types::Drawing::Triangle(_)
+                                        | crate::drawings::types::Drawing::Circle(_)
+                                        | crate::drawings::types::Drawing::Ellipse(_)
+                                        | crate::drawings::types::Drawing::Rectangle(_)
+                                )
+                            })
+                            .unwrap_or(false);
+                        self.drawing_interaction.dragging_resize_target = if is_anchor_shape {
+                            None
+                        } else {
+                            match hit.local {
+                                LocalHitInfo::Rect { target }
+                                    if self.is_resizable_primitive(hit.primitive_id) =>
+                                {
+                                    if matches!(target, RectHitTarget::Inside) {
+                                        None
+                                    } else {
+                                        Some(target)
+                                    }
                                 }
+                                _ => None,
                             }
-                            _ => None,
-                        }
-                    };
+                        };
+                    } else {
+                        self.drawing_interaction.dragging_drawing_id = None;
+                        self.drawing_interaction.dragging_anchor_index = None;
+                        self.drawing_interaction.dragging_resize_target = None;
+                    }
                     self.drawing_interaction.last_pointer = Some(point);
                     return true;
                 }
@@ -119,6 +128,11 @@ impl Chart {
             }
             crate::chart::tools::DrawingToolMode::VerticalLine => {
                 self.add_vertical_line_at_x(x_pixels);
+                self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
+                true
+            }
+            crate::chart::tools::DrawingToolMode::Text => {
+                self.add_text_at(x_pixels, y_pixels);
                 self.set_drawing_tool_mode(crate::chart::tools::DrawingToolMode::Select);
                 true
             }

@@ -23,6 +23,8 @@ export interface DrawingConfig {
   fill_opacity: number | null;
   stroke_width: number | null;
   stroke_type?: StrokeType | null;
+  font_size?: number | null;
+  text_content?: string | null;
   locked: boolean;
   supports_fill: boolean;
 }
@@ -103,6 +105,7 @@ export interface WasmChartLike {
   drawing_config?(drawingId: number | bigint): string;
   set_drawing_config?(drawingId: number | bigint, json: string): void;
   selected_drawing_config?(): string;
+  selected_text_caret_bounds?(): string;
   add_sma_overlay?(period: number): void;
   add_bbands_overlay?(period: number, stdMult: number): void;
   add_rsi_pane_indicator?(period: number): void;

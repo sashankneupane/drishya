@@ -1,6 +1,6 @@
 use crate::drawings::{
     commands::DrawingCommand,
-    types::{Circle, Drawing, DEFAULT_DRAWING_LAYER},
+    types::{Circle, Drawing, DrawingStyle, DEFAULT_DRAWING_LAYER},
 };
 
 pub fn from_points(start_index: f32, start_price: f64, end_index: f32, end_price: f64) -> Circle {
@@ -12,6 +12,7 @@ pub fn from_points(start_index: f32, start_price: f64, end_index: f32, end_price
         radius_price: end_price,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 

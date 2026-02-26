@@ -32,6 +32,10 @@ struct DrawingConfigJson {
     stroke_width: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stroke_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    font_size: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text_content: Option<String>,
     locked: bool,
     supports_fill: bool,
 }
@@ -229,6 +233,7 @@ impl WasmChart {
             DrawingToolMode::Triangle => "triangle",
             DrawingToolMode::Circle => "circle",
             DrawingToolMode::Ellipse => "ellipse",
+            DrawingToolMode::Text => "text",
         }
         .to_string()
     }
@@ -300,7 +305,7 @@ impl WasmChart {
 
     /// Returns drawing config (stroke, fill, locked, supports_fill) as JSON.
     pub fn drawing_config(&self, drawing_id: u64) -> Result<String, JsValue> {
-        let (style, supports_fill) = self
+        let (style, supports_fill, text_content) = self
             .chart
             .drawing_config_with_capabilities(drawing_id)
             .ok_or_else(|| JsValue::from_str("Drawing not found"))?;
@@ -314,6 +319,8 @@ impl WasmChart {
                 StrokeType::Dotted => "dotted".to_string(),
                 StrokeType::Dashed => "dashed".to_string(),
             }),
+            font_size: style.font_size,
+            text_content,
             locked: style.locked,
             supports_fill,
         };
@@ -358,6 +365,17 @@ impl WasmChart {
             let locked = obj.get("locked").and_then(|x| x.as_bool()).unwrap_or(false);
             self.chart.set_drawing_locked(drawing_id, locked);
         }
+        if obj.contains_key("font_size") {
+            let v = obj.get("font_size").and_then(|x| x.as_f64()).map(|f| f as f32);
+            self.chart.set_drawing_font_size(drawing_id, v);
+        }
+        if obj.contains_key("text_content") {
+            let t = obj
+                .get("text_content")
+                .and_then(|x| x.as_str())
+                .unwrap_or("");
+            self.chart.set_drawing_text_content(drawing_id, t);
+        }
         Ok(())
     }
 
@@ -366,6 +384,25 @@ impl WasmChart {
         match self.chart.selected_drawing_id() {
             Some(id) => self.drawing_config(id),
             None => Ok("{}".to_string()),
+        }
+    }
+
+    /// Returns caret bounds for selected Text drawing when not locked (inline edit mode).
+    /// Returns JSON `null` or `{"x":100,"y":50,"height":14,"color":"#e5e7eb"}`.
+    pub fn selected_text_caret_bounds(&self) -> Result<String, JsValue> {
+        match self.chart.selected_text_caret_bounds() {
+            Some((x, y, height, color)) => {
+                #[derive(serde::Serialize)]
+                struct CaretBounds {
+                    x: f32,
+                    y: f32,
+                    height: f32,
+                    color: String,
+                }
+                serde_json::to_string(&CaretBounds { x, y, height, color })
+                    .map_err(|e| JsValue::from_str(&format!("Serialize error: {e}")))
+            }
+            None => Ok("null".to_string()),
         }
     }
 
@@ -384,6 +421,11 @@ impl WasmChart {
     /// Add a rectangle drawing centered at clicked position.
     pub fn add_rectangle_at(&mut self, x: f32, y: f32) {
         self.chart.add_rectangle_at(x, y);
+    }
+
+    /// Add a text drawing at clicked position.
+    pub fn add_text_at(&mut self, x: f32, y: f32) {
+        self.chart.add_text_at(x, y);
     }
 
     /// Add a rectangle drawing from two pixel points.
@@ -811,8 +853,9 @@ fn parse_drawing_tool_mode(mode: &str) -> Result<DrawingToolMode, JsValue> {
         "triangle" => Ok(DrawingToolMode::Triangle),
         "circle" => Ok(DrawingToolMode::Circle),
         "ellipse" => Ok(DrawingToolMode::Ellipse),
+        "text" => Ok(DrawingToolMode::Text),
         other => Err(JsValue::from_str(&format!(
-            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, price_range, time_range, date_time_range, fib, long, short, triangle, circle, ellipse"
+            "Invalid drawing tool mode '{other}'. Use: select, hline, vline, ray, rectangle, price_range, time_range, date_time_range, fib, long, short, triangle, circle, ellipse, text"
         ))),
     }
 }

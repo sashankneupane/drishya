@@ -1,7 +1,7 @@
 use crate::drawings::{
     commands::DrawingCommand,
     hit_test::{RectCorner, RectEdge, RectHitTarget},
-    types::{DateTimeRange, Drawing, PriceRange, TimeRange, DEFAULT_DRAWING_LAYER},
+    types::{DateTimeRange, Drawing, DrawingStyle, PriceRange, TimeRange, DEFAULT_DRAWING_LAYER},
 };
 
 pub fn price_range_from_points(
@@ -18,6 +18,7 @@ pub fn price_range_from_points(
         bottom_price: start_price.min(end_price),
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -35,6 +36,7 @@ pub fn time_range_from_points(
         bottom_price: start_price.min(end_price),
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -52,6 +54,7 @@ pub fn date_time_range_from_points(
         bottom_price: start_price.min(end_price),
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 

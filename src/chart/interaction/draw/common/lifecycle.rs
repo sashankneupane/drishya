@@ -136,14 +136,43 @@ impl Chart {
         self.drawings.drawing(drawing_id).is_some()
     }
 
+    pub fn set_drawing_font_size(&mut self, drawing_id: u64, font_size: Option<f32>) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingFontSize {
+                id: drawing_id,
+                font_size,
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
+    pub fn set_drawing_text_content(&mut self, drawing_id: u64, text: &str) -> bool {
+        execute_command(
+            &mut self.drawings,
+            DrawingCommand::SetDrawingTextContent {
+                id: drawing_id,
+                text: text.to_string(),
+            },
+        );
+        self.drawings.drawing(drawing_id).is_some()
+    }
+
     pub fn drawing_config(&self, drawing_id: u64) -> Option<DrawingStyle> {
         self.drawings.drawing(drawing_id).map(|d| d.style().clone())
     }
 
-    pub fn drawing_config_with_capabilities(&self, drawing_id: u64) -> Option<(DrawingStyle, bool)> {
-        self.drawings
-            .drawing(drawing_id)
-            .map(|d| (d.style().clone(), d.supports_fill()))
+    pub fn drawing_config_with_capabilities(
+        &self,
+        drawing_id: u64,
+    ) -> Option<(DrawingStyle, bool, Option<String>)> {
+        self.drawings.drawing(drawing_id).map(|d| {
+            let text_content = match d {
+                crate::drawings::types::Drawing::Text(t) => Some(t.text.clone()),
+                _ => None,
+            };
+            (d.style().clone(), d.supports_fill(), text_content)
+        })
     }
 
     pub fn is_drawing_locked(&self, drawing_id: u64) -> bool {
@@ -194,5 +223,6 @@ fn drawing_kind(drawing: &crate::drawings::types::Drawing) -> &'static str {
         crate::drawings::types::Drawing::Triangle(_) => "triangle",
         crate::drawings::types::Drawing::Circle(_) => "circle",
         crate::drawings::types::Drawing::Ellipse(_) => "ellipse",
+        crate::drawings::types::Drawing::Text(_) => "text",
     }
 }

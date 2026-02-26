@@ -4,11 +4,12 @@
 //! by any backend, just like candles and axes.
 
 use crate::{
+    chart::appearance::ChartAppearanceConfig,
     drawings::shape::fib as fib_shape,
     drawings::{store::DrawingStore, types::Drawing},
     layout::ChartLayout,
     render::primitives::DrawCommand,
-    render::styles::{ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
+    render::styles::{ColorRef, ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
     render::ticks::{HumanTimeFormatter, TimeLabelFormatter},
     scale::PriceScale,
     types::{Candle, Point, Rect},
@@ -96,6 +97,7 @@ pub fn build_drawing_commands(
     viewport: Option<Viewport>,
     candles: &[Candle],
     selected_drawing_id: Option<u64>,
+    appearance_config: Option<&ChartAppearanceConfig>,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
     let Some(price_pane) = layout.price_pane() else {
@@ -398,8 +400,15 @@ pub fn build_drawing_commands(
             }
             Drawing::LongPosition(p) => {
                 let selected = selected_drawing_id == Some(p.id);
-                let reward_fill = fill_for_drawing(d);
-                let risk_fill = fill_for_drawing(d);
+                let (candle_up, candle_down) = appearance_config
+                    .map(|c| (c.candle_up.as_str(), c.candle_down.as_str()))
+                    .unwrap_or(("#22c55e", "#ef4444"));
+                let reward_fill = Some(FillStyle {
+                    color: ColorRef::Css(color_with_opacity(candle_up, 0.22)),
+                });
+                let risk_fill = Some(FillStyle {
+                    color: ColorRef::Css(color_with_opacity(candle_down, 0.22)),
+                });
                 let stroke = stroke_for_drawing(
                     d,
                     ColorToken::DrawingPrimary,
@@ -412,9 +421,53 @@ pub fn build_drawing_commands(
                     let stop_y = ps.y_for_price(p.stop_price);
                     let target_y = ps.y_for_price(p.target_price);
 
+                    let reward_amount = p.target_price - p.entry_price;
+                    let risk_amount = p.entry_price - p.stop_price;
+                    let reward_pct = if p.entry_price > 0.0 {
+                        (reward_amount / p.entry_price) * 100.0
+                    } else {
+                        0.0
+                    };
+                    let risk_pct = if p.entry_price > 0.0 {
+                        (risk_amount / p.entry_price) * 100.0
+                    } else {
+                        0.0
+                    };
+                    let rr = if risk_amount > 1e-12 {
+                        reward_amount / risk_amount
+                    } else {
+                        0.0
+                    };
+
+                    let end_idx = p.end_index.floor().max(0.0) as usize;
+                    let exited = end_idx < candles.len();
+                    let exit_price = exited.then(|| candles[end_idx].close);
+                    let time_held = format_time_duration_from_indices(p.start_index, p.end_index, candles);
+
                     let reward_rect = rect_from_edges(left_x, right_x, target_y, entry_y);
                     let risk_rect = rect_from_edges(left_x, right_x, entry_y, stop_y);
                     out.push(DrawCommand::PushClip { rect: price_pane });
+
+                    if let Some(exit_p) = exit_price {
+                        let exit_y = ps.y_for_price(exit_p);
+                        let exited_rect = rect_from_edges(left_x, right_x, entry_y, exit_y);
+                        let darker = Some(FillStyle {
+                            color: ColorRef::Css(color_with_opacity(
+                                if exit_p >= p.entry_price {
+                                    candle_up
+                                } else {
+                                    candle_down
+                                },
+                                0.35,
+                            )),
+                        });
+                        out.push(DrawCommand::Rect {
+                            rect: exited_rect,
+                            fill: darker,
+                            stroke: None,
+                        });
+                    }
+
                     out.push(DrawCommand::Rect {
                         rect: reward_rect,
                         fill: reward_fill,
@@ -436,21 +489,51 @@ pub fn build_drawing_commands(
                         },
                         stroke: stroke.clone(),
                     });
-                    out.push(DrawCommand::Rect {
-                        rect: rect_from_edges(left_x, right_x, target_y, stop_y),
-                        fill: None,
-                        stroke: Some(stroke),
-                    });
+                    let rr_text = format!(
+                        "LONG | RR {:.1}{}",
+                        rr,
+                        if exited {
+                            format!(" | {}", time_held)
+                        } else {
+                            String::new()
+                        }
+                    );
                     out.push(DrawCommand::Text {
                         pos: Point {
                             x: right_x,
                             y: target_y - 4.0,
                         },
-                        text: "LONG".to_string(),
+                        text: rr_text,
                         style: TextStyle::token(
                             ColorToken::DrawingPrimaryText,
                             10.0,
                             TextAlign::Right,
+                        ),
+                    });
+                    let reward_label = format!("+{:.2} ({:.2}%)", reward_amount, reward_pct);
+                    out.push(DrawCommand::Text {
+                        pos: Point {
+                            x: left_x + 4.0,
+                            y: reward_rect.center().y - 5.0,
+                        },
+                        text: reward_label,
+                        style: TextStyle::css(
+                            candle_up.to_string(),
+                            9.0,
+                            TextAlign::Left,
+                        ),
+                    });
+                    let risk_label = format!("-{:.2} ({:.2}%)", risk_amount, risk_pct);
+                    out.push(DrawCommand::Text {
+                        pos: Point {
+                            x: left_x + 4.0,
+                            y: risk_rect.center().y - 5.0,
+                        },
+                        text: risk_label,
+                        style: TextStyle::css(
+                            candle_down.to_string(),
+                            9.0,
+                            TextAlign::Left,
                         ),
                     });
                     out.push(DrawCommand::PopClip);
@@ -458,8 +541,15 @@ pub fn build_drawing_commands(
             }
             Drawing::ShortPosition(p) => {
                 let selected = selected_drawing_id == Some(p.id);
-                let reward_fill = fill_for_drawing(d);
-                let risk_fill = fill_for_drawing(d);
+                let (candle_up, candle_down) = appearance_config
+                    .map(|c| (c.candle_up.as_str(), c.candle_down.as_str()))
+                    .unwrap_or(("#22c55e", "#ef4444"));
+                let reward_fill = Some(FillStyle {
+                    color: ColorRef::Css(color_with_opacity(candle_down, 0.22)),
+                });
+                let risk_fill = Some(FillStyle {
+                    color: ColorRef::Css(color_with_opacity(candle_up, 0.22)),
+                });
                 let stroke = stroke_for_drawing(
                     d,
                     ColorToken::DrawingSecondary,
@@ -472,9 +562,53 @@ pub fn build_drawing_commands(
                     let stop_y = ps.y_for_price(p.stop_price);
                     let target_y = ps.y_for_price(p.target_price);
 
+                    let reward_amount = p.entry_price - p.target_price;
+                    let risk_amount = p.stop_price - p.entry_price;
+                    let reward_pct = if p.entry_price > 0.0 {
+                        (reward_amount / p.entry_price) * 100.0
+                    } else {
+                        0.0
+                    };
+                    let risk_pct = if p.entry_price > 0.0 {
+                        (risk_amount / p.entry_price) * 100.0
+                    } else {
+                        0.0
+                    };
+                    let rr = if risk_amount > 1e-12 {
+                        reward_amount / risk_amount
+                    } else {
+                        0.0
+                    };
+
+                    let end_idx = p.end_index.floor().max(0.0) as usize;
+                    let exited = end_idx < candles.len();
+                    let exit_price = exited.then(|| candles[end_idx].close);
+                    let time_held = format_time_duration_from_indices(p.start_index, p.end_index, candles);
+
                     let reward_rect = rect_from_edges(left_x, right_x, entry_y, target_y);
                     let risk_rect = rect_from_edges(left_x, right_x, stop_y, entry_y);
                     out.push(DrawCommand::PushClip { rect: price_pane });
+
+                    if let Some(exit_p) = exit_price {
+                        let exit_y = ps.y_for_price(exit_p);
+                        let exited_rect = rect_from_edges(left_x, right_x, entry_y, exit_y);
+                        let darker = Some(FillStyle {
+                            color: ColorRef::Css(color_with_opacity(
+                                if exit_p <= p.entry_price {
+                                    candle_down
+                                } else {
+                                    candle_up
+                                },
+                                0.35,
+                            )),
+                        });
+                        out.push(DrawCommand::Rect {
+                            rect: exited_rect,
+                            fill: darker,
+                            stroke: None,
+                        });
+                    }
+
                     out.push(DrawCommand::Rect {
                         rect: reward_rect,
                         fill: reward_fill,
@@ -496,24 +630,93 @@ pub fn build_drawing_commands(
                         },
                         stroke: stroke.clone(),
                     });
-                    out.push(DrawCommand::Rect {
-                        rect: rect_from_edges(left_x, right_x, stop_y, target_y),
-                        fill: None,
-                        stroke: Some(stroke),
-                    });
+                    let rr_text = format!(
+                        "SHORT | RR {:.1}{}",
+                        rr,
+                        if exited {
+                            format!(" | {}", time_held)
+                        } else {
+                            String::new()
+                        }
+                    );
                     out.push(DrawCommand::Text {
                         pos: Point {
                             x: right_x,
                             y: target_y + 12.0,
                         },
-                        text: "SHORT".to_string(),
+                        text: rr_text,
                         style: TextStyle::token(
                             ColorToken::DrawingSecondaryText,
                             10.0,
                             TextAlign::Right,
                         ),
                     });
+                    let reward_label = format!("+{:.2} ({:.2}%)", reward_amount, reward_pct);
+                    out.push(DrawCommand::Text {
+                        pos: Point {
+                            x: left_x + 4.0,
+                            y: reward_rect.center().y - 5.0,
+                        },
+                        text: reward_label,
+                        style: TextStyle::css(
+                            candle_down.to_string(),
+                            9.0,
+                            TextAlign::Left,
+                        ),
+                    });
+                    let risk_label = format!("-{:.2} ({:.2}%)", risk_amount, risk_pct);
+                    out.push(DrawCommand::Text {
+                        pos: Point {
+                            x: left_x + 4.0,
+                            y: risk_rect.center().y - 5.0,
+                        },
+                        text: risk_label,
+                        style: TextStyle::css(
+                            candle_up.to_string(),
+                            9.0,
+                            TextAlign::Left,
+                        ),
+                    });
                     out.push(DrawCommand::PopClip);
+                }
+            }
+            Drawing::Text(t) => {
+                if let Some(vp) = viewport {
+                    let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w);
+                    let y = ps.y_for_price(t.price);
+                    if x >= price_pane.x && x <= price_pane.right()
+                        && y >= price_pane.y && y <= price_pane.bottom()
+                    {
+                        let text_color = d.style().stroke_color.as_deref().unwrap_or("#e5e7eb");
+                        let size = d.style().font_size.unwrap_or(14.0);
+                        let bg_color = d.style().fill_color.as_ref().and_then(|c| {
+                            let alpha = d.style().fill_opacity.unwrap_or(0.9);
+                            Some(color_with_opacity(c, alpha))
+                        });
+                        out.push(DrawCommand::PushClip { rect: price_pane });
+                        if let Some(ref bg) = bg_color {
+                            let pad = 4.0;
+                            let est_w = (t.text.len() as f32 * size * 0.6).max(40.0);
+                            let h = size + pad * 2.0;
+                            let rect = Rect {
+                                x: x - 2.0,
+                                y: y - h * 0.5,
+                                w: est_w + pad,
+                                h,
+                            };
+                            out.push(DrawCommand::Rect {
+                                rect,
+                                fill: Some(FillStyle::css(bg.clone())),
+                                stroke: None,
+                            });
+                        }
+                        out.push(DrawCommand::Text {
+                            pos: Point { x: x + 4.0, y: y + size * 0.35 },
+                            text: t.text.clone(),
+                            style: TextStyle::css(text_color.to_string(), size, TextAlign::Left),
+                        });
+                        out.push(DrawCommand::PopClip);
+                    }
                 }
             }
             Drawing::FibRetracement(fib) => {
@@ -839,13 +1042,16 @@ pub fn build_preview_drawing_commands(
                 item.p3_price,
             );
         }
+        Drawing::Text(item) => {
+            temp.add_text(item.index, item.price, item.text.clone());
+        }
     }
 
     if let Some(first) = temp.items().first().map(|item| item.id()) {
         let _ = temp.set_drawing_layer(first, "preview");
     }
 
-    build_drawing_commands(&temp, layout, ps, viewport, &[], None)
+    build_drawing_commands(&temp, layout, ps, viewport, &[], None, None)
 }
 
 fn rect_from_edges(x1: f32, x2: f32, y1: f32, y2: f32) -> Rect {

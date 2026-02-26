@@ -45,6 +45,9 @@ pub struct DrawingStyle {
     /// Stroke line style (solid, dotted, dashed); None means solid.
     #[serde(default)]
     pub stroke_type: Option<StrokeType>,
+    /// Font size in pixels (for Text drawings); None means default (14.0).
+    #[serde(default)]
+    pub font_size: Option<f32>,
     pub locked: bool,
 }
 
@@ -205,6 +208,17 @@ pub struct Ellipse {
 }
 
 #[derive(Debug, Clone)]
+pub struct Text {
+    pub id: DrawingId,
+    pub index: f32,
+    pub price: f64,
+    pub text: String,
+    pub layer_id: DrawingLayerId,
+    pub group_id: Option<DrawingGroupId>,
+    pub style: DrawingStyle,
+}
+
+#[derive(Debug, Clone)]
 pub enum Drawing {
     HorizontalLine(HorizontalLine),
     VerticalLine(VerticalLine),
@@ -219,6 +233,7 @@ pub enum Drawing {
     Circle(Circle),
     Triangle(Triangle),
     Ellipse(Ellipse),
+    Text(Text),
 }
 
 impl Drawing {
@@ -237,6 +252,7 @@ impl Drawing {
             Drawing::Circle(item) => item.id,
             Drawing::Triangle(item) => item.id,
             Drawing::Ellipse(item) => item.id,
+            Drawing::Text(item) => item.id,
         }
     }
 
@@ -255,6 +271,7 @@ impl Drawing {
             Drawing::Circle(item) => item.layer_id.as_str(),
             Drawing::Triangle(item) => item.layer_id.as_str(),
             Drawing::Ellipse(item) => item.layer_id.as_str(),
+            Drawing::Text(item) => item.layer_id.as_str(),
         }
     }
 
@@ -273,6 +290,7 @@ impl Drawing {
             Drawing::Circle(item) => item.group_id.as_deref(),
             Drawing::Triangle(item) => item.group_id.as_deref(),
             Drawing::Ellipse(item) => item.group_id.as_deref(),
+            Drawing::Text(item) => item.group_id.as_deref(),
         }
     }
 
@@ -291,6 +309,7 @@ impl Drawing {
             Drawing::Circle(item) => item.layer_id = layer_id.to_string(),
             Drawing::Triangle(item) => item.layer_id = layer_id.to_string(),
             Drawing::Ellipse(item) => item.layer_id = layer_id.to_string(),
+            Drawing::Text(item) => item.layer_id = layer_id.to_string(),
         }
     }
 
@@ -310,6 +329,7 @@ impl Drawing {
             Drawing::Circle(item) => item.group_id = next,
             Drawing::Triangle(item) => item.group_id = next,
             Drawing::Ellipse(item) => item.group_id = next,
+            Drawing::Text(item) => item.group_id = next,
         }
     }
 
@@ -327,6 +347,7 @@ impl Drawing {
                 | Drawing::Circle(_)
                 | Drawing::Triangle(_)
                 | Drawing::Ellipse(_)
+                | Drawing::Text(_)
         )
     }
 
@@ -345,6 +366,7 @@ impl Drawing {
             Drawing::Circle(item) => &item.style,
             Drawing::Triangle(item) => &item.style,
             Drawing::Ellipse(item) => &item.style,
+            Drawing::Text(item) => &item.style,
         }
     }
 
@@ -363,6 +385,7 @@ impl Drawing {
             Drawing::Circle(item) => &mut item.style,
             Drawing::Triangle(item) => &mut item.style,
             Drawing::Ellipse(item) => &mut item.style,
+            Drawing::Text(item) => &mut item.style,
         }
     }
 }

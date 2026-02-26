@@ -1,7 +1,7 @@
 use crate::drawings::{
     commands::DrawingCommand,
     hit_test::{RectCorner, RectEdge, RectHitTarget},
-    types::{Drawing, Rectangle, DEFAULT_DRAWING_LAYER},
+    types::{Drawing, DrawingStyle, Rectangle, DEFAULT_DRAWING_LAYER},
 };
 
 pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> Rectangle {
@@ -15,6 +15,7 @@ pub fn from_anchor(world_x: f32, price: f64, price_span: f64) -> Rectangle {
         bottom_price: price - half_height,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -32,6 +33,7 @@ pub fn from_points(
         bottom_price: start_price.min(end_price),
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 
@@ -182,6 +184,7 @@ mod tests {
             bottom_price: 0.0,
             layer_id: DEFAULT_DRAWING_LAYER.to_string(),
             group_id: None,
+            style: DrawingStyle::default(),
         };
 
         let target = resize(&mut rect, RectHitTarget::Edge(RectEdge::Left), 120.0, 8.0);

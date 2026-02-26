@@ -1,6 +1,6 @@
 use crate::drawings::{
     commands::DrawingCommand,
-    types::{Drawing, Triangle, DEFAULT_DRAWING_LAYER},
+    types::{Drawing, DrawingStyle, Triangle, DEFAULT_DRAWING_LAYER},
 };
 use crate::types::Point;
 
@@ -20,6 +20,7 @@ pub fn from_points(points: &[Point]) -> Triangle {
         p3_price: p3.y as f64,
         layer_id: DEFAULT_DRAWING_LAYER.to_string(),
         group_id: None,
+        style: DrawingStyle::default(),
     }
 }
 

@@ -8,6 +8,9 @@ use crate::chart::Chart;
 
 impl Chart {
     pub fn move_drawing_by_pixels(&mut self, id: u64, dx_pixels: f32, dy_pixels: f32) -> bool {
+        if self.is_drawing_locked(id) {
+            return false;
+        }
         let layout = self.current_layout();
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
 
@@ -111,6 +114,10 @@ impl Chart {
                 item.p2_price += price_dy;
                 item.p3_price += price_dy;
             }
+            Drawing::Text(item) => {
+                item.index += world_dx;
+                item.price += price_dy;
+            }
         }
 
         true
@@ -135,6 +142,9 @@ impl Chart {
         target: RectHitTarget,
         pointer: Point,
     ) -> Option<RectHitTarget> {
+        if self.is_drawing_locked(drawing_id) {
+            return None;
+        }
         let (world_x, price) = self.drawing_world_price_at(pointer.x, pointer.y)?;
         let drawing = self.drawings.drawing_mut(drawing_id)?;
 

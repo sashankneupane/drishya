@@ -111,7 +111,10 @@ function openDrawingConfigModal(
   let fillColor = options.config.fill_color ?? "#ffffff";
   let fillOpacity = options.config.fill_opacity ?? 0.25;
   let fillTransparent = options.config.fill_color === null || options.config.fill_color === undefined;
+  let fontSize = options.config.font_size ?? 14;
+  let textContent = options.config.text_content ?? "";
   let locked = options.config.locked;
+  const isTextDrawing = options.config.text_content !== undefined && options.config.text_content !== null;
 
   const backdrop = document.createElement("div");
   backdrop.className = "fixed inset-0 bg-black/40 z-[100] flex items-center justify-center animate-in fade-in duration-200";
@@ -216,11 +219,52 @@ function openDrawingConfigModal(
     }
   };
 
-  const strokeColorRow = createColorField("Stroke", strokeColor, (v) => {
+  const strokeColorRow = createColorField(isTextDrawing ? "Color" : "Stroke", strokeColor, (v) => {
     strokeColor = v;
     updateAllPreviews();
   });
   body.insertBefore(strokeColorRow, strokeWidthRow);
+
+  if (isTextDrawing) {
+    const textContentRow = document.createElement("div");
+    textContentRow.className = "flex items-start gap-3 py-2";
+    const textContentLabel = document.createElement("label");
+    textContentLabel.className = "text-xs text-zinc-500 w-24 shrink-0 pt-2";
+    textContentLabel.textContent = "Text";
+    const textContentInput = document.createElement("textarea");
+    textContentInput.value = textContent;
+    textContentInput.rows = 3;
+    textContentInput.className = "flex-1 min-w-0 h-auto px-3 py-2 bg-zinc-900 border border-workspace-border rounded text-sm text-zinc-100 outline-none focus:border-zinc-600 resize-y";
+    textContentInput.placeholder = "Enter text...";
+    textContentInput.oninput = () => { textContent = textContentInput.value; };
+    textContentRow.append(textContentLabel, textContentInput);
+    body.insertBefore(textContentRow, strokeWidthRow);
+
+    const fontSizeRow = document.createElement("div");
+    fontSizeRow.className = "flex items-center gap-3 py-2";
+    const fontSizeLabel = document.createElement("label");
+    fontSizeLabel.className = "text-xs text-zinc-500 w-24 shrink-0";
+    fontSizeLabel.textContent = "Font size";
+    const fontSizeSlider = document.createElement("input");
+    fontSizeSlider.type = "range";
+    fontSizeSlider.min = "8";
+    fontSizeSlider.max = "48";
+    fontSizeSlider.step = "1";
+    fontSizeSlider.value = String(fontSize);
+    fontSizeSlider.className = "flex-1 max-w-[120px] min-w-0 h-1.5 bg-zinc-800 rounded appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-zinc-400";
+    const fontSizeValue = document.createElement("span");
+    fontSizeValue.className = "text-xs text-zinc-500 w-8 shrink-0 text-right";
+    fontSizeValue.textContent = String(fontSize);
+    fontSizeSlider.oninput = () => {
+      fontSize = Math.max(8, Math.min(48, parseInt(fontSizeSlider.value, 10) || 14));
+      fontSizeValue.textContent = String(fontSize);
+    };
+    fontSizeRow.append(fontSizeLabel, fontSizeSlider, fontSizeValue);
+    body.insertBefore(fontSizeRow, strokeWidthRow);
+
+    strokeWidthRow.style.display = "none";
+    strokeTypeRow.style.display = "none";
+  }
 
   if (options.supportsFill) {
     const fillRow = document.createElement("div");
@@ -353,16 +397,19 @@ function openDrawingConfigModal(
   applyBtn.className = "h-8 px-4 text-xs font-medium text-white bg-zinc-700 hover:bg-zinc-600 rounded transition-colors";
   applyBtn.textContent = "Apply";
   applyBtn.onclick = () => {
-    options.chart.setDrawingConfig(options.drawingId, {
+    const payload: Partial<DrawingConfig> = {
       stroke_color: strokeColor,
       stroke_width: strokeWidth,
       stroke_type: strokeType,
-      fill_color: options.supportsFill
-        ? (fillTransparent ? null : fillColor)
-        : undefined,
+      fill_color: options.supportsFill ? (fillTransparent ? null : fillColor) : undefined,
       fill_opacity: options.supportsFill && !fillTransparent ? fillOpacity : undefined,
       locked
-    });
+    };
+    if (isTextDrawing) {
+      payload.font_size = fontSize;
+      payload.text_content = textContent;
+    }
+    options.chart.setDrawingConfig(options.drawingId, payload);
     options.onApply();
     destroy();
   };
@@ -405,6 +452,8 @@ export function createDrawingConfigPanel(options: DrawingConfigPanelOptions): HT
   let fillColor = config.fill_color ?? "#ffffff";
   let fillOpacity = config.fill_opacity ?? 0.25;
   let fillTransparent = config.fill_color === null || config.fill_color === undefined;
+  let fontSize = config.font_size ?? 14;
+  let textContent = config.text_content ?? "";
   let locked = config.locked;
   const supportsFill = config.supports_fill;
 
@@ -431,6 +480,8 @@ export function createDrawingConfigPanel(options: DrawingConfigPanelOptions): HT
     fillColor = c.fill_color ?? "#ffffff";
     fillOpacity = c.fill_opacity ?? 0.25;
     fillTransparent = c.fill_color === null || c.fill_color === undefined;
+    fontSize = c.font_size ?? 14;
+    textContent = c.text_content ?? "";
     locked = c.locked;
     strokeSwatch.style.backgroundColor = strokeColor;
     updateFillSwatch();
@@ -514,6 +565,8 @@ export function createDrawingConfigPanel(options: DrawingConfigPanelOptions): HT
         fill_opacity: supportsFill ? fillOpacity : null,
         stroke_width: strokeWidth,
         stroke_type: strokeType,
+        font_size: fontSize,
+        text_content: textContent,
         locked,
         supports_fill: supportsFill
       },
@@ -555,6 +608,8 @@ export function createDrawingConfigPanel(options: DrawingConfigPanelOptions): HT
           fill_opacity: fillOpacity,
           stroke_width: strokeWidth,
           stroke_type: strokeType,
+          font_size: fontSize,
+          text_content: textContent,
           locked,
           supports_fill: supportsFill
         },

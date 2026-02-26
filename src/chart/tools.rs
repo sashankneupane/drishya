@@ -19,6 +19,7 @@ pub enum DrawingToolMode {
     Triangle,
     Circle,
     Ellipse,
+    Text,
 }
 
 #[derive(Debug, Clone, Default)]
