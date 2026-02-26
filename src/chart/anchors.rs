@@ -28,7 +28,8 @@ pub(crate) const ANCHOR_HIT_R: f32 = 8.0;
 // Drawing helpers
 // ---------------------------------------------------------------------------
 
-fn anchor_cmd(cx: f32, cy: f32) -> DrawCommand {
+/// Anchor with default (DrawingPrimary) color — used for pending construction points.
+fn anchor_cmd_default(cx: f32, cy: f32) -> DrawCommand {
     DrawCommand::Ellipse {
         cx,
         cy,
@@ -37,6 +38,21 @@ fn anchor_cmd(cx: f32, cy: f32) -> DrawCommand {
         rotation: 0.0,
         fill: Some(FillStyle::token(ColorToken::DrawingPrimary)),
         stroke: Some(StrokeStyle::token(ColorToken::DrawingPrimary, 1.0)),
+    }
+}
+
+/// Anchor using the drawing's stroke color — same as the border.
+fn anchor_cmd_with_color(cx: f32, cy: f32, stroke_color: &str) -> DrawCommand {
+    let fill = FillStyle::css(stroke_color.to_string());
+    let stroke = StrokeStyle::css(stroke_color.to_string(), 1.0);
+    DrawCommand::Ellipse {
+        cx,
+        cy,
+        rx: ANCHOR_R,
+        ry: ANCHOR_R,
+        rotation: 0.0,
+        fill: Some(fill),
+        stroke: Some(stroke),
     }
 }
 
@@ -175,13 +191,19 @@ impl Chart {
         out.push(DrawCommand::PushClip { rect: price_pane });
 
         for p in &self.drawing_interaction.pending_points {
-            out.push(anchor_cmd(p.x, p.y));
+            out.push(anchor_cmd_default(p.x, p.y));
         }
 
         if let Some(id) = self.selected_drawing_id() {
-            if let Some(drawing) = self.drawings.drawing(id) {
-                for a in anchor_positions(drawing, &vp, price_pane, ps) {
-                    out.push(anchor_cmd(a.x, a.y));
+            if !self.is_drawing_locked(id) {
+                if let Some(drawing) = self.drawings.drawing(id) {
+                    for a in anchor_positions(drawing, &vp, price_pane, ps) {
+                        if let Some(ref color) = drawing.style().stroke_color {
+                            out.push(anchor_cmd_with_color(a.x, a.y, color));
+                        } else {
+                            out.push(anchor_cmd_default(a.x, a.y));
+                        }
+                    }
                 }
             }
         }
@@ -215,6 +237,7 @@ impl Chart {
     /// For shapes where control points can be set directly from a pixel coordinate
     /// (Triangle, Ellipse, Rectangle), we use `drawing_world_price_at` to convert.
     /// For Circle we compute the new radius from the pixel distance.
+    /// Locked drawings cannot be edited; returns early.
     pub(crate) fn move_anchor_to_pixel(
         &mut self,
         drawing_id: u64,
@@ -222,6 +245,9 @@ impl Chart {
         pixel_x: f32,
         pixel_y: f32,
     ) {
+        if self.is_drawing_locked(drawing_id) {
+            return;
+        }
         match self.drawings.drawing(drawing_id).map(|d| d.shape_tag()) {
             Some(ShapeTag::Triangle) => {
                 self.move_triangle_anchor(drawing_id, anchor_idx, pixel_x, pixel_y)
