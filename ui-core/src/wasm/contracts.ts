@@ -7,6 +7,24 @@ export interface Candle {
   volume: number;
 }
 
+export type ChartEventKind = "signal" | "entry" | "exit" | "stop" | "target" | "reject";
+export type ChartEventSide = "long" | "short";
+
+export interface ChartEvent {
+  event_id: string;
+  ts: number;
+  kind: ChartEventKind;
+  side?: ChartEventSide;
+  price?: number;
+  text?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface ReplayState {
+  playing: boolean;
+  cursor_ts: number | null;
+}
+
 /** User-customizable chart appearance (background, candle up/down). */
 export interface ChartAppearanceConfig {
   background: string;
@@ -287,4 +305,18 @@ export interface WasmChartLike {
   remove_compare_series?(id: string): boolean;
   set_compare_series_visible?(id: string, visible: boolean): boolean;
   set_compare_series_ohlcv_json?(seriesId: string, json: string): void;
+
+  // Group K: Events + Replay
+  set_events_json?(json: string): void;
+  clear_events?(): void;
+  select_event_at?(x: number, y: number): string | undefined;
+  selected_event_json?(): string;
+  replay_play?(): void;
+  replay_pause?(): void;
+  replay_stop?(): void;
+  replay_step_bar?(): number | undefined;
+  replay_step_event?(): number | undefined;
+  replay_seek_ts?(ts: number): void;
+  replay_tick?(): number | undefined;
+  replay_state_json?(): string;
 }

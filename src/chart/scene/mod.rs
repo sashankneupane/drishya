@@ -41,6 +41,7 @@ use self::helpers::{
 use super::compare_alignment::{
     align_compare_series, normalize_aligned_series, rebase_normalized_series_to_primary_price,
 };
+use super::events::replay_cursor_commands;
 use super::Chart;
 
 impl Chart {
@@ -321,6 +322,8 @@ impl Chart {
 
         // Drop-point dots: pending construction clicks + selected vertex handles
         out.extend(self.build_anchor_commands());
+        out.extend(self.build_event_marker_commands(&layout));
+        out.extend(replay_cursor_commands(self, &layout));
 
         let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {

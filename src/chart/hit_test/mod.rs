@@ -4,6 +4,7 @@
 //! delegates geometric matching to `drawings::hit_test`.
 
 pub mod drawings;
+pub mod events;
 pub mod mapper;
 pub mod series;
 pub mod zoom;

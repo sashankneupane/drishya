@@ -1,6 +1,8 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import type { WorkspaceTheme } from "./types.js";
 import type { CursorMode } from "../wasm/contracts.js";
+import type { ReplayState } from "../wasm/contracts.js";
+import type { ReplayController } from "./replay/ReplayController.js";
 
 export interface WorkspaceState {
     theme: WorkspaceTheme;
@@ -9,6 +11,7 @@ export interface WorkspaceState {
     isLeftStripOpen: boolean;
     cursorMode: CursorMode;
     priceAxisMode: "linear" | "log" | "percent";
+    replay: ReplayState;
 }
 
 export type WorkspaceListener = (state: WorkspaceState) => void;
@@ -21,6 +24,8 @@ export type WorkspaceListener = (state: WorkspaceState) => void;
 export class WorkspaceController {
     private state: WorkspaceState;
     private listeners: Set<WorkspaceListener> = new Set();
+    private replayController: ReplayController | null = null;
+    private replayUnsubscribe: (() => void) | null = null;
 
     constructor(initial: Partial<WorkspaceState> = {}) {
         this.state = {
@@ -29,7 +34,8 @@ export class WorkspaceController {
             isObjectTreeOpen: initial.isObjectTreeOpen ?? true,
             isLeftStripOpen: initial.isLeftStripOpen ?? true,
             cursorMode: initial.cursorMode ?? "crosshair",
-            priceAxisMode: initial.priceAxisMode ?? "linear"
+            priceAxisMode: initial.priceAxisMode ?? "linear",
+            replay: { playing: false, cursor_ts: null }
         };
     }
 
@@ -88,5 +94,45 @@ export class WorkspaceController {
         if (this.state.priceAxisMode === mode) return;
         this.state.priceAxisMode = mode;
         this.notify();
+    }
+
+    setReplayController(controller: ReplayController | null): void {
+        this.replayUnsubscribe?.();
+        this.replayUnsubscribe = null;
+        this.replayController = controller;
+        if (controller) {
+            this.state.replay = controller.state();
+            this.replayUnsubscribe = controller.subscribe((replayState) => {
+                this.state.replay = replayState;
+                this.notify();
+            });
+        } else {
+            this.state.replay = { playing: false, cursor_ts: null };
+        }
+        this.notify();
+    }
+
+    replay(): {
+        play: () => void;
+        pause: () => void;
+        stop: () => void;
+        stepBar: () => number | null;
+        stepEvent: () => number | null;
+        seekTs: (ts: number) => void;
+        state: () => ReplayState;
+    } {
+        return {
+            play: () => this.replayController?.play(),
+            pause: () => this.replayController?.pause(),
+            stop: () => this.replayController?.stop(),
+            stepBar: () => this.replayController?.stepBar() ?? null,
+            stepEvent: () => this.replayController?.stepEvent() ?? null,
+            seekTs: (ts: number) => this.replayController?.seekTs(ts),
+            state: () =>
+                this.replayController?.state() ?? {
+                    playing: false,
+                    cursor_ts: null
+                }
+        };
     }
 }

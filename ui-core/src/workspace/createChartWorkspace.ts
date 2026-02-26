@@ -7,6 +7,7 @@ import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
 import { createTopStrip } from "./topStrip.js";
+import { ReplayController } from "./replay/ReplayController.js";
 import { WorkspaceController } from "./WorkspaceController.js";
 import type {
   ChartWorkspaceHandle,
@@ -84,6 +85,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   // WASM Chart setup - NOW canvas is in DOM
   let rawChart = createWasmChart(canvasId, 300, 300);
   const chart = new DrishyaChartClient(rawChart);
+  const replay = new ReplayController(chart);
+  controller.setReplayController(replay);
   chart.setTheme(controller.getState().theme);
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
@@ -447,6 +450,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chart,
     rawChart,
     controller,
+    replay,
     draw,
     applyAppearanceConfig,
     getAppearanceConfig,
@@ -461,6 +465,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     destroy: () => {
       if (configPanelEl) configPanelEl.remove();
       unsubscribe();
+      replay.destroy();
+      controller.setReplayController(null);
       topHandle.destroy();
       stripHandle.destroy();
       treeHandle.destroy();
