@@ -25,6 +25,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
         let price = ps.price_for_y(y_pixels);
         let Some(vp) = self.viewport else {

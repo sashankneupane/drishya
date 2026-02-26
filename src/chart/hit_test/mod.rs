@@ -82,6 +82,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let target_pane_rect = layout

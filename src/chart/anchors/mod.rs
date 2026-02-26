@@ -206,6 +206,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let mut out = Vec::new();
@@ -256,6 +257,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
         let anchors = anchor_positions(drawing, &vp, price_pane, ps);
         hit_anchor(&anchors, Point { x, y })
@@ -344,6 +346,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let (cx_px, cy_px, r_px) = {
@@ -421,6 +424,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         // Snapshot pixel coords

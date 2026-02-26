@@ -129,6 +129,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let mut pane_scales: Vec<(PaneId, PriceScale)> = vec![(PaneId::Price, ps)];
@@ -156,6 +157,11 @@ impl Chart {
                             self.price_axis_mode
                         } else {
                             crate::scale::PriceAxisMode::Linear
+                        },
+                        baseline: if pane.id == PaneId::Price {
+                            self.derived_percent_baseline_price()
+                        } else {
+                            None
                         },
                     },
                 ));
@@ -414,6 +420,7 @@ impl Chart {
             min: min_price,
             max: max_price,
             mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let x = vp.world_x_to_pixel_x(t.index, price_pane.x, price_pane.w);

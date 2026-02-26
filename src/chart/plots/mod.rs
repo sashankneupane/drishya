@@ -138,6 +138,7 @@ impl Chart {
                 min: min_v,
                 max: max_v,
                 mode: self.price_axis_mode,
+                baseline: self.derived_percent_baseline_price(),
             })
         } else {
             let (min_v, max_v) = compute_pane_value_bounds_for_hit_test(
@@ -157,6 +158,7 @@ impl Chart {
                 min: min_v,
                 max: max_v,
                 mode: self.price_axis_mode,
+                baseline: self.derived_percent_baseline_price(),
             })
         }?;
 

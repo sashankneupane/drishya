@@ -74,6 +74,7 @@ pub struct PriceScale {
     pub min: f64,
     pub max: f64,
     pub mode: crate::scale::PriceAxisMode,
+    pub baseline: Option<f64>,
 }
 
 impl PriceScale {
@@ -81,10 +82,16 @@ impl PriceScale {
         use crate::scale::PriceAxisMode;
 
         let (val, min_v, max_v) = match self.mode {
-            PriceAxisMode::Linear | PriceAxisMode::Percent => (price, self.min, self.max),
+            PriceAxisMode::Linear => (price, self.min, self.max),
+            PriceAxisMode::Percent => {
+                let base = self.baseline.unwrap_or(1.0).max(1e-9);
+                (
+                    (price - base) / base * 100.0,
+                    (self.min - base) / base * 100.0,
+                    (self.max - base) / base * 100.0,
+                )
+            }
             PriceAxisMode::Log => {
-                // Log mode requires strictly positive values.
-                // We clamp to a tiny positive epsilon if data is non-positive.
                 let epsilon = 1e-9;
                 (
                     price.max(epsilon).ln(),
@@ -105,8 +112,13 @@ impl PriceScale {
         let t = 1.0 - ((y - self.pane.y) / self.pane.h).clamp(0.0, 1.0);
 
         match self.mode {
-            PriceAxisMode::Linear | PriceAxisMode::Percent => {
-                self.min + (self.max - self.min) * t as f64
+            PriceAxisMode::Linear => self.min + (self.max - self.min) * t as f64,
+            PriceAxisMode::Percent => {
+                let base = self.baseline.unwrap_or(1.0).max(1e-9);
+                let p_min = (self.min - base) / base * 100.0;
+                let p_max = (self.max - base) / base * 100.0;
+                let p_val = p_min + (p_max - p_min) * t as f64;
+                base + (p_val / 100.0) * base
             }
             PriceAxisMode::Log => {
                 let epsilon = 1e-9;
@@ -149,6 +161,7 @@ mod tests {
             min: 10.0,
             max: 30.0,
             mode: PriceAxisMode::Linear,
+            baseline: None,
         };
 
         // Middle of range
@@ -176,6 +189,7 @@ mod tests {
             min: 10.0,
             max: 100.0,
             mode: PriceAxisMode::Log,
+            baseline: None,
         };
 
         let mid_price = (10.0f64 * 100.0f64).sqrt(); // Geometrical mean
@@ -198,6 +212,7 @@ mod tests {
             min: 10.0,
             max: 100.0,
             mode: PriceAxisMode::Log,
+            baseline: None,
         };
 
         let y_neg = ps.y_for_price(-10.0);
@@ -218,6 +233,7 @@ mod tests {
             min: 123.45,
             max: 678.90,
             mode: PriceAxisMode::Log,
+            baseline: None,
         };
 
         let prices = [150.0, 300.0, 450.0, 600.0];
@@ -229,5 +245,30 @@ mod tests {
                 "Failed roundtrip for price {p}"
             );
         }
+    }
+
+    #[test]
+    fn price_scale_percent_mapping() {
+        let ps = PriceScale {
+            pane: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 100.0,
+                h: 100.0,
+            },
+            min: 50.0,  // -50% relative to 100
+            max: 150.0, // +50% relative to 100
+            mode: PriceAxisMode::Percent,
+            baseline: Some(100.0),
+        };
+
+        // Price 100 (0%) should be at middle y=50
+        assert!((ps.y_for_price(100.0) - 50.0).abs() < 1e-5);
+        assert!((ps.price_for_y(50.0) - 100.0).abs() < 1e-5);
+
+        // Price 150 (+50%) should be at top y=0
+        assert!((ps.y_for_price(150.0) - 0.0).abs() < 1e-5);
+        // Price 50 (-50%) should be at bottom y=100
+        assert!((ps.y_for_price(50.0) - 100.0).abs() < 1e-5);
     }
 }

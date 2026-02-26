@@ -55,6 +55,8 @@ impl Chart {
             pane: price_pane,
             min: min_price,
             max: max_price,
+            mode: self.price_axis_mode,
+            baseline: self.derived_percent_baseline_price(),
         };
 
         let mut out: Vec<DrawCommand> = Vec::new();
