@@ -43,7 +43,11 @@ impl Chart {
         }
 
         if let Some(vp) = self.viewport {
-            let world_x = vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0));
+            let world_x = self
+                .snap_pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
+                .unwrap_or_else(|| {
+                    vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
+                });
             let _ = execute_command(
                 &mut self.drawings,
                 line_shape::add_vertical_command(world_x),

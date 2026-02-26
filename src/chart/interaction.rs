@@ -10,6 +10,25 @@ use crate::plots::model::PaneId;
 use super::Chart;
 
 impl Chart {
+    pub(crate) fn snap_world_x_to_candle_index(&self, world_x: f32) -> Option<f32> {
+        if self.candles.is_empty() {
+            return None;
+        }
+        let max = self.candles.len().saturating_sub(1) as f32;
+        Some(world_x.round().clamp(0.0, max))
+    }
+
+    pub(crate) fn snap_pixel_x_to_world_x(
+        &self,
+        x_pixels: f32,
+        pane_x: f32,
+        pane_w: f32,
+    ) -> Option<f32> {
+        let vp = self.viewport?;
+        let world_x = vp.pixel_x_to_world_x(x_pixels, pane_x, pane_w.max(1.0));
+        self.snap_world_x_to_candle_index(world_x)
+    }
+
     pub fn pan_pixels(&mut self, dx_pixels: f32) {
         if self.candles.is_empty() {
             return;
@@ -88,8 +107,18 @@ impl Chart {
             return;
         }
 
+        let snapped_x = if let Some(vp) = self.viewport {
+            let world_x = vp.pixel_x_to_world_x(x_pixels, plot.x, plot.w.max(1.0));
+            let snapped_world_x = self
+                .snap_world_x_to_candle_index(world_x)
+                .unwrap_or(world_x);
+            vp.world_x_to_pixel_x(snapped_world_x, plot.x, plot.w.max(1.0))
+        } else {
+            x_pixels
+        };
+
         self.crosshair = Some(crate::types::Point {
-            x: x_pixels,
+            x: snapped_x,
             y: y_pixels,
         });
     }
@@ -131,5 +160,43 @@ impl Chart {
         };
         self.set_pane_y_zoom_factor(&id, 1.0);
         self.set_pane_y_pan_factor(&id, 0.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Candle;
+
+    fn candle(ts: i64, close: f64) -> Candle {
+        Candle {
+            ts,
+            open: close,
+            high: close + 1.0,
+            low: close - 1.0,
+            close,
+            volume: 1000.0,
+        }
+    }
+
+    #[test]
+    fn crosshair_x_snaps_to_nearest_candle_index() {
+        let mut chart = Chart::new(800.0, 400.0);
+        chart.set_data(vec![
+            candle(1, 100.0),
+            candle(2, 101.0),
+            candle(3, 102.0),
+            candle(4, 103.0),
+        ]);
+
+        let layout = chart.current_layout();
+        let x = layout.plot.x + layout.plot.w * 0.37;
+        let y = layout.plot.y + layout.plot.h * 0.5;
+        chart.set_crosshair_at(x, y);
+
+        let cross = chart.crosshair.expect("crosshair should be set");
+        let vp = chart.viewport.expect("viewport should exist");
+        let world = vp.pixel_x_to_world_x(cross.x, layout.plot.x, layout.plot.w.max(1.0));
+        assert!((world - world.round()).abs() < 1e-3);
     }
 }

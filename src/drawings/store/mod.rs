@@ -12,7 +12,10 @@ mod regression_tests;
 pub mod update;
 pub mod visibility;
 
-use crate::drawings::types::{DrawingStyle, *};
+use crate::{
+    drawings::types::{DrawingStyle, *},
+    types::Candle,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default)]
@@ -716,6 +719,125 @@ impl DrawingStore {
             }
             if let Some(l) = locked {
                 group.locked = l;
+            }
+        }
+    }
+
+    pub fn reproject_x_to_timestamps(&mut self, old_candles: &[Candle], new_candles: &[Candle]) {
+        if old_candles.is_empty() || new_candles.is_empty() {
+            return;
+        }
+
+        for drawing in &mut self.items {
+            reproject_drawing_x(drawing, old_candles, new_candles);
+        }
+    }
+}
+
+fn index_to_timestamp(index: f32, candles: &[Candle]) -> Option<i64> {
+    if candles.is_empty() {
+        return None;
+    }
+    let idx = index
+        .round()
+        .clamp(0.0, candles.len().saturating_sub(1) as f32) as usize;
+    candles.get(idx).map(|c| c.ts)
+}
+
+fn nearest_index_for_timestamp(ts: i64, candles: &[Candle]) -> Option<f32> {
+    if candles.is_empty() {
+        return None;
+    }
+    match candles.binary_search_by_key(&ts, |c| c.ts) {
+        Ok(idx) => Some(idx as f32),
+        Err(insert) => {
+            let idx = if insert == 0 {
+                0
+            } else if insert >= candles.len() {
+                candles.len() - 1
+            } else {
+                let left = candles[insert - 1].ts;
+                let right = candles[insert].ts;
+                if (ts - left).abs() <= (right - ts).abs() {
+                    insert - 1
+                } else {
+                    insert
+                }
+            };
+            Some(idx as f32)
+        }
+    }
+}
+
+fn remap_index(index: &mut f32, old_candles: &[Candle], new_candles: &[Candle]) {
+    if let Some(ts) = index_to_timestamp(*index, old_candles) {
+        if let Some(mapped) = nearest_index_for_timestamp(ts, new_candles) {
+            *index = mapped;
+        }
+    }
+}
+
+fn reproject_drawing_x(drawing: &mut Drawing, old_candles: &[Candle], new_candles: &[Candle]) {
+    match drawing {
+        Drawing::HorizontalLine(_) => {}
+        Drawing::VerticalLine(item) => remap_index(&mut item.index, old_candles, new_candles),
+        Drawing::Ray(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+        }
+        Drawing::Rectangle(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+        }
+        Drawing::PriceRange(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+        }
+        Drawing::TimeRange(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+        }
+        Drawing::DateTimeRange(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+        }
+        Drawing::LongPosition(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+            remap_index(&mut item.entry_index, old_candles, new_candles);
+        }
+        Drawing::ShortPosition(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+            remap_index(&mut item.entry_index, old_candles, new_candles);
+        }
+        Drawing::FibRetracement(item) => {
+            remap_index(&mut item.start_index, old_candles, new_candles);
+            remap_index(&mut item.end_index, old_candles, new_candles);
+        }
+        Drawing::Circle(item) => {
+            remap_index(&mut item.center_index, old_candles, new_candles);
+            remap_index(&mut item.radius_index, old_candles, new_candles);
+        }
+        Drawing::Triangle(item) => {
+            remap_index(&mut item.p1_index, old_candles, new_candles);
+            remap_index(&mut item.p2_index, old_candles, new_candles);
+            remap_index(&mut item.p3_index, old_candles, new_candles);
+        }
+        Drawing::Ellipse(item) => {
+            remap_index(&mut item.p1_index, old_candles, new_candles);
+            remap_index(&mut item.p2_index, old_candles, new_candles);
+            remap_index(&mut item.p3_index, old_candles, new_candles);
+        }
+        Drawing::Text(item) => remap_index(&mut item.index, old_candles, new_candles),
+        Drawing::BrushStroke(item) => {
+            for p in &mut item.points {
+                remap_index(&mut p.index, old_candles, new_candles);
+            }
+        }
+        Drawing::HighlightStroke(item) => {
+            for p in &mut item.points {
+                remap_index(&mut p.index, old_candles, new_candles);
             }
         }
     }

@@ -19,6 +19,8 @@ impl Chart {
     }
 
     pub fn set_data(&mut self, candles: Vec<Candle>) {
+        self.drawings
+            .reproject_x_to_timestamps(&self.candles, &candles);
         self.candles = candles;
 
         if !self.candles.is_empty() {
@@ -132,6 +134,7 @@ impl Chart {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::drawings::{commands::execute_command, shape::line as line_shape, types::Drawing};
 
     fn candle(ts: i64, close: f64) -> Candle {
         Candle {
@@ -175,5 +178,28 @@ mod tests {
 
         assert_eq!(chart.candles.len(), 3);
         assert!((chart.candles[1].close - 99.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn set_data_reprojects_drawing_x_by_timestamp() {
+        let mut chart = Chart::new(1200.0, 700.0);
+        chart.set_data(vec![candle(10, 10.0), candle(20, 11.0), candle(30, 12.0)]);
+
+        let _ = execute_command(&mut chart.drawings, line_shape::add_vertical_command(1.0));
+        let drawing_id = chart.drawings.items()[0].id();
+
+        chart.set_data(vec![
+            candle(5, 9.0),
+            candle(10, 10.0),
+            candle(15, 10.5),
+            candle(20, 11.0),
+            candle(25, 11.5),
+            candle(30, 12.0),
+        ]);
+
+        let Some(Drawing::VerticalLine(v)) = chart.drawings.drawing(drawing_id) else {
+            panic!("expected vertical line");
+        };
+        assert!((v.index - 3.0).abs() < f32::EPSILON);
     }
 }

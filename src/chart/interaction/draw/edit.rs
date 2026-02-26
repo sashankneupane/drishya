@@ -131,6 +131,7 @@ impl Chart {
                 }
             }
         }
+        snap_drawing_x_to_candles(drawing, self.candles.len());
 
         true
     }
@@ -199,5 +200,78 @@ impl Chart {
             }),
             _ => None,
         }
+        .inspect(|_| snap_drawing_x_to_candles(drawing, self.candles.len()))
+    }
+}
+
+fn snap_drawing_x_to_candles(drawing: &mut Drawing, candles_len: usize) {
+    if candles_len == 0 {
+        return;
+    }
+    let max = candles_len.saturating_sub(1) as f32;
+    let snap = |x: &mut f32| *x = x.round().clamp(0.0, max);
+
+    match drawing {
+        Drawing::VerticalLine(item) => snap(&mut item.index),
+        Drawing::Ray(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+        }
+        Drawing::Rectangle(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+        }
+        Drawing::PriceRange(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+        }
+        Drawing::TimeRange(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+        }
+        Drawing::DateTimeRange(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+        }
+        Drawing::LongPosition(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+            snap(&mut item.entry_index);
+        }
+        Drawing::ShortPosition(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+            snap(&mut item.entry_index);
+        }
+        Drawing::FibRetracement(item) => {
+            snap(&mut item.start_index);
+            snap(&mut item.end_index);
+        }
+        Drawing::Circle(item) => {
+            snap(&mut item.center_index);
+            snap(&mut item.radius_index);
+        }
+        Drawing::Triangle(item) => {
+            snap(&mut item.p1_index);
+            snap(&mut item.p2_index);
+            snap(&mut item.p3_index);
+        }
+        Drawing::Ellipse(item) => {
+            snap(&mut item.p1_index);
+            snap(&mut item.p2_index);
+            snap(&mut item.p3_index);
+        }
+        Drawing::Text(item) => snap(&mut item.index),
+        Drawing::BrushStroke(item) => {
+            for p in &mut item.points {
+                snap(&mut p.index);
+            }
+        }
+        Drawing::HighlightStroke(item) => {
+            for p in &mut item.points {
+                snap(&mut p.index);
+            }
+        }
+        Drawing::HorizontalLine(_) => {}
     }
 }
