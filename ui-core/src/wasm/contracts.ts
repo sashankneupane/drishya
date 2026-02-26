@@ -7,6 +7,13 @@ export interface Candle {
   volume: number;
 }
 
+/** User-customizable chart appearance (background, candle up/down). */
+export interface ChartAppearanceConfig {
+  background: string;
+  candle_up: string;
+  candle_down: string;
+}
+
 export interface PaneLayout {
   id: string;
   x: number;
@@ -60,6 +67,8 @@ export interface WasmChartLike {
   zoom_y_axis_at?(y: number, zoomFactor: number): void;
   reset_y_axis_zoom?(paneId: string): void;
   set_theme?(theme: string): void;
+  set_appearance_config?(json: string): void;
+  appearance_config?(): string;
   set_candle_style?(style: "solid" | "hollow" | "bars" | "volume" | string): void;
   candle_style?(): string;
   set_crosshair_at?(x: number, y: number): void;

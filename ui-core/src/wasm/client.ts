@@ -1,5 +1,6 @@
 import type {
   Candle,
+  ChartAppearanceConfig,
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
@@ -75,6 +76,20 @@ export class DrishyaChartClient {
 
   setTheme(theme: string): void {
     this.wasm.set_theme?.(theme);
+  }
+
+  setAppearanceConfig(config: ChartAppearanceConfig): void {
+    this.wasm.set_appearance_config?.(JSON.stringify(config));
+  }
+
+  getAppearanceConfig(): ChartAppearanceConfig | null {
+    const raw = this.wasm.appearance_config?.();
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as ChartAppearanceConfig;
+    } catch {
+      return null;
+    }
   }
 
   setCandleStyle(style: "solid" | "hollow" | "bars" | "volume"): void {
