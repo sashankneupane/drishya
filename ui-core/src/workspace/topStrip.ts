@@ -19,7 +19,6 @@ interface TopStripOptions {
   applyCandleStyle?: (style: "solid" | "hollow" | "bars" | "volume") => void;
   applyAppearanceConfig?: (config: { background: string; candle_up: string; candle_down: string }) => void;
   onAddChartTile?: () => void;
-  onCloseActiveChartTile?: () => void;
 }
 
 export interface TopStripHandle {
@@ -78,14 +77,6 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   };
   rightSide.appendChild(configBtn);
 
-  const closeTileBtn = document.createElement("button");
-  closeTileBtn.className = BTN_MINIMAL;
-  closeTileBtn.appendChild(makeSvgIcon("close", "h-3.5 w-3.5 mr-1.5"));
-  const closeTileLabel = document.createElement("span");
-  closeTileLabel.textContent = "Chart Tile";
-  closeTileBtn.appendChild(closeTileLabel);
-  closeTileBtn.onclick = () => options.onCloseActiveChartTile?.();
-  rightSide.appendChild(closeTileBtn);
   root.append(leftSide, rightSide);
 
   return { root, destroy: () => { } };

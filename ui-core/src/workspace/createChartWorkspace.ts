@@ -387,20 +387,27 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       getActiveRuntime()?.chart.draw();
       savePersistedState();
     },
-    onAddChartTile: () => {
-      controller.addChartTile();
-      draw();
-    },
-    onCloseActiveChartTile: () => {
-      const state = controller.getState();
-      const activeChartTileId = state.activeChartTileId;
-      const activeWorkspaceTileId = state.workspaceTileOrder.find(
-        (tileId) => state.workspaceTiles[tileId]?.kind === "chart" && state.workspaceTiles[tileId]?.chartTileId === activeChartTileId
-      );
-      if (!activeWorkspaceTileId) return;
-      const chartCount = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart").length;
-      if (chartCount <= 1) return;
-      controller.removeWorkspaceTile(activeWorkspaceTileId);
+    onAddChartTile: async () => {
+      const chartTileId = controller.addChartTile();
+      const tile = controller.getState().chartTiles[chartTileId];
+      const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+      const paneId = activeTab?.chartPaneId;
+      const symbol =
+        options.marketControls?.selectedSymbol ??
+        options.marketControls?.symbols?.[0];
+      const timeframe =
+        options.marketControls?.selectedTimeframe ??
+        options.marketControls?.timeframes?.[0];
+      if (activeTab && symbol) {
+        controller.setChartTabTitle(chartTileId, activeTab.id, symbol);
+      }
+      if (paneId && (symbol || timeframe)) {
+        controller.setChartPaneSource(paneId, { symbol, timeframe });
+      }
+      if (paneId && symbol) {
+        await options.marketControls?.onChartPaneSourceChange?.(paneId, { symbol, timeframe });
+        await options.marketControls?.onSymbolChange?.(symbol);
+      }
       draw();
     },
     symbols: options.marketControls?.symbols ?? [],
@@ -741,7 +748,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       renderWorkspaceTiles();
       draw();
     };
-    actions.append(addBtn, treeBtn);
+    const removeTileBtn = document.createElement("button");
+    removeTileBtn.dataset.noTileDrag = "1";
+    removeTileBtn.className = "h-7 w-7 rounded-none text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
+    removeTileBtn.title = "Close chart tile";
+    removeTileBtn.appendChild(makeSvgIcon("close", "h-3.5 w-3.5"));
+    removeTileBtn.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const stateNow = controller.getState();
+      const tileId = stateNow.workspaceTileOrder.find(
+        (workspaceTileId) => stateNow.workspaceTiles[workspaceTileId]?.kind === "chart" && stateNow.workspaceTiles[workspaceTileId]?.chartTileId === chartTileId
+      );
+      if (!tileId) return;
+      controller.removeWorkspaceTile(tileId);
+      draw();
+    };
+    actions.append(addBtn, treeBtn, removeTileBtn);
     tabStrip.appendChild(actions);
   };
 

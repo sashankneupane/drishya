@@ -1101,32 +1101,20 @@ export class WorkspaceController {
             this.state.workspaceTileOrder.push("tile-objects");
         }
 
-        if (Object.keys(this.state.chartTiles).length === 0) {
-            this.state.chartTiles["chart-tile-1"] = {
-                id: "chart-tile-1",
-                tabs: [{ id: "tab-price", title: "Main", chartPaneId: PRICE_PANE_ID }],
-                activeTabId: "tab-price"
-            };
-        }
-        if (!this.state.workspaceTileOrder.some((id) => this.state.workspaceTiles[id]?.kind === "chart")) {
-            this.state.workspaceTiles["tile-chart-1"] = {
-                id: "tile-chart-1",
-                kind: "chart",
-                title: "Chart",
-                widthRatio: 0.72,
-                chartTileId: Object.keys(this.state.chartTiles)[0]
-            };
-            this.state.workspaceTileOrder.unshift("tile-chart-1");
-        }
-
-        const hasActiveChartTile = this.state.chartTiles[this.state.activeChartTileId];
-        if (!hasActiveChartTile) {
-            this.state.activeChartTileId = Object.keys(this.state.chartTiles)[0];
-        }
-        const activeTile = this.state.chartTiles[this.state.activeChartTileId];
-        const activeTab = activeTile?.tabs.find((tab) => tab.id === activeTile.activeTabId) ?? activeTile?.tabs[0];
-        if (activeTab) {
-            this.state.activeChartPaneId = activeTab.chartPaneId;
+        const chartTileIds = Object.keys(this.state.chartTiles);
+        if (chartTileIds.length > 0) {
+            const hasActiveChartTile = this.state.chartTiles[this.state.activeChartTileId];
+            if (!hasActiveChartTile) {
+                this.state.activeChartTileId = chartTileIds[0];
+            }
+            const activeTile = this.state.chartTiles[this.state.activeChartTileId];
+            const activeTab = activeTile?.tabs.find((tab) => tab.id === activeTile.activeTabId) ?? activeTile?.tabs[0];
+            if (activeTab) {
+                this.state.activeChartPaneId = activeTab.chartPaneId;
+            }
+        } else {
+            this.state.activeChartTileId = "";
+            this.state.activeChartPaneId = PRICE_PANE_ID;
         }
         this.normalizeWorkspaceTileRatios();
     }
