@@ -1,9 +1,9 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { WorkspaceTheme, WorkspacePaneLayoutState, WorkspacePaneId } from "./types.js";
+import type { WorkspaceTheme, WorkspacePaneLayoutState, WorkspacePaneId, WorkspacePaneSpec } from "./types.js";
 import type { CursorMode } from "../wasm/contracts.js";
 import type { ReplayState } from "../wasm/contracts.js";
 import type { ReplayController } from "./replay/ReplayController.js";
-import { PRICE_PANE_ID } from "./constants.js";
+import { PRICE_PANE_ID, DEFAULT_INDICATOR_PANE_RATIO } from "./constants.js";
 
 export interface WorkspaceState {
     theme: WorkspaceTheme;
@@ -177,5 +177,150 @@ export class WorkspaceController {
                     cursor_ts: null
                 }
         };
+    }
+
+    /* --- Pane Layout Controller APIs --- */
+
+    registerPane(spec: WorkspacePaneSpec): void {
+        const panes = { ...this.state.paneLayout.panes, [spec.id]: spec };
+        let order = [...this.state.paneLayout.order];
+        if (!order.includes(spec.id)) {
+            order.push(spec.id);
+        }
+        const visibility = { ...this.state.paneLayout.visibility, [spec.id]: true };
+        const collapsed = { ...this.state.paneLayout.collapsed, [spec.id]: false };
+
+        const ratios = { ...this.state.paneLayout.ratios };
+        if (!(spec.id in ratios)) {
+            ratios[spec.id] = spec.kind === "indicator" ? DEFAULT_INDICATOR_PANE_RATIO : 0.2;
+        }
+
+        const normalizedRatios = normalizePaneRatios(ratios, order.filter(id => visibility[id] && !collapsed[id]));
+
+        this.state.paneLayout = { order, ratios: normalizedRatios, visibility, collapsed, panes };
+        this.notify();
+    }
+
+    unregisterPane(paneId: WorkspacePaneId): void {
+        if (!this.state.paneLayout.panes[paneId]) return;
+
+        const panes = { ...this.state.paneLayout.panes };
+        delete panes[paneId];
+
+        const order = this.state.paneLayout.order.filter(id => id !== paneId);
+
+        const visibility = { ...this.state.paneLayout.visibility };
+        delete visibility[paneId];
+
+        const collapsed = { ...this.state.paneLayout.collapsed };
+        delete collapsed[paneId];
+
+        const ratios = { ...this.state.paneLayout.ratios };
+        delete ratios[paneId];
+
+        const normalizedRatios = normalizePaneRatios(ratios, order.filter(id => visibility[id] && !collapsed[id]));
+
+        this.state.paneLayout = { order, ratios: normalizedRatios, visibility, collapsed, panes };
+        this.notify();
+    }
+
+    setPaneVisible(paneId: WorkspacePaneId, visible: boolean): void {
+        if (this.state.paneLayout.visibility[paneId] === visible) return;
+
+        const visibility = { ...this.state.paneLayout.visibility, [paneId]: visible };
+        const normalizedRatios = normalizePaneRatios(
+            this.state.paneLayout.ratios,
+            this.state.paneLayout.order.filter(id => visibility[id] && !this.state.paneLayout.collapsed[id])
+        );
+
+        this.state.paneLayout = { ...this.state.paneLayout, visibility, ratios: normalizedRatios };
+        this.notify();
+    }
+
+    setPaneCollapsed(paneId: WorkspacePaneId, isCollapsed: boolean): void {
+        if (this.state.paneLayout.collapsed[paneId] === isCollapsed) return;
+
+        const collapsed = { ...this.state.paneLayout.collapsed, [paneId]: isCollapsed };
+        const normalizedRatios = normalizePaneRatios(
+            this.state.paneLayout.ratios,
+            this.state.paneLayout.order.filter(id => this.state.paneLayout.visibility[id] && !collapsed[id])
+        );
+
+        this.state.paneLayout = { ...this.state.paneLayout, collapsed, ratios: normalizedRatios };
+        this.notify();
+    }
+
+    setPaneRatio(paneId: WorkspacePaneId, ratio: number): void {
+        const targetRatio = Math.max(0, Math.min(1, ratio));
+        const visibleIds = this.state.paneLayout.order.filter(id => this.state.paneLayout.visibility[id] && !this.state.paneLayout.collapsed[id]);
+
+        if (!visibleIds.includes(paneId)) return;
+        if (visibleIds.length === 1) {
+            this.state.paneLayout = {
+                ...this.state.paneLayout,
+                ratios: { ...this.state.paneLayout.ratios, [paneId]: 1.0 }
+            };
+            this.notify();
+            return;
+        }
+
+        const otherIds = visibleIds.filter(id => id !== paneId);
+        let otherSum = 0;
+        for (const id of otherIds) {
+            otherSum += this.state.paneLayout.ratios[id] || 0;
+        }
+
+        const newRatios = { ...this.state.paneLayout.ratios };
+        newRatios[paneId] = targetRatio;
+
+        const remainingRatio = 1.0 - targetRatio;
+        if (otherSum <= 0) {
+            const equalShare = remainingRatio / otherIds.length;
+            for (const id of otherIds) newRatios[id] = equalShare;
+        } else {
+            for (const id of otherIds) {
+                newRatios[id] = ((this.state.paneLayout.ratios[id] || 0) / otherSum) * remainingRatio;
+            }
+        }
+
+        this.state.paneLayout = { ...this.state.paneLayout, ratios: newRatios };
+        this.notify();
+    }
+
+    setPaneOrder(order: WorkspacePaneId[]): void {
+        const validOrder = order.filter(id => this.state.paneLayout.panes[id]);
+
+        for (const id of this.state.paneLayout.order) {
+            if (!validOrder.includes(id)) {
+                validOrder.push(id);
+            }
+        }
+
+        const normalizedRatios = normalizePaneRatios(
+            this.state.paneLayout.ratios,
+            validOrder.filter(id => this.state.paneLayout.visibility[id] && !this.state.paneLayout.collapsed[id])
+        );
+
+        this.state.paneLayout = { ...this.state.paneLayout, order: validOrder, ratios: normalizedRatios };
+        this.notify();
+    }
+
+    resetPaneLayout(): void {
+        const defaultPaneLayout: WorkspacePaneLayoutState = {
+            order: [PRICE_PANE_ID],
+            ratios: { [PRICE_PANE_ID]: 1.0 },
+            visibility: { [PRICE_PANE_ID]: true },
+            collapsed: { [PRICE_PANE_ID]: false },
+            panes: {
+                [PRICE_PANE_ID]: {
+                    id: PRICE_PANE_ID,
+                    kind: "price",
+                    title: "Price"
+                }
+            }
+        };
+
+        this.state.paneLayout = defaultPaneLayout;
+        this.notify();
     }
 }

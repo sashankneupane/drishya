@@ -7,3 +7,4 @@ export * from "./leftStrip.js";
 export * from "./objectTreePanel.js";
 export * from "./replay/index.js";
 export * from "./types.js";
+export * from "./WorkspaceController.js";

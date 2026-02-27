@@ -36,6 +36,27 @@ function testWorkspaceController() {
     const fallbackNorm = normalizePaneRatios({ "p1": 0, "p2": 0 }, ["p1", "p2"]);
     if (Math.abs(fallbackNorm["p1"] - 0.5) > 0.001) throw new Error("Should assign equal ratio");
 
+    // Test pane lifecycle
+    controller.registerPane({ id: "ind1", kind: "indicator", title: "RSI" });
+    let state = controller.getState();
+    if (state.paneLayout.order.length !== 2) throw new Error("Should have 2 panes");
+    if (!state.paneLayout.panes["ind1"]) throw new Error("ind1 should be registered");
+
+    controller.setPaneVisible("ind1", false);
+    state = controller.getState();
+    if (state.paneLayout.visibility["ind1"] !== false) throw new Error("ind1 visibility should be false");
+    if (state.paneLayout.ratios[PRICE_PANE_ID] !== 1.0) throw new Error("Price pane should take full height when ind1 is hidden");
+
+    controller.setPaneVisible("ind1", true);
+    controller.setPaneRatio("ind1", 0.5);
+    state = controller.getState();
+    if (state.paneLayout.ratios["ind1"] !== 0.5) throw new Error("ind1 ratio should be 0.5");
+    if (state.paneLayout.ratios[PRICE_PANE_ID] !== 0.5) throw new Error("Price pane ratio should be 0.5");
+
+    controller.unregisterPane("ind1");
+    state = controller.getState();
+    if (state.paneLayout.order.length !== 1) throw new Error("Should revert to 1 pane");
+
     console.log("WorkspaceController tests passed!");
 }
 
