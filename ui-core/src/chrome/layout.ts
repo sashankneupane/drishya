@@ -60,3 +60,74 @@ export function computeChartChromeLayout(
     chartViewport
   };
 }
+
+import type { WorkspacePaneLayoutState, WorkspacePaneId } from "../workspace/types.js";
+import { MIN_PANE_HEIGHT_PX } from "../workspace/constants.js";
+
+export interface ComputedPaneLayout {
+  id: WorkspacePaneId;
+  rect: LayoutRect;
+}
+
+export function computePaneLayouts(
+  state: WorkspacePaneLayoutState,
+  viewport: LayoutRect,
+  paneGapPx: number = 4
+): ComputedPaneLayout[] {
+  const visibleIds = state.order.filter(id => state.visibility[id] && !state.collapsed[id]);
+  if (visibleIds.length === 0) return [];
+
+  const totalGap = paneGapPx * Math.max(0, visibleIds.length - 1);
+  const availableH = Math.max(0, viewport.h - totalGap);
+
+  // First pass: apply min heights
+  let remainingH = availableH;
+  let remainingRatio = 1.0;
+
+  const paneHeights: Record<string, number> = {};
+  for (const id of visibleIds) {
+    const minH = state.panes[id]?.minHeight ?? MIN_PANE_HEIGHT_PX;
+    const ratioH = (state.ratios[id] || 0) * availableH;
+    if (ratioH < minH && remainingRatio > 0) {
+      paneHeights[id] = minH;
+      remainingH -= minH;
+      remainingRatio -= (state.ratios[id] || 0);
+    }
+  }
+
+  // Second pass: distribute remaining height proportionally
+  let currentY = viewport.y;
+  const result: ComputedPaneLayout[] = [];
+
+  for (let i = 0; i < visibleIds.length; i++) {
+    const id = visibleIds[i];
+    let h = paneHeights[id];
+    if (h === undefined) {
+      const ratio = state.ratios[id] || 0;
+      const normalizedRatio = remainingRatio > 0 ? ratio / remainingRatio : 0;
+      h = normalizedRatio * remainingH;
+    }
+
+    // round to avoid blurry rendering
+    h = Math.floor(h);
+
+    // If last pane, fill the rest to ensure exact fit
+    if (i === visibleIds.length - 1) {
+      h = (viewport.y + viewport.h) - currentY;
+    }
+
+    result.push({
+      id,
+      rect: {
+        x: viewport.x,
+        y: currentY,
+        w: viewport.w,
+        h: h
+      }
+    });
+
+    currentY += h + paneGapPx;
+  }
+
+  return result;
+}

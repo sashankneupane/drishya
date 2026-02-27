@@ -54,10 +54,14 @@ pub struct Chart {
     pane_y_axis_visible: HashMap<String, bool>,
     pane_min_heights: HashMap<String, f32>,
     pane_max_heights: HashMap<String, f32>,
+    chart_pane_viewports: HashMap<String, crate::types::Rect>,
+    pane_chart_pane_map: HashMap<String, String>,
     pane_y_zoom_factors: HashMap<String, f32>,
     pane_y_pan_factors: HashMap<String, f32>,
-    crosshair: Option<Point>,
-    cursor_mode: CursorMode,
+    readout_source_label: String,
+    readout_source_label_bounds: std::cell::RefCell<Option<crate::types::Rect>>,
+    pub crosshair: Option<Point>,
+    pub cursor_mode: CursorMode,
     theme: ThemeId,
     candle_body_style: CandleBodyStyle,
     drawing_tool_mode: DrawingToolMode,
@@ -94,8 +98,12 @@ impl Chart {
             pane_y_axis_visible: HashMap::new(),
             pane_min_heights: HashMap::new(),
             pane_max_heights: HashMap::new(),
+            chart_pane_viewports: HashMap::new(),
+            pane_chart_pane_map: HashMap::new(),
             pane_y_zoom_factors: HashMap::new(),
             pane_y_pan_factors: HashMap::new(),
+            readout_source_label: String::new(),
+            readout_source_label_bounds: std::cell::RefCell::new(None),
             crosshair: None,
             cursor_mode: CursorMode::Crosshair,
             theme: ThemeId::Dark,
@@ -209,6 +217,25 @@ impl Chart {
 
     pub fn set_compare_series_visible(&mut self, id: &str, visible: bool) -> bool {
         self.compare_registry.set_visible(id, visible)
+    }
+
+    pub fn set_readout_source_label(&mut self, label: String) {
+        self.readout_source_label = label;
+    }
+
+    pub fn readout_source_label(&self) -> &str {
+        &self.readout_source_label
+    }
+
+    pub fn set_readout_source_label_bounds(&self, bounds: Option<crate::types::Rect>) {
+        *self.readout_source_label_bounds.borrow_mut() = bounds;
+    }
+
+    pub fn readout_source_label_hit_test(&self, x: f32, y: f32) -> bool {
+        let Some(rect) = *self.readout_source_label_bounds.borrow() else {
+            return false;
+        };
+        x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
     }
 
     pub(crate) fn compare_registry(&self) -> &CompareRegistry {

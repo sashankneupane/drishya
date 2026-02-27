@@ -5,8 +5,90 @@ use crate::api::wasm::dto::persistence::PanesSnapshotDto;
 use crate::api::wasm::parse::json::parse_json;
 use crate::chart::plots::PaneLayoutState;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ChartPaneViewportDto {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
 #[wasm_bindgen]
 impl WasmChart {
+    /// Sets chart-pane viewport rectangles from JSON map:
+    /// {"price":{"x":0,"y":0,"w":1200,"h":400},"chart-2":{"x":0,"y":400,"w":1200,"h":300}}
+    pub fn set_chart_pane_viewports_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let viewports: std::collections::BTreeMap<String, ChartPaneViewportDto> =
+            parse_json(json, "chart-pane-viewports JSON")?;
+        self.chart.set_chart_pane_viewports(
+            viewports
+                .into_iter()
+                .map(|(id, dto)| {
+                    (
+                        id,
+                        crate::types::Rect {
+                            x: dto.x,
+                            y: dto.y,
+                            w: dto.w,
+                            h: dto.h,
+                        },
+                    )
+                })
+                .collect(),
+        );
+        Ok(())
+    }
+
+    /// Returns chart-pane viewport rectangles as JSON map.
+    pub fn chart_pane_viewports_json(&self) -> Result<String, JsValue> {
+        let out: std::collections::BTreeMap<String, ChartPaneViewportDto> = self
+            .chart
+            .chart_pane_viewports()
+            .into_iter()
+            .map(|(id, rect)| {
+                (
+                    id,
+                    ChartPaneViewportDto {
+                        x: rect.x,
+                        y: rect.y,
+                        w: rect.w,
+                        h: rect.h,
+                    },
+                )
+            })
+            .collect();
+        serde_json::to_string(&out).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize chart-pane viewports: {e}"))
+        })
+    }
+
+    /// Sets pane -> chart-pane ownership mapping from JSON map:
+    /// {"price":"price","rsi":"price","macd":"chart-2"}
+    pub fn set_pane_chart_pane_map_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let map: std::collections::BTreeMap<String, String> =
+            parse_json(json, "pane-chart-pane-map JSON")?;
+        self.chart
+            .set_pane_chart_pane_map(map.into_iter().collect());
+        Ok(())
+    }
+
+    /// Returns pane -> chart-pane ownership mapping as JSON map.
+    pub fn pane_chart_pane_map_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.pane_chart_pane_map()).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize pane-chart-pane map: {e}"))
+        })
+    }
+
+    /// Sets source label shown in the primary OHLCV readout line.
+    pub fn set_readout_source_label(&mut self, label: &str) {
+        self.chart.set_readout_source_label(label.to_string());
+    }
+
+    /// Returns true when point is inside the source segment of OHLCV readout text.
+    pub fn source_readout_hit_test(&self, x: f32, y: f32) -> bool {
+        self.chart.readout_source_label_hit_test(x, y)
+    }
+
     /// Sets pane size ratio weight for layout. Use `price` for the main pane,
     /// or the named pane id such as `rsi` / `momentum`.
     pub fn set_pane_weight(&mut self, pane_id: &str, ratio: f32) {

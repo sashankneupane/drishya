@@ -1,8 +1,8 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { DrishyaChartClient } from "../wasm/client.js";
 import type { ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../wasm/contracts.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import type { ReplayController } from "./replay/ReplayController.js";
+import type { ChartPaneRuntime } from "./runtimeTypes.js";
 
 export type WorkspaceTheme = "dark" | "light";
 
@@ -26,6 +26,14 @@ export interface CreateChartWorkspaceOptions {
   /** When set, workspace state (theme, appearance, pane layout, candle style, UI state) is saved to localStorage and restored on load */
   persistKey?: string;
   marketControls?: {
+    /**
+     * Called when a specific chart pane source is changed via pane UI.
+     * Downstream apps can use this to load pane-scoped OHLCV feeds.
+     */
+    onChartPaneSourceChange?: (
+      chartPaneId: WorkspaceChartPaneId,
+      next: { symbol: string; timeframe?: string }
+    ) => void | Promise<void>;
     symbols: readonly string[];
     timeframes: readonly string[];
     selectedSymbol?: string;
@@ -51,9 +59,6 @@ export interface ChartWorkspaceHandle {
   root: HTMLDivElement;
   strip: HTMLElement;
   tree: HTMLElement;
-  canvas: HTMLCanvasElement;
-  chart: DrishyaChartClient;
-  rawChart: WasmChartLike;
   controller: WorkspaceController;
   replay: ReplayController;
   draw: () => void;
@@ -62,7 +67,64 @@ export interface ChartWorkspaceHandle {
   clearDrawings: () => void;
   toggleTheme: () => WorkspaceTheme;
   refreshObjectTree: () => void;
+  listCharts: () => WorkspaceChartPaneId[];
+  getChart: (chartPaneId: WorkspaceChartPaneId) => ChartPaneRuntime | null;
+  getActiveChart: () => ChartPaneRuntime | null;
   applyAppearanceConfig?: (config: ChartAppearanceConfig) => void;
   getAppearanceConfig?: () => ChartAppearanceConfig | null;
   destroy: () => void;
+}
+
+export type WorkspacePaneId = string;
+export type WorkspaceChartPaneId = string;
+export type WorkspaceChartSplitDirection = "horizontal" | "vertical";
+
+export type WorkspaceChartSplitNode =
+  | {
+      type: "leaf";
+      chartPaneId: WorkspaceChartPaneId;
+    }
+  | {
+      type: "split";
+      direction: WorkspaceChartSplitDirection;
+      ratio: number;
+      first: WorkspaceChartSplitNode;
+      second: WorkspaceChartSplitNode;
+    };
+
+export type WorkspacePaneKind = "price" | "chart" | "indicator" | "custom";
+
+export interface WorkspacePaneSpec {
+  id: WorkspacePaneId;
+  kind: WorkspacePaneKind;
+  title?: string;
+  /** Indicator panes are owned by a chart/price pane for object-tree grouping. */
+  parentChartPaneId?: WorkspacePaneId;
+  minHeight?: number; // Minimum height in pixels
+}
+
+export interface WorkspacePaneLayoutState {
+  order: WorkspacePaneId[];
+  ratios: Record<WorkspacePaneId, number>; // 0.0 to 1.0, should sum to 1.0
+  visibility: Record<WorkspacePaneId, boolean>; // true if visible
+  collapsed: Record<WorkspacePaneId, boolean>; // true if collapsed to titlebar
+  panes: Record<WorkspacePaneId, WorkspacePaneSpec>;
+}
+
+export interface WorkspaceChartPaneSpec {
+  id: WorkspaceChartPaneId;
+  title: string;
+  visible: boolean;
+}
+
+export interface WorkspaceCrosshairReadout {
+  paneId: string;
+  value: number;
+}
+
+export interface WorkspaceCrosshairState {
+  x: number;
+  index: number | null;
+  timestamp: number | null;
+  readouts: WorkspaceCrosshairReadout[];
 }

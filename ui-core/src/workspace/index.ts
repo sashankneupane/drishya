@@ -4,6 +4,8 @@ export * from "./createChartWorkspaceFromModule.js";
 export * from "./icons.js";
 export * from "./interactions.js";
 export * from "./leftStrip.js";
+export * from "./layout/index.js";
 export * from "./objectTreePanel.js";
 export * from "./replay/index.js";
 export * from "./types.js";
+export * from "./WorkspaceController.js";

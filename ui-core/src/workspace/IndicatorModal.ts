@@ -1,11 +1,13 @@
 import { makeSvgIcon } from "./icons.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
+import type { WorkspaceController } from "./WorkspaceController.js";
+import { buildPaneSpecForRuntime } from "./paneSpec.js";
 
 export interface IndicatorDef {
     id: string;
     name: string;
     description: string;
-    apply: (chart: DrishyaChartClient) => void;
+    apply: (chart: DrishyaChartClient, controller: WorkspaceController) => void;
 }
 
 export const AVAILABLE_INDICATORS: IndicatorDef[] = [
@@ -14,6 +16,12 @@ export const AVAILABLE_INDICATORS: IndicatorDef[] = [
         name: "Simple Moving Average",
         description: "Rolling average of price (20 period)",
         apply: (chart) => chart.addSmaOverlay(20)
+    },
+    {
+        id: "ema",
+        name: "Exponential Moving Average",
+        description: "EMA overlay (20 period)",
+        apply: (chart) => chart.addEmaOverlay(20)
     },
     {
         id: "bb",
@@ -28,6 +36,42 @@ export const AVAILABLE_INDICATORS: IndicatorDef[] = [
         apply: (chart) => chart.addRsiPaneIndicator(14)
     },
     {
+        id: "macd",
+        name: "MACD",
+        description: "MACD line, signal line, and histogram",
+        apply: (chart) => chart.addMacdPaneIndicator(12, 26, 9)
+    },
+    {
+        id: "atr",
+        name: "Average True Range",
+        description: "Volatility indicator based on true range",
+        apply: (chart) => chart.addAtrPaneIndicator(14)
+    },
+    {
+        id: "stoch",
+        name: "Stochastic Oscillator",
+        description: "Stochastic %K/%D oscillator",
+        apply: (chart) => chart.addStochasticPaneIndicator(14, 3, 3)
+    },
+    {
+        id: "obv",
+        name: "On-Balance Volume",
+        description: "Cumulative volume-flow indicator",
+        apply: (chart) => chart.addObvPaneIndicator()
+    },
+    {
+        id: "vwap",
+        name: "VWAP",
+        description: "Volume-weighted average price overlay",
+        apply: (chart) => chart.addVwapOverlay()
+    },
+    {
+        id: "adx",
+        name: "Average Directional Index",
+        description: "Trend strength with +DI and -DI",
+        apply: (chart) => chart.addAdxPaneIndicator(14)
+    },
+    {
         id: "mom",
         name: "Momentum Histogram",
         description: "Histogram showing rate of change",
@@ -37,11 +81,28 @@ export const AVAILABLE_INDICATORS: IndicatorDef[] = [
 
 export interface IndicatorModalOptions {
     chart: DrishyaChartClient;
+    controller: WorkspaceController;
     onClose: () => void;
     onApply?: () => void;
 }
 
 export function createIndicatorModal(options: IndicatorModalOptions) {
+    const syncControllerPanesFromRuntime = () => {
+        const runtimePanes = options.chart.paneLayouts();
+        if (!runtimePanes.length) return;
+        const runtimeOrder = runtimePanes.map((p) => p.id);
+        const activeChartPaneId = options.controller.getState().activeChartPaneId;
+        for (const pane of runtimePanes) {
+            const existing = options.controller.getState().paneLayout.panes[pane.id];
+            const spec = buildPaneSpecForRuntime(pane.id, options.controller.getState().paneLayout, runtimeOrder);
+            if (spec.kind === "indicator" && !existing) {
+                spec.parentChartPaneId = activeChartPaneId;
+            }
+            options.controller.registerPane(spec);
+        }
+        options.controller.setPaneOrder(runtimeOrder);
+    };
+
     const backdrop = document.createElement("div");
     backdrop.className = "fixed inset-0 bg-black/40 z-[100] flex items-center justify-center animate-in fade-in duration-200";
 
@@ -107,7 +168,8 @@ export function createIndicatorModal(options: IndicatorModalOptions) {
             row.onclick = () => {
                 console.log(`[IndicatorModal] Applying ${ind.name} (id: ${ind.id})`);
                 try {
-                    ind.apply(options.chart);
+                    ind.apply(options.chart, options.controller);
+                    syncControllerPanesFromRuntime();
                     console.log(`[IndicatorModal] Successfully applied ${ind.name}`);
                 } catch (err) {
                     console.error(`[IndicatorModal] Failed to apply ${ind.name}:`, err);

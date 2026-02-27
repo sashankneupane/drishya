@@ -1,26 +1,57 @@
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../wasm/contracts.js";
+import { buildPaneSpecForRuntime } from "./paneSpec.js";
+import type { LayoutRect } from "../layout/splitTree.js";
+import type { WorkspaceChartSplitDirection, WorkspaceChartSplitNode } from "./types.js";
 
 const PANE_GAP_PX = 4;
-const PANE_SEPARATOR_HIT_PX = 6;
+const PANE_SEPARATOR_HIT_PX = 10;
 const PANE_MIN_HEIGHT_PX = 24;
+
+import type { WorkspaceController } from "./WorkspaceController.js";
 
 interface BindWorkspaceInteractionsOptions {
   canvas: HTMLCanvasElement;
   chart: DrishyaChartClient;
   rawChart: WasmChartLike;
   redraw: () => void;
+  redrawFast?: () => void;
   getPaneLayouts: () => PaneLayout[];
+  controller: WorkspaceController;
+  paneId?: string;
+  getPaneViewport?: () => LayoutRect | null;
+  getWorkspaceViewport?: () => LayoutRect;
+  onSourceReadoutClick?: () => void;
 }
 
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
-  const { canvas, chart, rawChart, redraw, getPaneLayouts } = options;
+  const {
+    canvas,
+    chart,
+    rawChart,
+    redraw,
+    redrawFast,
+    getPaneLayouts,
+    controller,
+    onSourceReadoutClick,
+    paneId,
+    getPaneViewport,
+    getWorkspaceViewport
+  } = options;
+  const drawFast = redrawFast ?? redraw;
+  let fastDrawQueued = false;
+  const requestFastDraw = () => {
+    if (fastDrawQueued) return;
+    fastDrawQueued = true;
+    requestAnimationFrame(() => {
+      fastDrawQueued = false;
+      drawFast();
+    });
+  };
   const hasDrawingInteraction =
-    typeof rawChart.set_drawing_tool_mode === "function" &&
     typeof rawChart.drawing_pointer_down === "function" &&
     typeof rawChart.drawing_pointer_move === "function" &&
-    typeof rawChart.drawing_pointer_up === "function" &&
-    typeof rawChart.drawing_cursor_hint === "function";
+    typeof rawChart.drawing_pointer_up === "function";
 
   let dragging = false;
   let pointerInCanvas = false;
@@ -29,6 +60,13 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let panAnchorY: number | null = null;
   let axisZoomDrag: { axis: "x" | "y"; lastClient: number; anchor: number } | null = null;
   let paneResizeDrag: { index: number } | null = null;
+  let drawingInteractionActive = false;
+  let movedWhileDragging = false;
+  let chartSplitDrag: {
+    path: number[];
+    direction: WorkspaceChartSplitDirection;
+    rect: LayoutRect;
+  } | null = null;
 
   const applyCursor = (cursor: string) => {
     canvas.style.cursor = cursor;
@@ -68,35 +106,91 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     for (let i = 0; i < panes.length - 1; i++) {
       const upper = panes[i];
       const lower = panes[i + 1];
-      const boundaryY = upper.y + upper.h;
-      const inX = x >= upper.x && x <= upper.x + upper.w;
-      const closeY = Math.abs(y - boundaryY) <= PANE_SEPARATOR_HIT_PX;
-      if (!inX || !closeY) continue;
-      return { index: i, upper, lower };
+      const withinPaneX = x >= upper.x && x <= upper.x + upper.w;
+      if (!withinPaneX) continue;
+      const upperBottom = upper.y + upper.h;
+      const gapPx = Math.max(0, lower.y - upperBottom);
+      const separatorCenterY = upperBottom + gapPx * 0.5;
+      const closeY = Math.abs(y - separatorCenterY) <= PANE_SEPARATOR_HIT_PX;
+      if (!closeY) continue;
+      return { index: i, upper, lower, gapPx };
+    }
+    return null;
+  };
+
+  const chartSplitSeparatorAt = (x: number, y: number) => {
+    const paneViewport = getPaneViewport?.() ?? {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Math.floor(canvas.getBoundingClientRect().width)),
+      h: Math.max(1, Math.floor(canvas.getBoundingClientRect().height))
+    };
+    const viewport: LayoutRect = getWorkspaceViewport?.() ?? paneViewport;
+    const globalX = paneViewport.x + x;
+    const globalY = paneViewport.y + y;
+    const out: {
+      path: number[];
+      direction: WorkspaceChartSplitDirection;
+      rect: LayoutRect;
+    }[] = [];
+    collectChartSplitSeparators(controller.getState().chartLayoutTree, viewport, [], out);
+    for (const item of out) {
+      if (item.direction === "horizontal") {
+        const dividerX = item.rect.x + item.rect.w * 0.5;
+        const closeX = Math.abs(globalX - dividerX) <= PANE_SEPARATOR_HIT_PX;
+        const inY = globalY >= item.rect.y && globalY <= item.rect.y + item.rect.h;
+        if (closeX && inY) return item;
+      } else {
+        const dividerY = item.rect.y + item.rect.h * 0.5;
+        const closeY = Math.abs(globalY - dividerY) <= PANE_SEPARATOR_HIT_PX;
+        const inX = globalX >= item.rect.x && globalX <= item.rect.x + item.rect.w;
+        if (closeY && inX) return item;
+      }
     }
     return null;
   };
 
   const applyPaneResizeAtY = (dragState: { index: number }, pointerY: number) => {
-    if (typeof rawChart.set_pane_weights_json !== "function") return;
     const panes = getPaneLayouts();
     const upper = panes[dragState.index];
     const lower = panes[dragState.index + 1];
     if (!upper || !lower) return;
 
+    const state = controller.getState();
+    const runtimeOrder = panes.map((p) => p.id);
+    for (const pane of panes) {
+      if (!state.paneLayout.panes[pane.id]) {
+        controller.registerPane(buildPaneSpecForRuntime(pane.id, controller.getState().paneLayout, runtimeOrder));
+      }
+    }
+    controller.setPaneOrder(runtimeOrder);
+
     const lowerBottom = lower.y + lower.h;
+    const upperBottom = upper.y + upper.h;
+    const gapPx = Math.max(0, lower.y - upperBottom);
     const minY = upper.y + PANE_MIN_HEIGHT_PX;
-    const maxY = lowerBottom - PANE_GAP_PX - PANE_MIN_HEIGHT_PX;
+    const maxY = lowerBottom - gapPx - PANE_MIN_HEIGHT_PX;
     const clampedBoundaryY = Math.max(minY, Math.min(maxY, pointerY));
 
     const newUpperH = Math.max(PANE_MIN_HEIGHT_PX, clampedBoundaryY - upper.y);
-    const newLowerH = Math.max(PANE_MIN_HEIGHT_PX, lowerBottom - (clampedBoundaryY + PANE_GAP_PX));
+    const newLowerH = Math.max(PANE_MIN_HEIGHT_PX, lowerBottom - (clampedBoundaryY + gapPx));
 
-    const weightMap: Record<string, number> = {};
-    for (const pane of panes) weightMap[pane.id] = pane.h;
-    weightMap[upper.id] = newUpperH;
-    weightMap[lower.id] = newLowerH;
-    chart.setPaneWeights(weightMap);
+    const totalAvailPx = panes.reduce((sum, p) => sum + p.h, 0);
+    if (totalAvailPx <= 0) return;
+
+    const updates: Record<string, number> = {};
+    for (let i = 0; i < panes.length; i += 1) {
+      const pane = panes[i];
+      if (pane.id === upper.id) {
+        updates[pane.id] = newUpperH / totalAvailPx;
+      } else if (pane.id === lower.id) {
+        updates[pane.id] = newLowerH / totalAvailPx;
+      } else {
+        updates[pane.id] = pane.h / totalAvailPx;
+      }
+    }
+
+    controller.updatePaneRatios(updates);
   };
 
   const updateSelectCursorAt = (x: number, y: number) => {
@@ -120,33 +214,75 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+    if (paneId) {
+      controller.setActiveChartPane(paneId);
+    } else {
+      const activeChartPaneId = chartPaneAtPoint(controller.getState().chartLayoutTree, {
+        x: 0,
+        y: 0,
+        w: Math.max(1, Math.floor(rect.width)),
+        h: Math.max(1, Math.floor(rect.height))
+      }, x, y);
+      if (activeChartPaneId) {
+        controller.setActiveChartPane(activeChartPaneId);
+      }
+    }
+    if (chart.sourceReadoutHitTest(x, y)) {
+      event.preventDefault();
+      onSourceReadoutClick?.();
+      return;
+    }
+
+    const chartSplit = chartSplitSeparatorAt(x, y);
+    if (chartSplit) {
+      event.preventDefault();
+      chartSplitDrag = chartSplit;
+      applyCursor(chartSplit.direction === "horizontal" ? "col-resize" : "row-resize");
+      return;
+    }
 
     const separator = paneSeparatorAt(x, y);
     if (separator) {
+      event.preventDefault();
       paneResizeDrag = { index: separator.index };
       applyCursor("row-resize");
       return;
     }
 
     if (hasDrawingInteraction) {
-      const consumed = chart.drawingPointerDown(x, y);
-      if (consumed) {
-        applyCursor(chart.drawingToolMode() === "select" ? "grabbing" : "crosshair");
-        redraw();
-        lastX = event.clientX;
-        lastY = event.clientY;
-        return;
-      }
-      if (chart.drawingToolMode() === "select") {
-        const selectedSeries = chart.selectSeriesAt(x, y);
-        if (selectedSeries) {
+      const toolMode = chart.drawingToolMode();
+      if (toolMode !== "select") {
+        const consumed = chart.drawingPointerDown(x, y);
+        if (consumed) {
+          drawingInteractionActive = true;
+          applyCursor("crosshair");
           redraw();
           lastX = event.clientX;
           lastY = event.clientY;
           return;
         }
+      } else {
+        const selectedDrawing = chart.selectDrawingAt(x, y);
+        if (selectedDrawing !== null) {
+          const consumed = chart.drawingPointerDown(x, y);
+          if (consumed) {
+            drawingInteractionActive = true;
+            applyCursor("grabbing");
+            redraw();
+            lastX = event.clientX;
+            lastY = event.clientY;
+            return;
+          }
+        }
+        const selectedSeries = chart.selectSeriesAt(x, y);
+        if (selectedSeries) {
+          drawingInteractionActive = false;
+          lastX = event.clientX;
+          lastY = event.clientY;
+        }
       }
     }
+    drawingInteractionActive = false;
 
     const zones = axisZones();
     if (zones && pointInRect(x, y, zones.yAxis)) {
@@ -159,6 +295,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     dragging = true;
+    movedWhileDragging = false;
     panAnchorY = y;
     lastX = event.clientX;
     lastY = event.clientY;
@@ -220,15 +357,27 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     lastX = event.clientX;
     lastY = event.clientY;
 
-    if (hasDrawingInteraction) {
+    if (hasDrawingInteraction && drawingInteractionActive) {
       const rect = canvas.getBoundingClientRect();
       if (chart.drawingPointerUp(lastX - rect.left, lastY - rect.top)) {
+        requestFastDraw();
+      }
+    }
+
+    if (!drawingInteractionActive && !movedWhileDragging && chart.drawingToolMode() === "select") {
+      const rect = canvas.getBoundingClientRect();
+      const localX = event.clientX - rect.left;
+      const localY = event.clientY - rect.top;
+      if (chart.selectSeriesAt(localX, localY)) {
         redraw();
       }
     }
 
     axisZoomDrag = null;
+    chartSplitDrag = null;
     paneResizeDrag = null;
+    drawingInteractionActive = false;
+    movedWhileDragging = false;
     dragging = false;
     panAnchorY = null;
 
@@ -246,19 +395,27 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     lastX = event.clientX;
     lastY = event.clientY;
 
-    if (paneResizeDrag) {
+    if (chartSplitDrag) {
       const rect = canvas.getBoundingClientRect();
-      applyPaneResizeAtY(paneResizeDrag, event.clientY - rect.top);
-      redraw();
+      const localX = event.clientX - rect.left;
+      const localY = event.clientY - rect.top;
+      const paneViewport = getPaneViewport?.() ?? { x: 0, y: 0, w: rect.width, h: rect.height };
+      const globalX = paneViewport.x + localX;
+      const globalY = paneViewport.y + localY;
+      const ratio =
+        chartSplitDrag.direction === "horizontal"
+          ? (globalX - chartSplitDrag.rect.x) / Math.max(1, chartSplitDrag.rect.w)
+          : (globalY - chartSplitDrag.rect.y) / Math.max(1, chartSplitDrag.rect.h);
+      controller.setChartSplitRatio(chartSplitDrag.path, ratio);
+      requestFastDraw();
       return;
     }
 
-    if (hasDrawingInteraction) {
+    if (paneResizeDrag) {
       const rect = canvas.getBoundingClientRect();
-      if (chart.drawingPointerMove(event.clientX - rect.left, event.clientY - rect.top)) {
-        redraw();
-        return;
-      }
+      applyPaneResizeAtY(paneResizeDrag, event.clientY - rect.top);
+      requestFastDraw();
+      return;
     }
 
     if (axisZoomDrag?.axis === "y") {
@@ -266,7 +423,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       axisZoomDrag.lastClient = event.clientY;
       if (dy !== 0) {
         chart.zoomY(axisZoomDrag.anchor, Math.max(0.85, Math.min(1.15, 1.0 + dy * 0.01)));
-        redraw();
+        requestFastDraw();
       }
       return;
     }
@@ -276,7 +433,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       axisZoomDrag.lastClient = event.clientX;
       if (dx !== 0) {
         chart.zoomX(axisZoomDrag.anchor, Math.max(0.85, Math.min(1.15, 1.0 + dx * 0.01)));
-        redraw();
+        requestFastDraw();
       }
       return;
     }
@@ -284,8 +441,24 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (!dragging) return;
     const rect = canvas.getBoundingClientRect();
     const anchorY = panAnchorY ?? (event.clientY - rect.top);
-    chart.pan2d(event.clientX - prevX, event.clientY - prevY, anchorY);
-    redraw();
+    const dx = event.clientX - prevX;
+    const dy = event.clientY - prevY;
+    if (dx !== 0 || dy !== 0) {
+      movedWhileDragging = true;
+    }
+    chart.pan2d(dx, dy, anchorY);
+    requestFastDraw();
+    return;
+  };
+
+  const onWindowMouseMoveDrawing = (event: MouseEvent) => {
+    if (!hasDrawingInteraction || !drawingInteractionActive || dragging || chartSplitDrag || paneResizeDrag || axisZoomDrag) {
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    if (chart.drawingPointerMove(event.clientX - rect.left, event.clientY - rect.top)) {
+      requestFastDraw();
+    }
   };
 
   const onCanvasMouseMove = (event: MouseEvent) => {
@@ -293,35 +466,44 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
+    const splitSeparator = chartSplitSeparatorAt(x, y);
+    if (splitSeparator) {
+      chart.clearCrosshair();
+      applyCursor(splitSeparator.direction === "horizontal" ? "col-resize" : "row-resize");
+      requestFastDraw();
+      return;
+    }
+
     if (paneSeparatorAt(x, y)) {
       chart.clearCrosshair();
       applyCursor("row-resize");
-      redraw();
+      requestFastDraw();
       return;
     }
 
     chart.setCrosshair(x, y);
+
     const zones = axisZones();
     if (zones && pointInRect(x, y, zones.yAxis)) {
       applyCursor("ns-resize");
-      redraw();
+      requestFastDraw();
       return;
     }
     if (zones && pointInRect(x, y, zones.xAxis)) {
       applyCursor("ew-resize");
-      redraw();
+      requestFastDraw();
       return;
     }
 
     if (!dragging) updateSelectCursorAt(x, y);
-    redraw();
+    requestFastDraw();
   };
 
   const onMouseLeave = () => {
     pointerInCanvas = false;
     chart.clearCrosshair();
     if (!dragging) applyCursor("default");
-    redraw();
+    requestFastDraw();
   };
 
   const onWheel = (event: WheelEvent) => {
@@ -333,7 +515,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const sensitivity = event.ctrlKey ? 0.00065 : 0.00095;
     const factor = Math.exp(delta * sensitivity);
     chart.zoomX(x, Math.max(0.96, Math.min(1.04, factor)));
-    redraw();
+    requestFastDraw();
   };
 
   canvas.addEventListener("mouseenter", onMouseEnter);
@@ -345,6 +527,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   canvas.addEventListener("touchmove", onTouchMove, { passive: false });
   canvas.addEventListener("touchend", onTouchEnd, { passive: false });
   window.addEventListener("mousemove", onWindowMouseMove);
+  window.addEventListener("mousemove", onWindowMouseMoveDrawing);
   window.addEventListener("mouseup", onMouseUp);
 
   return () => {
@@ -357,6 +540,74 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     canvas.removeEventListener("touchmove", onTouchMove);
     canvas.removeEventListener("touchend", onTouchEnd);
     window.removeEventListener("mousemove", onWindowMouseMove);
+    window.removeEventListener("mousemove", onWindowMouseMoveDrawing);
     window.removeEventListener("mouseup", onMouseUp);
   };
+}
+
+function collectChartSplitSeparators(
+  node: WorkspaceChartSplitNode,
+  rect: LayoutRect,
+  path: number[],
+  out: { path: number[]; direction: WorkspaceChartSplitDirection; rect: LayoutRect }[]
+): void {
+  if (node.type === "leaf") return;
+  const ratio = Math.max(0.1, Math.min(0.9, node.ratio));
+  if (node.direction === "horizontal") {
+    const firstW = Math.floor(rect.w * ratio);
+    const secondW = rect.w - firstW;
+    out.push({
+      path,
+      direction: node.direction,
+      rect: { x: rect.x + firstW - 1, y: rect.y, w: 2, h: rect.h }
+    });
+    collectChartSplitSeparators(node.first, { x: rect.x, y: rect.y, w: firstW, h: rect.h }, [...path, 0], out);
+    collectChartSplitSeparators(
+      node.second,
+      { x: rect.x + firstW, y: rect.y, w: secondW, h: rect.h },
+      [...path, 1],
+      out
+    );
+    return;
+  }
+
+  const firstH = Math.floor(rect.h * ratio);
+  const secondH = rect.h - firstH;
+  out.push({
+    path,
+    direction: node.direction,
+    rect: { x: rect.x, y: rect.y + firstH - 1, w: rect.w, h: 2 }
+  });
+  collectChartSplitSeparators(node.first, { x: rect.x, y: rect.y, w: rect.w, h: firstH }, [...path, 0], out);
+  collectChartSplitSeparators(
+    node.second,
+    { x: rect.x, y: rect.y + firstH, w: rect.w, h: secondH },
+    [...path, 1],
+    out
+  );
+}
+
+function chartPaneAtPoint(
+  node: WorkspaceChartSplitNode,
+  rect: LayoutRect,
+  x: number,
+  y: number
+): string | null {
+  if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) {
+    return null;
+  }
+  if (node.type === "leaf") {
+    return node.chartPaneId;
+  }
+  const ratio = Math.max(0.1, Math.min(0.9, node.ratio));
+  if (node.direction === "horizontal") {
+    const firstW = Math.floor(rect.w * ratio);
+    const firstRect: LayoutRect = { x: rect.x, y: rect.y, w: firstW, h: rect.h };
+    const secondRect: LayoutRect = { x: rect.x + firstW, y: rect.y, w: rect.w - firstW, h: rect.h };
+    return chartPaneAtPoint(node.first, firstRect, x, y) ?? chartPaneAtPoint(node.second, secondRect, x, y);
+  }
+  const firstH = Math.floor(rect.h * ratio);
+  const firstRect: LayoutRect = { x: rect.x, y: rect.y, w: rect.w, h: firstH };
+  const secondRect: LayoutRect = { x: rect.x, y: rect.y + firstH, w: rect.w, h: rect.h - firstH };
+  return chartPaneAtPoint(node.first, firstRect, x, y) ?? chartPaneAtPoint(node.second, secondRect, x, y);
 }

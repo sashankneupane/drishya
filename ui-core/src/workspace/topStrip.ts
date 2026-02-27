@@ -206,11 +206,25 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   indBtn.onclick = () => {
     createIndicatorModal({
       chart: options.chart,
+      controller: options.controller,
       onApply: options.onMutate,
       onClose: () => { }
     });
   };
   leftSide.appendChild(indBtn);
+
+  // Add Pane Button
+  const addPaneBtn = document.createElement("button");
+  addPaneBtn.className = BTN_MINIMAL;
+  addPaneBtn.appendChild(makeSvgIcon("plus", "h-3.5 w-3.5 mr-1.5"));
+  const addPaneLabel = document.createElement("span");
+  addPaneLabel.textContent = "Pane";
+  addPaneBtn.appendChild(addPaneLabel);
+  addPaneBtn.onclick = () => {
+    controller.addChartPane();
+    options.onMutate?.();
+  };
+  leftSide.appendChild(addPaneBtn);
 
   // Right Side - Objects Toggle
   const replayGroup = document.createElement("div");
@@ -252,6 +266,17 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   root.append(leftSide, rightSide);
 
   const unsubscribe = controller.subscribe((state) => {
+    const paneSource = state.chartPaneSources[state.activeChartPaneId];
+    const nextSymbol = paneSource?.symbol ?? options.selectedSymbol;
+    const nextTimeframe = paneSource?.timeframe ?? options.selectedTimeframe;
+    if (nextSymbol !== selectedSymbol) {
+      selectedSymbol = nextSymbol;
+      updateSymbol();
+    }
+    if (nextTimeframe !== selectedTimeframe) {
+      selectedTimeframe = nextTimeframe;
+      updateTf();
+    }
     if (state.isObjectTreeOpen) {
       objectsBtn.classList.add("text-zinc-100", "bg-zinc-900");
     } else {

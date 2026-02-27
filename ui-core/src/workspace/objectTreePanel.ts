@@ -1,11 +1,14 @@
 import { makeSvgIcon } from "./icons.js";
+import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import { buildObjectTreeNodes } from "../chrome/objectTree.js";
 
 interface ObjectTreePanelOptions {
-  chart: DrishyaChartClient;
+  getChart: () => DrishyaChartClient | null;
   controller: WorkspaceController;
+  symbols?: readonly string[];
+  onPaneSourceChange?: (paneId: string, symbol: string) => void | Promise<void>;
   onMutate?: () => void;
 }
 
@@ -16,16 +19,16 @@ export interface ObjectTreePanelHandle {
 }
 
 export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTreePanelHandle {
-  const { chart, controller } = options;
+  const { controller } = options;
   const root = document.createElement("div");
-  root.className = "w-object-tree h-full bg-workspace-bg border-l border-workspace-border flex flex-col z-20 shrink-0 select-none overflow-hidden";
+  root.className = "h-full bg-zinc-950/80 border-l border-workspace-border flex flex-col z-20 shrink-0 select-none overflow-hidden backdrop-blur-sm";
   root.style.display = "none";
 
   const header = document.createElement("div");
-  header.className = "h-top-strip flex items-center justify-between px-3 border-b border-workspace-border shrink-0 bg-zinc-950/20";
+  header.className = "h-top-strip flex items-center justify-between px-4 border-b border-workspace-border shrink-0 bg-zinc-900/70";
 
   const title = document.createElement("span");
-  title.className = "text-[10px] font-bold text-zinc-500 uppercase tracking-wider";
+  title.className = "text-[11px] font-bold text-zinc-300 uppercase tracking-wider";
   title.textContent = "Objects";
 
   const close = document.createElement("button");
@@ -37,13 +40,17 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   root.appendChild(header);
 
   const container = document.createElement("div");
-  container.className = "flex-1 overflow-y-auto no-scrollbar py-1";
+  container.className = "flex-1 overflow-y-auto no-scrollbar py-2";
   root.appendChild(container);
 
   const refresh = () => {
     container.innerHTML = "";
+    const chart = options.getChart();
+    if (!chart) {
+      return;
+    }
     const state = chart.objectTreeState();
-    const nodes = buildObjectTreeNodes(state);
+    const nodes = buildObjectTreeNodes(state, controller.getState().paneLayout);
 
     if (nodes.length === 0) {
       const empty = document.createElement("div");
@@ -73,6 +80,26 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
 
       const actions = document.createElement("div");
       actions.className = "flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity";
+
+      if (node.kind === "pane" && (node.paneKind === "chart" || node.paneKind === "price")) {
+        const sourceBtn = document.createElement("button");
+        sourceBtn.className = "p-1 text-zinc-700 hover:text-zinc-200 transition-colors cursor-pointer border-none outline-none bg-transparent";
+        sourceBtn.title = "Change source";
+        sourceBtn.appendChild(makeSvgIcon("search", "h-3.5 w-3.5"));
+        sourceBtn.onclick = () => {
+          controller.setActiveChartPane(node.id);
+          const symbols = options.symbols ?? [];
+          if (!symbols.length) return;
+          createSymbolSearchModal({
+            symbols,
+            onSelect: async (symbol) => {
+              await options.onPaneSourceChange?.(node.id, symbol);
+            },
+            onClose: () => { }
+          });
+        };
+        actions.appendChild(sourceBtn);
+      }
 
       // Visibility Toggle
       if (node.visible !== undefined) {
@@ -120,11 +147,33 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         del.appendChild(makeSvgIcon("delete", "h-3.5 w-3.5"));
         del.title = "Delete";
         del.onclick = () => {
-          chart.applyObjectTreeAction({
-            type: "delete",
-            kind: node.kind as any,
-            id: node.id
-          });
+          if (node.kind === "pane") {
+            if (node.paneKind === "chart") {
+              controller.removeChartPane(node.id);
+            } else {
+              const stateBefore = chart.objectTreeState();
+              for (const series of stateBefore.series) {
+                if (!series.deleted && series.pane_id === node.id) {
+                  chart.applyObjectTreeAction({
+                    type: "delete",
+                    kind: "series",
+                    id: series.id
+                  });
+                }
+              }
+              controller.unregisterPane(node.id);
+              controller.cleanupEmptyIndicatorPanes(chart.objectTreeState());
+            }
+          } else {
+            chart.applyObjectTreeAction({
+              type: "delete",
+              kind: node.kind as any,
+              id: node.id
+            });
+          }
+          if (node.kind === "series" || node.kind === "pane") {
+            controller.cleanupEmptyIndicatorPanes(chart.objectTreeState());
+          }
           refresh();
           options.onMutate?.();
         };

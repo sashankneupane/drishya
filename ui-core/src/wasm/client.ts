@@ -7,6 +7,7 @@ import type {
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
+  ChartPaneViewport,
   ReplayState,
   RestoreChartStateOptions,
   WasmChartLike
@@ -291,6 +292,34 @@ export class DrishyaChartClient {
 
   setPaneWeights(weightMap: Record<string, number>): void {
     this.wasm.set_pane_weights_json?.(JSON.stringify(weightMap));
+  }
+
+  setChartPaneViewports(viewports: Record<string, ChartPaneViewport>): void {
+    this.wasm.set_chart_pane_viewports_json?.(JSON.stringify(viewports));
+  }
+
+  chartPaneViewports(): Record<string, ChartPaneViewport> {
+    const raw = this.wasm.chart_pane_viewports_json?.();
+    if (!raw) return {};
+    return safeJsonParse<Record<string, ChartPaneViewport>>(raw) ?? {};
+  }
+
+  setPaneChartPaneMap(mapping: Record<string, string>): void {
+    this.wasm.set_pane_chart_pane_map_json?.(JSON.stringify(mapping));
+  }
+
+  setReadoutSourceLabel(label: string): void {
+    this.wasm.set_readout_source_label?.(label);
+  }
+
+  sourceReadoutHitTest(x: number, y: number): boolean {
+    return this.wasm.source_readout_hit_test?.(x, y) ?? false;
+  }
+
+  paneChartPaneMap(): Record<string, string> {
+    const raw = this.wasm.pane_chart_pane_map_json?.();
+    if (!raw) return {};
+    return safeJsonParse<Record<string, string>>(raw) ?? {};
   }
 
   getPaneStateJson(): string | null {
