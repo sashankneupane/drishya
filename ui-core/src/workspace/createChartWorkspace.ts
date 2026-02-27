@@ -1,10 +1,12 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import type { ChartAppearanceConfig } from "../wasm/contracts.js";
+import type { LayoutRect } from "../layout/splitTree.js";
 import { DrishyaChartClient } from "../wasm/client.js";
 import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "./constants.js";
 import { createDrawingConfigPanel } from "./components/DrawingConfigPanel.js";
 import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
+import { computeChartPaneRects, computeIndicatorRectsForChartPane } from "./layout/index.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
 import { createTopStrip } from "./topStrip.js";
 import { ReplayController } from "./replay/ReplayController.js";
@@ -323,6 +325,41 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   let lastLayoutJson = "";
+  const syncChartPaneContracts = (state: ReturnType<typeof controller.getState>) => {
+    const stageRect = stage.getBoundingClientRect();
+    const viewport: LayoutRect = {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Math.floor(stageRect.width)),
+      h: Math.max(1, Math.floor(stageRect.height))
+    };
+    const chartPaneRects = computeChartPaneRects(state.chartLayoutTree, viewport);
+    const chartPaneViewports: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    const paneChartPaneMap: Record<string, string> = {};
+
+    for (const paneRect of chartPaneRects) {
+      const chartPane = state.chartPanes[paneRect.chartPaneId];
+      if (chartPane && chartPane.visible === false) continue;
+      chartPaneViewports[paneRect.chartPaneId] = {
+        x: paneRect.rect.x,
+        y: paneRect.rect.y,
+        w: paneRect.rect.w,
+        h: paneRect.rect.h
+      };
+      const scopedPanes = computeIndicatorRectsForChartPane(
+        state.paneLayout,
+        paneRect.chartPaneId,
+        paneRect.rect
+      );
+      for (const scoped of scopedPanes) {
+        paneChartPaneMap[scoped.paneId] = paneRect.chartPaneId;
+      }
+    }
+
+    chart.setChartPaneViewports(chartPaneViewports);
+    chart.setPaneChartPaneMap(paneChartPaneMap);
+  };
+
   const unsubscribe = controller.subscribe((state) => {
     const layout = state.paneLayout;
     const currentLayoutJson = JSON.stringify({
@@ -342,6 +379,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       applyToolToChart(state.activeTool);
       chart.setCursorMode(state.cursorMode);
       chart.setPriceAxisMode(state.priceAxisMode);
+      syncChartPaneContracts(state);
 
       const raw = chart.raw();
       const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
