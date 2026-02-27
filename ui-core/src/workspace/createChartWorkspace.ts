@@ -27,6 +27,7 @@ interface PersistedWorkspaceState {
   activeTool?: string;
   cursorMode?: string;
   isObjectTreeOpen?: boolean;
+  objectTreeWidth?: number;
   isLeftStripOpen?: boolean;
   priceAxisMode?: "linear" | "log" | "percent";
   paneLayout?: WorkspacePaneLayoutState;
@@ -46,6 +47,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     theme: options.initialTheme,
     activeTool: "select"
   });
+  let restoredObjectTreeWidth: number | null = null;
 
   // root element fills host completely and hides any overflow
   const root = document.createElement("div");
@@ -117,6 +119,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           chart.setCursorMode(saved.cursorMode);
         }
         if (saved.isObjectTreeOpen !== undefined) controller.setObjectTreeOpen(saved.isObjectTreeOpen);
+        if (typeof saved.objectTreeWidth === "number" && Number.isFinite(saved.objectTreeWidth)) {
+          restoredObjectTreeWidth = saved.objectTreeWidth;
+        }
         if (saved.isLeftStripOpen !== undefined) controller.setLeftStripOpen(saved.isLeftStripOpen);
         if (saved.priceAxisMode) {
           controller.setPriceAxisMode(saved.priceAxisMode);
@@ -151,6 +156,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             // Do not persist activeTool for the demo app; always restore as "select"
             cursorMode: controller.getState().cursorMode,
             isObjectTreeOpen: controller.getState().isObjectTreeOpen,
+            objectTreeWidth,
             isLeftStripOpen: controller.getState().isLeftStripOpen,
             priceAxisMode: controller.getState().priceAxisMode,
             candleStyle: chart.candleStyle(),
@@ -207,10 +213,53 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     onMutate: () => draw()
   });
 
+  const treeResizeHandle = document.createElement("div");
+  treeResizeHandle.className = "h-full w-2 shrink-0 cursor-col-resize bg-transparent hover:bg-zinc-800/70 transition-colors";
+  treeResizeHandle.title = "Resize Objects";
+  treeResizeHandle.style.display = "none";
+
+  const OBJECT_TREE_MIN_WIDTH = 300;
+  const OBJECT_TREE_MAX_WIDTH = 760;
+  let objectTreeWidth = 360;
+  const applyObjectTreeWidth = (width: number) => {
+    objectTreeWidth = Math.max(OBJECT_TREE_MIN_WIDTH, Math.min(OBJECT_TREE_MAX_WIDTH, Math.floor(width)));
+    treeHandle.root.style.width = `${objectTreeWidth}px`;
+    treeHandle.root.style.minWidth = `${OBJECT_TREE_MIN_WIDTH}px`;
+  };
+  if (restoredObjectTreeWidth !== null) {
+    applyObjectTreeWidth(restoredObjectTreeWidth);
+  }
+
   // Final assembly of UI pieces
   root.insertBefore(topHandle.root, mainRow);
   mainRow.insertBefore(stripHandle.root, stage);
+  mainRow.appendChild(treeResizeHandle);
   mainRow.appendChild(treeHandle.root);
+  applyObjectTreeWidth(objectTreeWidth);
+
+  let treeResizing = false;
+  const onTreeResizeMouseMove = (event: MouseEvent) => {
+    if (!treeResizing) return;
+    const rect = mainRow.getBoundingClientRect();
+    const width = rect.right - event.clientX;
+    applyObjectTreeWidth(width);
+    draw();
+  };
+  const onTreeResizeMouseUp = () => {
+    if (!treeResizing) return;
+    treeResizing = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    savePersistedState();
+  };
+  treeResizeHandle.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    treeResizing = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  });
+  window.addEventListener("mousemove", onTreeResizeMouseMove);
+  window.addEventListener("mouseup", onTreeResizeMouseUp);
 
   const setupCanvasBackingStore = () => {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -367,6 +416,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       tool: state.activeTool,
       cursor: state.cursorMode,
       axis: state.priceAxisMode,
+      objectTreeOpen: state.isObjectTreeOpen,
+      objectTreeWidth,
       ratios: layout.ratios,
       order: layout.order,
       visibility: layout.visibility,
@@ -379,6 +430,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       applyToolToChart(state.activeTool);
       chart.setCursorMode(state.cursorMode);
       chart.setPriceAxisMode(state.priceAxisMode);
+      treeResizeHandle.style.display = state.isObjectTreeOpen ? "block" : "none";
       syncChartPaneContracts(state);
 
       const raw = chart.raw();
@@ -580,6 +632,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       stripHandle.destroy();
       treeHandle.destroy();
       unbindInteractions();
+      window.removeEventListener("mousemove", onTreeResizeMouseMove);
+      window.removeEventListener("mouseup", onTreeResizeMouseUp);
       window.removeEventListener("keydown", onKeyDown);
       if (resizeObserver) {
         resizeObserver.disconnect();

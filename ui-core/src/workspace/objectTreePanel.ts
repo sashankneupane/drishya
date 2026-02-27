@@ -18,14 +18,14 @@ export interface ObjectTreePanelHandle {
 export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTreePanelHandle {
   const { chart, controller } = options;
   const root = document.createElement("div");
-  root.className = "w-object-tree h-full bg-workspace-bg border-l border-workspace-border flex flex-col z-20 shrink-0 select-none overflow-hidden";
+  root.className = "h-full bg-zinc-950/80 border-l border-workspace-border flex flex-col z-20 shrink-0 select-none overflow-hidden backdrop-blur-sm";
   root.style.display = "none";
 
   const header = document.createElement("div");
-  header.className = "h-top-strip flex items-center justify-between px-3 border-b border-workspace-border shrink-0 bg-zinc-950/20";
+  header.className = "h-top-strip flex items-center justify-between px-4 border-b border-workspace-border shrink-0 bg-zinc-900/70";
 
   const title = document.createElement("span");
-  title.className = "text-[10px] font-bold text-zinc-500 uppercase tracking-wider";
+  title.className = "text-[11px] font-bold text-zinc-300 uppercase tracking-wider";
   title.textContent = "Objects";
 
   const close = document.createElement("button");
@@ -37,7 +37,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   root.appendChild(header);
 
   const container = document.createElement("div");
-  container.className = "flex-1 overflow-y-auto no-scrollbar py-1";
+  container.className = "flex-1 overflow-y-auto no-scrollbar py-2";
   root.appendChild(container);
 
   const refresh = () => {
