@@ -11,7 +11,8 @@ import type {
   ReplayState,
   RestoreChartStateOptions,
   WasmChartLike,
-  CrosshairSyncSnapshotDto
+  CrosshairSyncSnapshotDto,
+  CrosshairSyncPositionDto
 } from "./contracts";
 
 import type { ObjectTreeAction } from "../chrome/objectTree.js";
@@ -83,6 +84,12 @@ export class DrishyaChartClient {
     const raw = this.wasm.crosshair_sync_snapshot_json?.();
     if (!raw) return null;
     return safeJsonParse<CrosshairSyncSnapshotDto>(raw);
+  }
+
+  crosshairSyncPosition(): CrosshairSyncPositionDto | null {
+    const raw = this.wasm.crosshair_sync_position_json?.();
+    if (!raw) return null;
+    return safeJsonParse<CrosshairSyncPositionDto>(raw);
   }
 
   setCursorMode(mode: string): void {

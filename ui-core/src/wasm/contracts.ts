@@ -79,6 +79,11 @@ export interface CrosshairSyncSnapshotDto {
   readouts: CrosshairPaneReadoutDto[];
 }
 
+export interface CrosshairSyncPositionDto {
+  x: number;
+  timestamp: number | null;
+}
+
 export interface PaneTreeState {
   id: string;
   visible: boolean;
@@ -220,6 +225,7 @@ export interface WasmChartLike {
   set_crosshair_at?(x: number, y: number): void;
   set_crosshair_at_timestamp?(timestamp: number, y: number): boolean;
   clear_crosshair?(): void;
+  crosshair_sync_position_json?(): string;
   crosshair_sync_snapshot_json?(): string;
   set_price_axis_mode?(mode: string): void;
   price_axis_mode?(): string;

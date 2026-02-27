@@ -19,8 +19,50 @@ pub struct CrosshairSyncSnapshotDto {
     pub readouts: Vec<CrosshairPaneReadoutDto>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct CrosshairSyncPositionDto {
+    pub x: f32,
+    pub timestamp: Option<i64>,
+}
+
 #[wasm_bindgen]
 impl WasmChart {
+    pub fn crosshair_sync_position_json(&self) -> Result<String, JsValue> {
+        let chart = &self.chart;
+        let layout = chart.current_layout();
+
+        let mut snapshot = CrosshairSyncPositionDto {
+            x: 0.0,
+            timestamp: None,
+        };
+
+        let crosshair = match chart.crosshair {
+            Some(c) => c,
+            None => {
+                return serde_json::to_string(&snapshot).map_err(|e| {
+                    JsValue::from_str(&format!(
+                        "Failed to serialize crosshair sync position: {}",
+                        e
+                    ))
+                });
+            }
+        };
+
+        snapshot.x = crosshair.x;
+        let plot_w = layout.plot.w.max(1.0);
+        if let Some(vp) = &chart.viewport {
+            let world_x = vp.pixel_x_to_world_x(crosshair.x, layout.plot.x, plot_w);
+            snapshot.timestamp = timestamp_for_world_x(world_x as f64, &chart.candles);
+        }
+
+        serde_json::to_string(&snapshot).map_err(|e| {
+            JsValue::from_str(&format!(
+                "Failed to serialize crosshair sync position: {}",
+                e
+            ))
+        })
+    }
+
     pub fn crosshair_sync_snapshot_json(&self) -> Result<String, JsValue> {
         let chart = &self.chart;
         let layout = chart.current_layout();

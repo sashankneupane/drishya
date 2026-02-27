@@ -487,17 +487,25 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return runtime;
   };
 
+  const lastSyncKeyBySource = new Map<string, string>();
   const syncCrosshairFromPane = (
     sourcePaneId: string,
-    snapshot: ReturnType<DrishyaChartClient["crosshairSyncSnapshot"]>
+    snapshot: ReturnType<DrishyaChartClient["crosshairSyncPosition"]>
   ) => {
     if (!snapshot) {
+      lastSyncKeyBySource.delete(sourcePaneId);
       for (const [paneId, runtime] of chartRuntimes) {
         if (paneId === sourcePaneId) continue;
         runtime.chart.clearCrosshair();
+        scheduleFastDrawPane(paneId);
       }
       return;
     }
+    const syncKey = `${snapshot.timestamp ?? "none"}:${Math.round(snapshot.x)}`;
+    if (lastSyncKeyBySource.get(sourcePaneId) === syncKey) {
+      return;
+    }
+    lastSyncKeyBySource.set(sourcePaneId, syncKey);
     const sourceRuntime = chartRuntimes.get(sourcePaneId);
     if (!sourceRuntime) return;
     const sourceW = Math.max(1, sourceRuntime.canvas.clientWidth);
