@@ -3,6 +3,7 @@ import type { DrishyaChartClient } from "../wasm/client.js";
 import type { ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../wasm/contracts.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import type { ReplayController } from "./replay/ReplayController.js";
+import type { ChartPaneRuntime } from "./runtimeTypes.js";
 
 export type WorkspaceTheme = "dark" | "light";
 
@@ -70,6 +71,9 @@ export interface ChartWorkspaceHandle {
   clearDrawings: () => void;
   toggleTheme: () => WorkspaceTheme;
   refreshObjectTree: () => void;
+  listCharts: () => WorkspaceChartPaneId[];
+  getChart: (chartPaneId: WorkspaceChartPaneId) => ChartPaneRuntime | null;
+  getActiveChart: () => ChartPaneRuntime | null;
   applyAppearanceConfig?: (config: ChartAppearanceConfig) => void;
   getAppearanceConfig?: () => ChartAppearanceConfig | null;
   destroy: () => void;

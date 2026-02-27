@@ -11,6 +11,7 @@ import { createObjectTreePanel } from "./objectTreePanel.js";
 import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import { createTopStrip } from "./topStrip.js";
 import { ReplayController } from "./replay/ReplayController.js";
+import type { ChartPaneRuntime } from "./runtimeTypes.js";
 import { WorkspaceController } from "./WorkspaceController.js";
 import type {
   ChartWorkspaceHandle,
@@ -33,6 +34,7 @@ interface PersistedWorkspaceState {
   priceAxisMode?: "linear" | "log" | "percent";
   paneLayout?: WorkspacePaneLayoutState;
   chartPaneSources?: Record<string, { symbol?: string; timeframe?: string }>;
+  indicators?: string[];
 }
 
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
@@ -99,9 +101,19 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   // WASM Chart setup - NOW canvas is in DOM
   let rawChart = createWasmChart(canvasId, 300, 300);
   const chart = new DrishyaChartClient(rawChart);
+  const chartRuntimes = new Map<string, ChartPaneRuntime>();
   const replay = new ReplayController(chart);
   controller.setReplayController(replay);
   chart.setTheme(controller.getState().theme);
+  chartRuntimes.set("price", {
+    paneId: "price",
+    container: stage,
+    canvas,
+    rawChart,
+    chart,
+    draw: () => chart.draw(),
+    resize: (width: number, height: number) => chart.resize(width, height)
+  });
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
     try {
@@ -111,6 +123,66 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   };
   applyAppearance(DEFAULT_APPEARANCE_CONFIG);
+
+  const applyBuiltInIndicator = (id: string) => {
+    switch (id) {
+      case "sma":
+        chart.addSmaOverlay(20);
+        return;
+      case "ema":
+        chart.addEmaOverlay(20);
+        return;
+      case "bb":
+        chart.addBbandsOverlay(20, 2.0);
+        return;
+      case "rsi":
+        chart.addRsiPaneIndicator(14);
+        return;
+      case "macd":
+        chart.addMacdPaneIndicator(12, 26, 9);
+        return;
+      case "atr":
+        chart.addAtrPaneIndicator(14);
+        return;
+      case "stoch":
+        chart.addStochasticPaneIndicator(14, 3, 3);
+        return;
+      case "obv":
+        chart.addObvPaneIndicator();
+        return;
+      case "vwap":
+        chart.addVwapOverlay();
+        return;
+      case "adx":
+        chart.addAdxPaneIndicator(14);
+        return;
+      case "mom":
+        chart.addMomentumHistogramOverlay();
+        return;
+      default:
+        return;
+    }
+  };
+
+  const collectActiveBuiltInIndicators = (): string[] => {
+    const ids = new Set<string>();
+    for (const series of chart.objectTreeState().series) {
+      if (series.deleted) continue;
+      const seriesId = series.id;
+      if (seriesId.startsWith("sma:")) ids.add("sma");
+      else if (seriesId.startsWith("ema:")) ids.add("ema");
+      else if (seriesId.startsWith("bbands:")) ids.add("bb");
+      else if (seriesId.startsWith("rsi:")) ids.add("rsi");
+      else if (seriesId.startsWith("macd:") || seriesId.startsWith("macd-signal:") || seriesId.startsWith("macd-hist:")) ids.add("macd");
+      else if (seriesId.startsWith("atr:")) ids.add("atr");
+      else if (seriesId.startsWith("stoch-k:") || seriesId.startsWith("stoch-d:")) ids.add("stoch");
+      else if (seriesId === "obv") ids.add("obv");
+      else if (seriesId === "vwap") ids.add("vwap");
+      else if (seriesId.startsWith("adx:") || seriesId.startsWith("plus-di:") || seriesId.startsWith("minus-di:")) ids.add("adx");
+      else if (seriesId === "momentum-histogram") ids.add("mom");
+    }
+    return Array.from(ids);
+  };
 
   // Restore persisted state before building UI
   if (persistKey && typeof localStorage !== "undefined") {
@@ -149,6 +221,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           chart.setCandleStyle(validStyle);
         }
         if (saved.paneState) chart.restorePaneStateJson(saved.paneState);
+        if (Array.isArray(saved.indicators)) {
+          for (const id of saved.indicators) {
+            if (typeof id === "string") {
+              applyBuiltInIndicator(id);
+            }
+          }
+        }
       }
     } catch {
       // ignore corrupt or incompatible persisted data
@@ -176,6 +255,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             appearance: chart.getAppearanceConfig() ?? undefined,
             paneLayout: controller.getState().paneLayout,
             chartPaneSources: controller.getState().chartPaneSources,
+            indicators: collectActiveBuiltInIndicators(),
             paneState: chart.getPaneStateJson()
           };
           localStorage.setItem(persistKey, JSON.stringify(state));
@@ -243,6 +323,16 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const treeHandle = createObjectTreePanel({
     chart,
     controller,
+    symbols: options.marketControls?.symbols ?? [],
+    onPaneSourceChange: async (paneId, symbol) => {
+      controller.setChartPaneSource(paneId, { symbol });
+      await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+        symbol,
+        timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+      });
+      await options.marketControls?.onSymbolChange?.(symbol);
+      draw();
+    },
     onMutate: () => draw()
   });
 
@@ -685,6 +775,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     clearDrawings,
     toggleTheme: () => controller.toggleTheme(),
     refreshObjectTree: treeHandle.refresh,
+    listCharts: () => Array.from(chartRuntimes.keys()),
+    getChart: (chartPaneId) => chartRuntimes.get(chartPaneId) ?? null,
+    getActiveChart: () => chartRuntimes.get(controller.getState().activeChartPaneId) ?? null,
     destroy: () => {
       if (configPanelEl) configPanelEl.remove();
       unsubscribe();
