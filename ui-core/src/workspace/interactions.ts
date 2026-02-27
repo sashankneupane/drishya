@@ -240,18 +240,33 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     if (hasDrawingInteraction) {
-      const consumed = chart.drawingPointerDown(x, y);
-      if (consumed) {
-        drawingInteractionActive = true;
-        applyCursor(chart.drawingToolMode() === "select" ? "grabbing" : "crosshair");
-        redraw();
-        lastX = event.clientX;
-        lastY = event.clientY;
-        return;
-      }
-      if (chart.drawingToolMode() === "select") {
+      const toolMode = chart.drawingToolMode();
+      if (toolMode !== "select") {
+        const consumed = chart.drawingPointerDown(x, y);
+        if (consumed) {
+          drawingInteractionActive = true;
+          applyCursor("crosshair");
+          redraw();
+          lastX = event.clientX;
+          lastY = event.clientY;
+          return;
+        }
+      } else {
+        const selectedDrawing = chart.selectDrawingAt(x, y);
+        if (selectedDrawing !== null) {
+          const consumed = chart.drawingPointerDown(x, y);
+          if (consumed) {
+            drawingInteractionActive = true;
+            applyCursor("grabbing");
+            redraw();
+            lastX = event.clientX;
+            lastY = event.clientY;
+            return;
+          }
+        }
         const selectedSeries = chart.selectSeriesAt(x, y);
         if (selectedSeries) {
+          drawingInteractionActive = false;
           redraw();
           lastX = event.clientX;
           lastY = event.clientY;
@@ -384,14 +399,6 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       return;
     }
 
-    if (hasDrawingInteraction && drawingInteractionActive) {
-      const rect = canvas.getBoundingClientRect();
-      if (chart.drawingPointerMove(event.clientX - rect.left, event.clientY - rect.top)) {
-        redraw();
-        return;
-      }
-    }
-
     if (axisZoomDrag?.axis === "y") {
       const dy = event.clientY - axisZoomDrag.lastClient;
       axisZoomDrag.lastClient = event.clientY;
@@ -417,6 +424,17 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const anchorY = panAnchorY ?? (event.clientY - rect.top);
     chart.pan2d(event.clientX - prevX, event.clientY - prevY, anchorY);
     redraw();
+    return;
+  };
+
+  const onWindowMouseMoveDrawing = (event: MouseEvent) => {
+    if (!hasDrawingInteraction || !drawingInteractionActive || dragging || chartSplitDrag || paneResizeDrag || axisZoomDrag) {
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    if (chart.drawingPointerMove(event.clientX - rect.left, event.clientY - rect.top)) {
+      redraw();
+    }
   };
 
   const onCanvasMouseMove = (event: MouseEvent) => {
@@ -489,6 +507,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   canvas.addEventListener("touchmove", onTouchMove, { passive: false });
   canvas.addEventListener("touchend", onTouchEnd, { passive: false });
   window.addEventListener("mousemove", onWindowMouseMove);
+  window.addEventListener("mousemove", onWindowMouseMoveDrawing);
   window.addEventListener("mouseup", onMouseUp);
 
   return () => {
@@ -501,6 +520,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     canvas.removeEventListener("touchmove", onTouchMove);
     canvas.removeEventListener("touchend", onTouchEnd);
     window.removeEventListener("mousemove", onWindowMouseMove);
+    window.removeEventListener("mousemove", onWindowMouseMoveDrawing);
     window.removeEventListener("mouseup", onMouseUp);
   };
 }
