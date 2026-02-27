@@ -4,7 +4,8 @@ import type { ChartAppearanceConfig } from "../wasm/contracts.js";
 
 export interface ConfigModalOptions {
   initialConfig: ChartAppearanceConfig;
-  onApply: (config: ChartAppearanceConfig) => void;
+  initialCandleStyle?: "solid" | "hollow" | "bars" | "volume";
+  onApply: (config: ChartAppearanceConfig, candleStyle: "solid" | "hollow" | "bars" | "volume") => void;
   onClose: () => void;
 }
 
@@ -65,6 +66,7 @@ function createColorField(
 
 export function createConfigModal(options: ConfigModalOptions): void {
   let config: ChartAppearanceConfig = { ...options.initialConfig };
+  let candleStyle: "solid" | "hollow" | "bars" | "volume" = options.initialCandleStyle ?? "solid";
 
   const backdrop = document.createElement("div");
   backdrop.className = "fixed inset-0 bg-black/40 z-[100] flex items-center justify-center animate-in fade-in duration-200";
@@ -105,6 +107,31 @@ export function createConfigModal(options: ConfigModalOptions): void {
     })
   );
 
+  const candleRow = document.createElement("div");
+  candleRow.className = "flex items-center gap-3 py-2";
+  const candleLbl = document.createElement("label");
+  candleLbl.className = "text-xs text-zinc-500 w-24 shrink-0";
+  candleLbl.textContent = "Candle mode";
+  const candleSelect = document.createElement("select");
+  candleSelect.className = "flex-1 h-8 px-3 bg-zinc-900 border border-workspace-border rounded text-sm text-zinc-100 outline-none focus:border-zinc-600";
+  [
+    { label: "Solid", value: "solid" },
+    { label: "Hollow", value: "hollow" },
+    { label: "OHLC Bars", value: "bars" },
+    { label: "Volume", value: "volume" }
+  ].forEach((opt) => {
+    const el = document.createElement("option");
+    el.value = opt.value;
+    el.textContent = opt.label;
+    candleSelect.appendChild(el);
+  });
+  candleSelect.value = candleStyle;
+  candleSelect.onchange = () => {
+    candleStyle = candleSelect.value as typeof candleStyle;
+  };
+  candleRow.append(candleLbl, candleSelect);
+  body.appendChild(candleRow);
+
   const footer = document.createElement("div");
   footer.className = "p-4 border-t border-workspace-border flex items-center justify-end gap-2 bg-zinc-900/20";
 
@@ -132,7 +159,7 @@ export function createConfigModal(options: ConfigModalOptions): void {
   applyBtn.className = "h-8 px-4 text-xs font-medium text-white bg-zinc-700 hover:bg-zinc-600 rounded transition-colors";
   applyBtn.textContent = "Apply";
   applyBtn.onclick = () => {
-    options.onApply(config);
+    options.onApply(config, candleStyle);
     destroy();
   };
 
