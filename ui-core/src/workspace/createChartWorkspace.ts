@@ -524,7 +524,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (paneId === sourcePaneId) continue;
       const w = Math.max(1, runtime.canvas.clientWidth);
       const h = Math.max(1, runtime.canvas.clientHeight);
-      runtime.chart.setCrosshair(Math.max(0, Math.min(w, xNorm * w)), Math.floor(h * 0.5));
+      const y = Math.floor(h * 0.5);
+      const synced =
+        typeof snapshot.timestamp === "number"
+          ? runtime.chart.setCrosshairTimestamp(snapshot.timestamp, y)
+          : false;
+      if (!synced) {
+        runtime.chart.setCrosshair(Math.max(0, Math.min(w, xNorm * w)), y);
+      }
     }
   };
 
@@ -800,6 +807,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         if (state.paneLayout.visibility[id] && !state.paneLayout.collapsed[id]) {
           weightMap[id] = state.paneLayout.ratios[id] || 0;
         }
+      }
+      const weightSum = Object.values(weightMap).reduce((sum, weight) => sum + Math.max(0, weight), 0);
+      if (weightSum > 0) {
+        for (const id of Object.keys(weightMap)) {
+          weightMap[id] = Math.max(0, weightMap[id]) / weightSum;
+        }
+      } else {
+        weightMap.price = 1;
       }
       activeChart.setPaneWeights(weightMap);
       draw();

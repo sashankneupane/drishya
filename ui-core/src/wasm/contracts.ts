@@ -218,6 +218,7 @@ export interface WasmChartLike {
   zoom_y_axis_at?(y: number, zoomFactor: number): void;
   reset_y_axis_zoom?(paneId: string): void;
   set_crosshair_at?(x: number, y: number): void;
+  set_crosshair_at_timestamp?(timestamp: number, y: number): boolean;
   clear_crosshair?(): void;
   crosshair_sync_snapshot_json?(): string;
   set_price_axis_mode?(mode: string): void;

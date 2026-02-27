@@ -71,6 +71,10 @@ export class DrishyaChartClient {
     this.wasm.set_crosshair_at?.(x, y);
   }
 
+  setCrosshairTimestamp(timestamp: number, y: number): boolean {
+    return this.wasm.set_crosshair_at_timestamp?.(timestamp, y) ?? false;
+  }
+
   clearCrosshair(): void {
     this.wasm.clear_crosshair?.();
   }

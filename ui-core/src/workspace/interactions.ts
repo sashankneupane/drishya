@@ -51,6 +51,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let panAnchorY: number | null = null;
   let axisZoomDrag: { axis: "x" | "y"; lastClient: number; anchor: number } | null = null;
   let paneResizeDrag: { index: number } | null = null;
+  let drawingInteractionActive = false;
   let chartSplitDrag: {
     path: number[];
     direction: WorkspaceChartSplitDirection;
@@ -241,6 +242,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (hasDrawingInteraction) {
       const consumed = chart.drawingPointerDown(x, y);
       if (consumed) {
+        drawingInteractionActive = true;
         applyCursor(chart.drawingToolMode() === "select" ? "grabbing" : "crosshair");
         redraw();
         lastX = event.clientX;
@@ -257,6 +259,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
         }
       }
     }
+    drawingInteractionActive = false;
 
     const zones = axisZones();
     if (zones && pointInRect(x, y, zones.yAxis)) {
@@ -330,7 +333,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     lastX = event.clientX;
     lastY = event.clientY;
 
-    if (hasDrawingInteraction) {
+    if (hasDrawingInteraction && drawingInteractionActive) {
       const rect = canvas.getBoundingClientRect();
       if (chart.drawingPointerUp(lastX - rect.left, lastY - rect.top)) {
         redraw();
@@ -340,6 +343,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     axisZoomDrag = null;
     chartSplitDrag = null;
     paneResizeDrag = null;
+    drawingInteractionActive = false;
     dragging = false;
     panAnchorY = null;
 
@@ -380,7 +384,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       return;
     }
 
-    if (hasDrawingInteraction) {
+    if (hasDrawingInteraction && drawingInteractionActive) {
       const rect = canvas.getBoundingClientRect();
       if (chart.drawingPointerMove(event.clientX - rect.left, event.clientY - rect.top)) {
         redraw();
