@@ -139,9 +139,21 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const getActiveRuntime = () => {
     const activeId = controller.getState().activeChartPaneId;
-    return chartRuntimes.get(activeId) ?? chartRuntimes.get("price") ?? null;
+    if (chartRuntimes.has(activeId)) return chartRuntimes.get(activeId) ?? null;
+    if (controller.getState().chartPanes[activeId]) {
+      const created = createRuntimeForPane(activeId);
+      chartRuntimes.set(activeId, created);
+      return created;
+    }
+    return chartRuntimes.get("price") ?? null;
   };
-  const getRuntime = (paneId: string) => chartRuntimes.get(paneId) ?? null;
+  const getRuntime = (paneId: string) => {
+    if (chartRuntimes.has(paneId)) return chartRuntimes.get(paneId) ?? null;
+    if (!controller.getState().chartPanes[paneId]) return null;
+    const created = createRuntimeForPane(paneId);
+    chartRuntimes.set(paneId, created);
+    return created;
+  };
   const getPrimaryRuntime = () => chartRuntimes.get("price") ?? chartRuntimes.values().next().value ?? null;
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
@@ -1222,8 +1234,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     clearDrawings,
     toggleTheme: () => controller.toggleTheme(),
     refreshObjectTree: treeHandle.refresh,
-    listCharts: () => Array.from(chartRuntimes.keys()),
-    getChart: (chartPaneId) => chartRuntimes.get(chartPaneId) ?? null,
+    listCharts: () => Object.keys(controller.getState().chartPanes),
+    getChart: (chartPaneId) => getRuntime(chartPaneId),
     getActiveChart: () => chartRuntimes.get(controller.getState().activeChartPaneId) ?? null,
     destroy: () => {
       if (configPanelEl) configPanelEl.remove();
