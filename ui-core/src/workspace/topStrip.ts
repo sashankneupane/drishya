@@ -16,7 +16,6 @@ interface TopStripOptions {
   onTimeframeChange?: (timeframe: string) => void | Promise<void>;
   onCompareSymbol?: (symbol: string) => void | Promise<void>;
   onCandleTypeChange?: (type: "solid" | "hollow" | "bars" | "volume") => void;
-  onLayout: () => void;
   onMutate?: () => void;
   getAppearanceConfig?: () => { background: string; candle_up: string; candle_down: string } | null;
   applyAppearanceConfig?: (config: { background: string; candle_up: string; candle_down: string }) => void;

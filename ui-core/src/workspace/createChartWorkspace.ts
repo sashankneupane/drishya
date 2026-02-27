@@ -394,7 +394,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       getActiveRuntime()?.chart.draw();
       savePersistedState();
     },
-    onLayout: () => { },
     onMutate: () => draw()
   });
 
@@ -900,12 +899,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     refreshConfigPanel();
     updateTextCaret();
     savePersistedState();
-  };
-
-  const drawFast = () => {
-    for (const paneId of chartRuntimes.keys()) {
-      scheduleFastDrawPane(paneId);
-    }
   };
 
   const syncReadoutSourceLabel = (state: ReturnType<typeof controller.getState>) => {
