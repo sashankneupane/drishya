@@ -69,12 +69,19 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const stage = document.createElement("div");
   stage.className = "flex-1 min-h-0 min-w-0 bg-chart-bg flex-shrink-0 relative overflow-hidden";
+  const chartLayer = document.createElement("div");
+  chartLayer.className = "absolute inset-0";
+  stage.appendChild(chartLayer);
+
+  const priceContainer = document.createElement("div");
+  priceContainer.className = "absolute overflow-hidden";
+  chartLayer.appendChild(priceContainer);
 
   const canvas = document.createElement("canvas");
-  canvas.className = "block h-full w-full bg-transparent";
+  canvas.className = "block h-full w-full bg-transparent absolute inset-0";
   const canvasId = `drishya-canvas-${Math.random().toString(36).slice(2, 10)}`;
   canvas.id = canvasId;
-  stage.appendChild(canvas);
+  priceContainer.appendChild(canvas);
 
   const configPanelOverlay = document.createElement("div");
   configPanelOverlay.className = "absolute inset-0 pointer-events-none z-40";
@@ -107,7 +114,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   chart.setTheme(controller.getState().theme);
   chartRuntimes.set("price", {
     paneId: "price",
-    container: stage,
+    container: priceContainer,
     canvas,
     rawChart,
     chart,
@@ -385,15 +392,83 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   window.addEventListener("mouseup", onTreeResizeMouseUp);
 
   const setupCanvasBackingStore = () => {
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const rect = stage.getBoundingClientRect();
-    const width = Math.max(300, Math.floor(rect.width));
-    const height = Math.max(300, Math.floor(rect.height));
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-    const ctx = canvas.getContext("2d");
-    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    chart.resize(width, height);
+    updateChartRuntimeLayout();
+  };
+
+  const createRuntimeForPane = (paneId: string): ChartPaneRuntime => {
+    const container = document.createElement("div");
+    container.className = "absolute overflow-hidden";
+    const paneCanvas = document.createElement("canvas");
+    paneCanvas.className = "block h-full w-full bg-transparent absolute inset-0";
+    const paneCanvasId = `drishya-canvas-${paneId}-${Math.random().toString(36).slice(2, 10)}`;
+    paneCanvas.id = paneCanvasId;
+    container.appendChild(paneCanvas);
+    chartLayer.appendChild(container);
+
+    const paneRaw = createWasmChart(paneCanvasId, 300, 300);
+    const paneChart = new DrishyaChartClient(paneRaw);
+    paneChart.setTheme(controller.getState().theme);
+    try {
+      paneChart.setAppearanceConfig(DEFAULT_APPEARANCE_CONFIG);
+    } catch {
+      // ignore unsupported appearance config in older wasm
+    }
+
+    return {
+      paneId,
+      container,
+      canvas: paneCanvas,
+      rawChart: paneRaw,
+      chart: paneChart,
+      draw: () => paneChart.draw(),
+      resize: (width: number, height: number) => paneChart.resize(width, height)
+    };
+  };
+
+  const updateChartRuntimeLayout = () => {
+    const state = controller.getState();
+    const stageRect = stage.getBoundingClientRect();
+    const viewport: LayoutRect = {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Math.floor(stageRect.width)),
+      h: Math.max(1, Math.floor(stageRect.height))
+    };
+    const chartPaneRects = computeChartPaneRects(state.chartLayoutTree, viewport)
+      .filter((paneRect) => state.chartPanes[paneRect.chartPaneId]?.visible !== false);
+    const activePaneIds = new Set(chartPaneRects.map((p) => p.chartPaneId));
+
+    for (const paneRect of chartPaneRects) {
+      const paneId = paneRect.chartPaneId;
+      let runtime = chartRuntimes.get(paneId);
+      if (!runtime) {
+        runtime = createRuntimeForPane(paneId);
+        chartRuntimes.set(paneId, runtime);
+      }
+      runtime.container.style.left = `${paneRect.rect.x}px`;
+      runtime.container.style.top = `${paneRect.rect.y}px`;
+      runtime.container.style.width = `${paneRect.rect.w}px`;
+      runtime.container.style.height = `${paneRect.rect.h}px`;
+
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const width = Math.max(300, Math.floor(paneRect.rect.w));
+      const height = Math.max(300, Math.floor(paneRect.rect.h));
+      runtime.canvas.width = Math.floor(width * dpr);
+      runtime.canvas.height = Math.floor(height * dpr);
+      const ctx = runtime.canvas.getContext("2d");
+      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      runtime.resize(width, height);
+    }
+
+    for (const [paneId, runtime] of chartRuntimes) {
+      if (activePaneIds.has(paneId)) continue;
+      if (paneId === "price" && state.chartPanes.price) continue;
+      runtime.unbindInteractions?.();
+      if (runtime.container.parentElement) {
+        runtime.container.parentElement.removeChild(runtime.container);
+      }
+      chartRuntimes.delete(paneId);
+    }
   };
 
   const clearDrawings = () => {
@@ -463,7 +538,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const draw = () => {
-    chart.draw();
+    for (const runtime of chartRuntimes.values()) {
+      runtime.draw();
+    }
     treeHandle.refresh();
     refreshConfigPanel();
     updateTextCaret();
@@ -583,6 +660,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       treeResizeHandle.style.display = state.isObjectTreeOpen ? "block" : "none";
       syncChartPaneContracts(state);
       syncReadoutSourceLabel(state);
+      updateChartRuntimeLayout();
 
       const raw = chart.raw();
       const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
@@ -795,6 +873,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       } else {
         window.removeEventListener("resize", setupCanvasBackingStore);
       }
+      for (const runtime of chartRuntimes.values()) {
+        runtime.unbindInteractions?.();
+      }
+      chartRuntimes.clear();
       host.innerHTML = "";
     }
   };
