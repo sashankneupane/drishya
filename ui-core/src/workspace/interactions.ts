@@ -2,7 +2,7 @@ import type { DrishyaChartClient } from "../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../wasm/contracts.js";
 
 const PANE_GAP_PX = 4;
-const PANE_SEPARATOR_HIT_PX = 6;
+const PANE_SEPARATOR_HIT_PX = 10;
 const PANE_MIN_HEIGHT_PX = 24;
 
 import type { WorkspaceController } from "./WorkspaceController.js";
@@ -308,6 +308,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     chart.setCrosshair(x, y);
+
     const zones = axisZones();
     if (zones && pointInRect(x, y, zones.yAxis)) {
       applyCursor("ns-resize");
@@ -321,6 +322,8 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     if (!dragging) updateSelectCursorAt(x, y);
+    // Notice: we don't call redraw() here manually if updateSyncCrosshair triggers one via controller,
+    // but we optimized the subscription to avoid that. So we MUST call redraw here.
     redraw();
   };
 

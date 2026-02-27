@@ -1,7 +1,6 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { WorkspaceTheme, WorkspacePaneLayoutState, WorkspacePaneId, WorkspacePaneSpec } from "./types.js";
-import type { CursorMode } from "../wasm/contracts.js";
-import type { ReplayState } from "../wasm/contracts.js";
+import type { WorkspaceTheme, WorkspacePaneLayoutState, WorkspacePaneId, WorkspacePaneSpec, WorkspaceCrosshairState } from "./types.js";
+import type { CursorMode, ReplayState, ObjectTreeState } from "../wasm/contracts.js";
 import type { ReplayController } from "./replay/ReplayController.js";
 import { PRICE_PANE_ID, DEFAULT_INDICATOR_PANE_RATIO } from "./constants.js";
 
@@ -14,6 +13,7 @@ export interface WorkspaceState {
     priceAxisMode: "linear" | "log" | "percent";
     replay: ReplayState;
     paneLayout: WorkspacePaneLayoutState;
+    crosshair: WorkspaceCrosshairState | null;
 }
 
 export function normalizePaneRatios(
@@ -78,7 +78,8 @@ export class WorkspaceController {
             cursorMode: initial.cursorMode ?? "crosshair",
             priceAxisMode: initial.priceAxisMode ?? "linear",
             replay: { playing: false, cursor_ts: null },
-            paneLayout: initial.paneLayout ?? defaultPaneLayout
+            paneLayout: initial.paneLayout ?? defaultPaneLayout,
+            crosshair: null
         };
     }
 
@@ -137,6 +138,14 @@ export class WorkspaceController {
         if (this.state.priceAxisMode === mode) return;
         this.state.priceAxisMode = mode;
         this.notify();
+    }
+
+    setCrosshair(crosshair: WorkspaceCrosshairState | null): void {
+        const prev = this.state.crosshair;
+        if (sameCrosshair(prev, crosshair)) {
+            return;
+        }
+        this.state.crosshair = crosshair;
     }
 
     setReplayController(controller: ReplayController | null): void {
@@ -338,4 +347,83 @@ export class WorkspaceController {
         this.state.paneLayout = defaultPaneLayout;
         this.notify();
     }
+
+    loadPaneLayout(layout: WorkspacePaneLayoutState): void {
+        if (!layout.order || !layout.ratios || !layout.panes) return;
+        const normalizeId = (id: string) => (id === "price-pane" ? PRICE_PANE_ID : id);
+        const order = (Array.isArray(layout.order) ? layout.order : [PRICE_PANE_ID]).map(normalizeId);
+        const ratios = Object.fromEntries(
+            Object.entries(layout.ratios || { [PRICE_PANE_ID]: 1.0 }).map(([id, ratio]) => [normalizeId(id), ratio])
+        );
+        const visibility = Object.fromEntries(
+            Object.entries(layout.visibility || { [PRICE_PANE_ID]: true }).map(([id, visible]) => [normalizeId(id), visible])
+        );
+        const collapsed = Object.fromEntries(
+            Object.entries(layout.collapsed || { [PRICE_PANE_ID]: false }).map(([id, isCollapsed]) => [normalizeId(id), isCollapsed])
+        );
+        const panes = Object.fromEntries(
+            Object.entries(layout.panes || {
+                [PRICE_PANE_ID]: {
+                    id: PRICE_PANE_ID,
+                    kind: "price",
+                    title: "Price"
+                }
+            }).map(([id, pane]) => [normalizeId(id), { ...pane, id: normalizeId(pane.id) }])
+        );
+        this.state.paneLayout = {
+            order,
+            ratios,
+            visibility,
+            collapsed,
+            panes
+        };
+        this.notify();
+    }
+
+    cleanupEmptyIndicatorPanes(tree: ObjectTreeState): void {
+        const panesWithSeries = new Set<string>();
+        panesWithSeries.add(PRICE_PANE_ID);
+
+        for (const s of tree.series) {
+            if (!s.deleted) {
+                panesWithSeries.add(s.pane_id);
+            }
+        }
+
+        const panesToUnregister: string[] = [];
+        for (const id of this.state.paneLayout.order) {
+            const spec = this.state.paneLayout.panes[id];
+            if (spec && spec.kind === "indicator" && !panesWithSeries.has(id)) {
+                panesToUnregister.push(id);
+            }
+        }
+
+        for (const id of panesToUnregister) {
+            this.unregisterPane(id);
+        }
+    }
+
+    addPane(): void {
+        const id = `pane-${Math.random().toString(36).slice(2, 7)}`;
+        this.registerPane({
+            id,
+            kind: "indicator",
+            title: "Indicator Pane"
+        });
+    }
+}
+
+function sameCrosshair(a: WorkspaceCrosshairState | null, b: WorkspaceCrosshairState | null): boolean {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    if (a.x !== b.x || a.index !== b.index || a.timestamp !== b.timestamp) return false;
+    if (a.readouts.length !== b.readouts.length) return false;
+    for (let i = 0; i < a.readouts.length; i += 1) {
+        const ar = a.readouts[i];
+        const br = b.readouts[i];
+        if (ar.paneId !== br.paneId || ar.value !== br.value) {
+            return false;
+        }
+    }
+    return true;
 }

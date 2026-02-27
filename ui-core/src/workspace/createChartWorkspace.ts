@@ -12,6 +12,7 @@ import { WorkspaceController } from "./WorkspaceController.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
+  WorkspacePaneLayoutState,
 } from "./types.js";
 
 const WORKSPACE_STYLE_LINK_ID = "drishya-workspace-styles";
@@ -26,6 +27,7 @@ interface PersistedWorkspaceState {
   isObjectTreeOpen?: boolean;
   isLeftStripOpen?: boolean;
   priceAxisMode?: "linear" | "log" | "percent";
+  paneLayout?: WorkspacePaneLayoutState;
 }
 
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
@@ -118,6 +120,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           controller.setPriceAxisMode(saved.priceAxisMode);
           chart.setPriceAxisMode(saved.priceAxisMode);
         }
+        if (saved.paneLayout) {
+          controller.loadPaneLayout(saved.paneLayout);
+        }
         if (saved.appearance) applyAppearance(saved.appearance);
         const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
         if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
@@ -148,6 +153,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             priceAxisMode: controller.getState().priceAxisMode,
             candleStyle: chart.candleStyle(),
             appearance: chart.getAppearanceConfig() ?? undefined,
+            paneLayout: controller.getState().paneLayout,
             paneState: chart.getPaneStateJson()
           };
           localStorage.setItem(persistKey, JSON.stringify(state));
@@ -300,22 +306,46 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   });
 
   // Controller subscriptions
+  let lastLayoutJson = "";
   const unsubscribe = controller.subscribe((state) => {
-    chart.setTheme(state.theme);
-    chart.setDrawingTool(state.activeTool);
-    chart.setCursorMode(state.cursorMode);
-    chart.setPriceAxisMode(state.priceAxisMode);
+    const layout = state.paneLayout;
+    const currentLayoutJson = JSON.stringify({
+      theme: state.theme,
+      tool: state.activeTool,
+      cursor: state.cursorMode,
+      axis: state.priceAxisMode,
+      ratios: layout.ratios,
+      order: layout.order,
+      visibility: layout.visibility,
+      collapsed: layout.collapsed
+    });
 
-    const weightMap: Record<string, number> = {};
-    for (const id of state.paneLayout.order) {
-      if (state.paneLayout.visibility[id] && !state.paneLayout.collapsed[id]) {
-        weightMap[id] = state.paneLayout.ratios[id] || 0;
+    if (currentLayoutJson !== lastLayoutJson) {
+      lastLayoutJson = currentLayoutJson;
+      chart.setTheme(state.theme);
+      chart.setDrawingTool(state.activeTool);
+      chart.setCursorMode(state.cursorMode);
+      chart.setPriceAxisMode(state.priceAxisMode);
+
+      const raw = chart.raw();
+      const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
+      raw.set_pane_order_json?.(JSON.stringify(namedOrder));
+      for (const id of namedOrder) {
+        raw.register_pane?.(id);
+        raw.set_pane_visible?.(id, !!state.paneLayout.visibility[id]);
+        raw.set_pane_collapsed?.(id, !!state.paneLayout.collapsed[id]);
       }
-    }
-    chart.setPaneWeights(weightMap);
 
-    draw();
-    savePersistedState();
+      const weightMap: Record<string, number> = {};
+      for (const id of state.paneLayout.order) {
+        if (state.paneLayout.visibility[id] && !state.paneLayout.collapsed[id]) {
+          weightMap[id] = state.paneLayout.ratios[id] || 0;
+        }
+      }
+      chart.setPaneWeights(weightMap);
+      draw();
+      savePersistedState();
+    }
   });
 
   // hotkeyToolMap
