@@ -1,5 +1,4 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { DrishyaChartClient } from "../wasm/client.js";
 import type { ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../wasm/contracts.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import type { ReplayController } from "./replay/ReplayController.js";
@@ -60,9 +59,6 @@ export interface ChartWorkspaceHandle {
   root: HTMLDivElement;
   strip: HTMLElement;
   tree: HTMLElement;
-  canvas: HTMLCanvasElement;
-  chart: DrishyaChartClient;
-  rawChart: WasmChartLike;
   controller: WorkspaceController;
   replay: ReplayController;
   draw: () => void;

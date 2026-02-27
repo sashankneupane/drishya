@@ -110,20 +110,20 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   host.appendChild(root);
 
   // WASM Chart setup - NOW canvas is in DOM
-  let rawChart = createWasmChart(canvasId, 300, 300);
-  const chart = new DrishyaChartClient(rawChart);
+  const primaryRawChart = createWasmChart(canvasId, 300, 300);
+  const primaryChart = new DrishyaChartClient(primaryRawChart);
   const chartRuntimes = new Map<string, ChartPaneRuntime>();
-  const replay = new ReplayController(chart);
+  const replay = new ReplayController(primaryChart);
   controller.setReplayController(replay);
-  chart.setTheme(controller.getState().theme);
+  primaryChart.setTheme(controller.getState().theme);
   chartRuntimes.set("price", {
     paneId: "price",
     container: priceContainer,
     canvas,
-    rawChart,
-    chart,
-    draw: () => chart.draw(),
-    resize: (width: number, height: number) => chart.resize(width, height)
+    rawChart: primaryRawChart,
+    chart: primaryChart,
+    draw: () => primaryChart.draw(),
+    resize: (width: number, height: number) => primaryChart.resize(width, height)
   });
 
   const getActiveRuntime = () => {
@@ -298,7 +298,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const chartFacade = new Proxy({} as DrishyaChartClient, {
     get(_target, prop: keyof DrishyaChartClient) {
       const runtime = getActiveRuntime();
-      const activeChart = runtime?.chart ?? chart;
+      const activeChart = runtime?.chart ?? getPrimaryRuntime()?.chart;
+      if (!activeChart) return undefined;
       const value = (activeChart as any)[prop];
       if (typeof value === "function") {
         return (...args: unknown[]) => (activeChart as any)[prop](...args);
@@ -361,7 +362,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   });
 
   const treeHandle = createObjectTreePanel({
-    getChart: () => getActiveRuntime()?.chart ?? getRuntime("price")?.chart ?? null,
+    getChart: () => getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart ?? null,
     controller,
     symbols: options.marketControls?.symbols ?? [],
     onPaneSourceChange: async (paneId, symbol) => {
@@ -576,7 +577,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let configPanelDrawingId: number | null = null;
 
   const refreshConfigPanel = () => {
-    const activeChart = getActiveRuntime()?.chart ?? chart;
+    const activeChart = getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart;
+    if (!activeChart) return;
     const id = activeChart.selectedDrawingId();
     if (id === null) {
       if (configPanelEl) {
@@ -661,7 +663,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   // Controller subscriptions
   const applyToolToChart = (tool: string) => {
-    const activeChart = getActiveRuntime()?.chart ?? chart;
+    const activeChart = getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart;
+    if (!activeChart) return;
     if (tool === "crosshair" || tool === "dot" || tool === "normal") {
       activeChart.setCursorMode(tool);
       if (tool === "normal") {
@@ -738,7 +741,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         runtime.chart.setTheme(state.theme);
       }
       applyToolToChart(state.activeTool);
-      const activeChart = getActiveRuntime()?.chart ?? chart;
+      const activeChart = getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart;
+      if (!activeChart) return;
       activeChart.setCursorMode(state.cursorMode);
       activeChart.setPriceAxisMode(state.priceAxisMode);
       treeResizeHandle.style.display = state.isObjectTreeOpen ? "block" : "none";
@@ -931,9 +935,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     root: root as HTMLDivElement,
     strip: stripHandle.root,
     tree: treeHandle.root,
-    canvas,
-    chart,
-    rawChart,
     controller,
     replay,
     draw,

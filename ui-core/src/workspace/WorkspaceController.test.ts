@@ -90,6 +90,25 @@ function testWorkspaceController() {
     state = controller.getState();
     if (state.chartPaneSources[chart2]) throw new Error("Removed pane source state should be cleaned up");
 
+    // Indicators owned by removed pane should be re-parented to price pane
+    const orphanPaneId = "orphan-ind";
+    controller.registerPane({ id: orphanPaneId, kind: "indicator", title: "Orphan", parentChartPaneId: chart2 });
+    controller.removeChartPane(chart2);
+    state = controller.getState();
+    if (state.paneLayout.panes[orphanPaneId]?.parentChartPaneId !== PRICE_PANE_ID) {
+        throw new Error("Indicator panes should be re-parented to price pane after chart removal");
+    }
+
+    // Split ratio updates should apply deterministically to split root
+    const splitA = controller.addChartPane();
+    const splitB = controller.splitChartPane(splitA, "vertical");
+    controller.setChartSplitRatio([], 0.3);
+    state = controller.getState();
+    if (state.chartLayoutTree.type !== "split") throw new Error("Expected split tree after pane split");
+    if (Math.abs(state.chartLayoutTree.ratio - 0.3) > 0.0001) throw new Error("Root split ratio should be updated");
+    controller.removeChartPane(splitB);
+    controller.removeChartPane(splitA);
+
     // Test cleanupEmptyIndicatorPanes
     controller.registerPane({ id: "ind-to-clean", kind: "indicator", title: "CleanMe" });
     const rsiPaneId = "ind-to-clean";
