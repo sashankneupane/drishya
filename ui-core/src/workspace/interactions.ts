@@ -1,5 +1,6 @@
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../wasm/contracts.js";
+import type { CrosshairSyncSnapshotDto } from "../wasm/contracts.js";
 import { buildPaneSpecForRuntime } from "./paneSpec.js";
 import type { LayoutRect } from "../layout/splitTree.js";
 import type { WorkspaceChartSplitDirection, WorkspaceChartSplitNode } from "./types.js";
@@ -17,11 +18,13 @@ interface BindWorkspaceInteractionsOptions {
   redraw: () => void;
   getPaneLayouts: () => PaneLayout[];
   controller: WorkspaceController;
+  paneId?: string;
   onSourceReadoutClick?: () => void;
+  onCrosshairSync?: (snapshot: CrosshairSyncSnapshotDto | null) => void;
 }
 
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
-  const { canvas, chart, rawChart, redraw, getPaneLayouts, controller, onSourceReadoutClick } = options;
+  const { canvas, chart, rawChart, redraw, getPaneLayouts, controller, onSourceReadoutClick, paneId, onCrosshairSync } = options;
   const hasDrawingInteraction =
     typeof rawChart.drawing_pointer_down === "function" &&
     typeof rawChart.drawing_pointer_move === "function" &&
@@ -184,14 +187,18 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const activeChartPaneId = chartPaneAtPoint(controller.getState().chartLayoutTree, {
-      x: 0,
-      y: 0,
-      w: Math.max(1, Math.floor(rect.width)),
-      h: Math.max(1, Math.floor(rect.height))
-    }, x, y);
-    if (activeChartPaneId) {
-      controller.setActiveChartPane(activeChartPaneId);
+    if (paneId) {
+      controller.setActiveChartPane(paneId);
+    } else {
+      const activeChartPaneId = chartPaneAtPoint(controller.getState().chartLayoutTree, {
+        x: 0,
+        y: 0,
+        w: Math.max(1, Math.floor(rect.width)),
+        h: Math.max(1, Math.floor(rect.height))
+      }, x, y);
+      if (activeChartPaneId) {
+        controller.setActiveChartPane(activeChartPaneId);
+      }
     }
     if (chart.sourceReadoutHitTest(x, y)) {
       event.preventDefault();
@@ -410,6 +417,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     chart.setCrosshair(x, y);
+    onCrosshairSync?.(chart.crosshairSyncSnapshot());
 
     const zones = axisZones();
     if (zones && pointInRect(x, y, zones.yAxis)) {
@@ -432,6 +440,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   const onMouseLeave = () => {
     pointerInCanvas = false;
     chart.clearCrosshair();
+    onCrosshairSync?.(null);
     if (!dragging) applyCursor("default");
     redraw();
   };

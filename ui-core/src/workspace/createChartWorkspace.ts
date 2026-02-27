@@ -432,7 +432,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       // ignore unsupported appearance config in older wasm
     }
 
-    return {
+    const runtime: ChartPaneRuntime = {
       paneId,
       container,
       canvas: paneCanvas,
@@ -441,6 +441,56 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       draw: () => paneChart.draw(),
       resize: (width: number, height: number) => paneChart.resize(width, height)
     };
+    runtime.unbindInteractions = bindWorkspaceInteractions({
+      canvas: paneCanvas,
+      chart: paneChart,
+      rawChart: paneRaw,
+      redraw: draw,
+      getPaneLayouts: () => paneChart.paneLayouts(),
+      controller,
+      paneId,
+      onSourceReadoutClick: () => {
+        const symbols = options.marketControls?.symbols ?? [];
+        if (symbols.length === 0) return;
+        createSymbolSearchModal({
+          symbols,
+          onSelect: async (nextSymbol) => {
+            controller.setChartPaneSource(paneId, { symbol: nextSymbol });
+            await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+              symbol: nextSymbol,
+              timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+            });
+            await options.marketControls?.onSymbolChange?.(nextSymbol);
+          },
+          onClose: () => { }
+        });
+      },
+      onCrosshairSync: (snapshot) => syncCrosshairFromPane(paneId, snapshot)
+    });
+    return runtime;
+  };
+
+  const syncCrosshairFromPane = (
+    sourcePaneId: string,
+    snapshot: ReturnType<DrishyaChartClient["crosshairSyncSnapshot"]>
+  ) => {
+    if (!snapshot) {
+      for (const [paneId, runtime] of chartRuntimes) {
+        if (paneId === sourcePaneId) continue;
+        runtime.chart.clearCrosshair();
+      }
+      return;
+    }
+    const sourceRuntime = chartRuntimes.get(sourcePaneId);
+    if (!sourceRuntime) return;
+    const sourceW = Math.max(1, sourceRuntime.canvas.clientWidth);
+    const xNorm = snapshot.x / sourceW;
+    for (const [paneId, runtime] of chartRuntimes) {
+      if (paneId === sourcePaneId) continue;
+      const w = Math.max(1, runtime.canvas.clientWidth);
+      const h = Math.max(1, runtime.canvas.clientHeight);
+      runtime.chart.setCrosshair(Math.max(0, Math.min(w, xNorm * w)), Math.floor(h * 0.5));
+    }
   };
 
   const updateChartRuntimeLayout = () => {
@@ -580,31 +630,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   };
 
-  const unbindInteractions = bindWorkspaceInteractions({
-    canvas,
-    chart: getActiveRuntime()?.chart ?? chart,
-    rawChart: getActiveRuntime()?.rawChart ?? rawChart,
-    redraw: draw,
-    getPaneLayouts: () => chart.paneLayouts(),
-    controller,
-    onSourceReadoutClick: () => {
-      const symbols = options.marketControls?.symbols ?? [];
-      if (symbols.length === 0) return;
-      const paneId = controller.getState().activeChartPaneId;
-      createSymbolSearchModal({
-        symbols,
-        onSelect: async (nextSymbol) => {
-          controller.setChartPaneSource(paneId, { symbol: nextSymbol });
-          await options.marketControls?.onChartPaneSourceChange?.(paneId, {
-            symbol: nextSymbol,
-            timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
-          });
-          await options.marketControls?.onSymbolChange?.(nextSymbol);
-        },
-        onClose: () => { }
-      });
+  const unbindInteractions = () => {
+    for (const runtime of chartRuntimes.values()) {
+      runtime.unbindInteractions?.();
     }
-  });
+  };
 
   // Controller subscriptions
   const applyToolToChart = (tool: string) => {
