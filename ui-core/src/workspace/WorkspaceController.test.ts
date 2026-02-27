@@ -109,6 +109,31 @@ function testWorkspaceController() {
     controller.removeChartPane(splitB);
     controller.removeChartPane(splitA);
 
+    // Workspace tile and chart-tab state
+    state = controller.getState();
+    const chartTileId = state.activeChartTileId;
+    if (!state.chartTiles[chartTileId]) throw new Error("Active chart tile should exist");
+    const createdTab = controller.addChartTab(chartTileId);
+    if (!createdTab) throw new Error("addChartTab should return tab id");
+    state = controller.getState();
+    if (!state.chartTiles[chartTileId].tabs.some((tab) => tab.id === createdTab)) {
+        throw new Error("New tab should be attached to chart tile");
+    }
+    controller.setActiveChartTab(chartTileId, createdTab);
+    state = controller.getState();
+    if (state.chartTiles[chartTileId].activeTabId !== createdTab) {
+        throw new Error("setActiveChartTab should switch active tab");
+    }
+    controller.moveWorkspaceTile("tile-objects", 0);
+    state = controller.getState();
+    if (state.workspaceTileOrder[0] !== "tile-objects") {
+        throw new Error("moveWorkspaceTile should reorder tiles");
+    }
+    controller.updateWorkspaceTileRatios({ "tile-chart-1": 0.8, "tile-objects": 0.2 });
+    state = controller.getState();
+    const ratioSum = (state.workspaceTiles["tile-chart-1"]?.widthRatio ?? 0) + (state.workspaceTiles["tile-objects"]?.widthRatio ?? 0);
+    if (Math.abs(ratioSum - 1.0) > 0.001) throw new Error("Workspace tile ratios should normalize to 1");
+
     // Test cleanupEmptyIndicatorPanes
     controller.registerPane({ id: "ind-to-clean", kind: "indicator", title: "CleanMe" });
     const rsiPaneId = "ind-to-clean";
