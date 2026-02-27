@@ -10,6 +10,8 @@ interface ObjectTreePanelOptions {
   symbols?: readonly string[];
   onPaneSourceChange?: (paneId: string, symbol: string) => void | Promise<void>;
   onMutate?: () => void;
+  getIsOpen?: () => boolean;
+  onSetOpen?: (open: boolean) => void;
 }
 
 export interface ObjectTreePanelHandle {
@@ -21,26 +23,32 @@ export interface ObjectTreePanelHandle {
 export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTreePanelHandle {
   const { controller } = options;
   const root = document.createElement("div");
-  root.className = "h-full bg-zinc-950/80 border-l border-workspace-border flex flex-col z-20 shrink-0 select-none overflow-hidden backdrop-blur-sm";
+  root.className = "h-full bg-zinc-950/90 border-l border-zinc-800/80 flex flex-col z-20 shrink-0 select-none overflow-hidden";
   root.style.display = "none";
 
   const header = document.createElement("div");
-  header.className = "h-top-strip flex items-center justify-between px-4 border-b border-workspace-border shrink-0 bg-zinc-900/70";
+  header.className = "h-9 flex items-center justify-between px-2 border-b border-zinc-800/80 shrink-0 bg-zinc-950/95";
 
   const title = document.createElement("span");
-  title.className = "text-[11px] font-bold text-zinc-300 uppercase tracking-wider";
+  title.className = "text-[10px] font-semibold text-zinc-300 uppercase tracking-[0.12em]";
   title.textContent = "Objects";
 
   const close = document.createElement("button");
-  close.className = "h-5 w-5 flex items-center justify-center text-zinc-600 hover:text-white transition-colors cursor-pointer rounded hover:bg-zinc-800";
+  close.className = "h-7 w-7 inline-flex items-center justify-center rounded-none text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 transition-colors cursor-pointer border-none bg-transparent";
   close.appendChild(makeSvgIcon("close", "h-3.5 w-3.5"));
-  close.onclick = () => controller.setObjectTreeOpen(false);
+  close.onclick = () => {
+    if (options.onSetOpen) {
+      options.onSetOpen(false);
+    } else {
+      controller.setObjectTreeOpen(false);
+    }
+  };
 
   header.append(title, close);
   root.appendChild(header);
 
   const container = document.createElement("div");
-  container.className = "flex-1 overflow-y-auto no-scrollbar py-2";
+  container.className = "flex-1 overflow-y-auto no-scrollbar py-1.5";
   root.appendChild(container);
 
   const refresh = () => {
@@ -54,7 +62,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
 
     if (nodes.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "p-8 text-center text-[10px] text-zinc-700 italic";
+      empty.className = "p-6 text-center text-[10px] text-zinc-600 italic";
       empty.textContent = "No objects active";
       container.appendChild(empty);
       return;
@@ -63,14 +71,14 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
     nodes.forEach((node) => {
       if (node.kind === "header") {
         const headerRow = document.createElement("div");
-        headerRow.className = "h-6 flex items-center px-3 text-[9px] font-bold text-zinc-600 uppercase tracking-widest mt-2 mb-1";
+        headerRow.className = "h-6 flex items-center px-3 text-[9px] font-semibold text-zinc-600 uppercase tracking-[0.14em] mt-1.5 mb-0.5";
         headerRow.textContent = node.label;
         container.appendChild(headerRow);
         return;
       }
 
       const row = document.createElement("div");
-      row.className = "group h-8 flex items-center px-3 hover:bg-zinc-900/50 transition-colors cursor-default";
+      row.className = "group h-8 flex items-center px-3 hover:bg-zinc-900/55 transition-colors cursor-default";
       row.style.paddingLeft = `${node.depth * 12 + 12}px`;
 
       const label = document.createElement("span");
@@ -79,11 +87,11 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
       label.textContent = node.label;
 
       const actions = document.createElement("div");
-      actions.className = "flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity";
+      actions.className = "flex items-center gap-0.5 opacity-25 group-hover:opacity-100 transition-opacity";
 
       if (node.kind === "pane" && (node.paneKind === "chart" || node.paneKind === "price")) {
         const sourceBtn = document.createElement("button");
-        sourceBtn.className = "p-1 text-zinc-700 hover:text-zinc-200 transition-colors cursor-pointer border-none outline-none bg-transparent";
+        sourceBtn.className = "h-6 w-6 inline-flex items-center justify-center text-zinc-600 hover:text-zinc-100 hover:bg-zinc-900/50 transition-colors cursor-pointer border-none outline-none bg-transparent rounded-none";
         sourceBtn.title = "Change source";
         sourceBtn.appendChild(makeSvgIcon("search", "h-3.5 w-3.5"));
         sourceBtn.onclick = () => {
@@ -104,7 +112,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
       // Visibility Toggle
       if (node.visible !== undefined) {
         const visibility = document.createElement("button");
-        visibility.className = `p-1 cursor-pointer transition-colors border-none outline-none bg-transparent ${node.visible ? 'text-zinc-600 hover:text-zinc-200' : 'text-zinc-400'}`;
+        visibility.className = `h-6 w-6 inline-flex items-center justify-center cursor-pointer transition-colors border-none outline-none bg-transparent rounded-none ${node.visible ? 'text-zinc-600 hover:text-zinc-100 hover:bg-zinc-900/50' : 'text-zinc-400 hover:bg-zinc-900/40'}`;
         visibility.appendChild(makeSvgIcon(node.visible ? "eye" : "eye-off", "h-3.5 w-3.5"));
         visibility.title = node.visible ? "Hide" : "Show";
         visibility.onclick = () => {
@@ -123,7 +131,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
       // Lock Toggle (Layers/Groups/Drawings)
       if (node.locked !== undefined) {
         const lock = document.createElement("button");
-        lock.className = `p-1 cursor-pointer transition-colors border-none outline-none bg-transparent ${node.locked ? 'text-amber-600 hover:text-amber-400' : 'text-zinc-700 hover:text-zinc-300'}`;
+        lock.className = `h-6 w-6 inline-flex items-center justify-center cursor-pointer transition-colors border-none outline-none bg-transparent rounded-none ${node.locked ? 'text-amber-400 hover:text-amber-200 hover:bg-zinc-900/50' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/50'}`;
         lock.appendChild(makeSvgIcon(node.locked ? "lock" : "unlock", "h-3.5 w-3.5")); // Assuming 'unlock' icon exists
         lock.title = node.locked ? "Unlock" : "Lock";
         lock.onclick = () => {
@@ -143,7 +151,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
       // Delete (Everything except Pane and Default Layer)
       if (node.deletable) {
         const del = document.createElement("button");
-        del.className = "p-1 text-zinc-700 hover:text-red-500 transition-colors cursor-pointer border-none outline-none bg-transparent";
+        del.className = "h-6 w-6 inline-flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-zinc-900/50 transition-colors cursor-pointer border-none outline-none bg-transparent rounded-none";
         del.appendChild(makeSvgIcon("delete", "h-3.5 w-3.5"));
         del.title = "Delete";
         del.onclick = () => {
@@ -186,8 +194,9 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   };
 
   const unsubscribe = controller.subscribe((state) => {
-    root.style.display = state.isObjectTreeOpen ? "flex" : "none";
-    if (state.isObjectTreeOpen) refresh();
+    const open = options.getIsOpen ? options.getIsOpen() : state.isObjectTreeOpen;
+    root.style.display = open ? "flex" : "none";
+    if (open) refresh();
   });
 
   return {

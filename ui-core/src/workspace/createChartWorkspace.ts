@@ -8,7 +8,9 @@ import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { computeIndicatorRectsForChartPane } from "./layout/index.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
+import { makeSvgIcon } from "./icons.js";
 import { createSymbolSearchModal } from "./SymbolSearchModal.js";
+import { createIndicatorModal } from "./IndicatorModal.js";
 import { createTopStrip } from "./topStrip.js";
 import { ReplayController } from "./replay/ReplayController.js";
 import type { ChartPaneRuntime } from "./runtimeTypes.js";
@@ -44,6 +46,7 @@ interface PersistedWorkspaceState {
   workspaceTileOrder?: string[];
   chartTiles?: Record<string, { id: string; tabs: Array<{ id: string; title: string; chartPaneId: string }>; activeTabId: string }>;
   activeChartTileId?: string;
+  chartTileTreeOpen?: Record<string, boolean>;
   indicators?: string[];
   indicatorsByPane?: Record<string, string[]>;
 }
@@ -71,6 +74,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let restoredObjectTreeWidth: number | null = null;
   let restoredPaneStatesByPane: Record<string, string | null> = {};
   let restoredIndicatorsByPane: Record<string, string[]> = {};
+  const chartTileTreeOpen = new Map<string, boolean>();
 
   // root element fills host completely and hides any overflow
   const root = document.createElement("div");
@@ -280,6 +284,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             saved.activeChartTileId
           );
         }
+        if (saved.chartTileTreeOpen) {
+          for (const [tileId, open] of Object.entries(saved.chartTileTreeOpen)) {
+            chartTileTreeOpen.set(tileId, !!open);
+          }
+        }
         if (saved.appearance) applyAppearance(saved.appearance);
         const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
         if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
@@ -333,6 +342,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             workspaceTileOrder: controller.getState().workspaceTileOrder,
             chartTiles: controller.getState().chartTiles,
             activeChartTileId: controller.getState().activeChartTileId,
+            chartTileTreeOpen: Object.fromEntries(chartTileTreeOpen.entries()),
             paneStates,
             indicatorsByPane
           };
@@ -362,9 +372,36 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chart: chartFacade,
     controller,
     getAppearanceConfig: () => getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? null,
+    getCandleStyle: () => {
+      const value = getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle() ?? null;
+      return value === "solid" || value === "hollow" || value === "bars" || value === "volume"
+        ? value
+        : null;
+    },
     applyAppearanceConfig: (cfg) => {
       applyAppearanceConfig(cfg);
       savePersistedState();
+    },
+    applyCandleStyle: (style) => {
+      getActiveRuntime()?.chart.setCandleStyle(style);
+      getActiveRuntime()?.chart.draw();
+      savePersistedState();
+    },
+    onAddChartTile: () => {
+      controller.addChartTile();
+      draw();
+    },
+    onCloseActiveChartTile: () => {
+      const state = controller.getState();
+      const activeChartTileId = state.activeChartTileId;
+      const activeWorkspaceTileId = state.workspaceTileOrder.find(
+        (tileId) => state.workspaceTiles[tileId]?.kind === "chart" && state.workspaceTiles[tileId]?.chartTileId === activeChartTileId
+      );
+      if (!activeWorkspaceTileId) return;
+      const chartCount = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart").length;
+      if (chartCount <= 1) return;
+      controller.removeWorkspaceTile(activeWorkspaceTileId);
+      draw();
     },
     symbols: options.marketControls?.symbols ?? [],
     timeframes: options.marketControls?.timeframes ?? [],
@@ -392,11 +429,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       await options.marketControls?.onTimeframeChange?.(timeframe);
     },
     onCompareSymbol: options.marketControls?.onCompareSymbol,
-    onCandleTypeChange: (mode) => {
-      getActiveRuntime()?.chart.setCandleStyle(mode);
-      getActiveRuntime()?.chart.draw();
-      savePersistedState();
-    },
     onMutate: () => draw()
   });
 
@@ -410,29 +442,49 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   });
 
-  const treeHandle = createObjectTreePanel({
-    getChart: () => getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart ?? null,
-    controller,
-    symbols: options.marketControls?.symbols ?? [],
-    onPaneSourceChange: async (paneId, symbol) => {
-      controller.setChartPaneSource(paneId, { symbol });
-      await options.marketControls?.onChartPaneSourceChange?.(paneId, {
-        symbol,
-        timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
-      });
-      await options.marketControls?.onSymbolChange?.(symbol);
-      draw();
-    },
-    onMutate: () => draw()
-  });
+  const treeHandleByChartTileId = new Map<string, ReturnType<typeof createObjectTreePanel>>();
+  const ensureTreeHandleForTile = (chartTileId: string) => {
+    const existing = treeHandleByChartTileId.get(chartTileId);
+    if (existing) return existing;
+    const handle = createObjectTreePanel({
+      getChart: () => {
+        const tile = controller.getState().chartTiles[chartTileId];
+        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+        if (!activeTab) return null;
+        return getRuntime(activeTab.chartPaneId)?.chart ?? null;
+      },
+      getIsOpen: () => chartTileTreeOpen.get(chartTileId) === true,
+      onSetOpen: (open) => {
+        chartTileTreeOpen.set(chartTileId, open);
+        renderWorkspaceTiles();
+        draw();
+      },
+      controller,
+      symbols: options.marketControls?.symbols ?? [],
+      onPaneSourceChange: async (paneId, symbol) => {
+        controller.setChartPaneSource(paneId, { symbol });
+        await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+          symbol,
+          timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+        });
+        await options.marketControls?.onSymbolChange?.(symbol);
+        draw();
+      },
+      onMutate: () => draw()
+    });
+    treeHandleByChartTileId.set(chartTileId, handle);
+    return handle;
+  };
 
   const OBJECT_TREE_MIN_WIDTH = 300;
   const OBJECT_TREE_MAX_WIDTH = 760;
   let objectTreeWidth = 360;
   const applyObjectTreeWidth = (width: number) => {
     objectTreeWidth = Math.max(OBJECT_TREE_MIN_WIDTH, Math.min(OBJECT_TREE_MAX_WIDTH, Math.floor(width)));
-    treeHandle.root.style.width = "100%";
-    treeHandle.root.style.minWidth = "0";
+    for (const handle of treeHandleByChartTileId.values()) {
+      handle.root.style.width = "100%";
+      handle.root.style.minWidth = "0";
+    }
   };
   if (restoredObjectTreeWidth !== null) {
     applyObjectTreeWidth(restoredObjectTreeWidth);
@@ -441,13 +493,20 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const syncTileWidths = () => {
     const state = controller.getState();
     const order = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+    const visibleChartTiles = order.filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart");
+    const sum = visibleChartTiles.reduce((acc, tileId) => acc + Math.max(0.0001, state.workspaceTiles[tileId]?.widthRatio ?? 0), 0);
     for (const tileId of order) {
       const tile = state.workspaceTiles[tileId];
       const el = tileShellById.get(tileId);
       if (!tile || !el) continue;
-      const ratio = Math.max(0.08, tile.widthRatio || 0);
+      if (tile.kind !== "chart") {
+        el.style.display = "none";
+        continue;
+      }
+      el.style.display = "";
+      const ratio = Math.max(0.0001, tile.widthRatio || 0) / Math.max(0.0001, sum);
       el.style.flex = `0 0 ${ratio * 100}%`;
-      el.style.minWidth = tile.kind === "objects" ? "260px" : "360px";
+      el.style.minWidth = "360px";
     }
   };
 
@@ -455,31 +514,235 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const tabStrip = chartTileTabById.get(chartTileId);
     if (!tabStrip) return;
     tabStrip.innerHTML = "";
+    const clearDropPreview = () => {
+      tabStrip.style.boxShadow = "";
+    };
+    tabStrip.ondragover = (event) => {
+      event.preventDefault();
+      tabStrip.style.boxShadow = "inset 0 0 0 1px rgba(161,161,170,0.45)";
+    };
+    tabStrip.ondragleave = () => clearDropPreview();
+    tabStrip.ondrop = (event) => {
+      event.preventDefault();
+      clearDropPreview();
+      const raw = event.dataTransfer?.getData("application/x-drishya-tab");
+      if (!raw) return;
+      try {
+        const payload = JSON.parse(raw) as { sourceChartTileId: string; tabId: string };
+        controller.moveChartTab(payload.sourceChartTileId, payload.tabId, chartTileId, Number.MAX_SAFE_INTEGER);
+      } catch {
+        // ignore malformed payload
+      }
+    };
     const chartTile = controller.getState().chartTiles[chartTileId];
     if (!chartTile) return;
     for (const tab of chartTile.tabs) {
       const tabBtn = document.createElement("button");
       const active = tab.id === chartTile.activeTabId;
-      tabBtn.className = `h-6 px-2 rounded text-[10px] border ${active ? "border-zinc-600 text-zinc-100 bg-zinc-900/80" : "border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/50"} cursor-pointer`;
-      tabBtn.textContent = tab.title;
+      tabBtn.className = `h-7 px-3 rounded-none text-[11px] font-medium normal-case border-none transition-colors ${active ? "text-zinc-100 bg-zinc-800/40" : "text-zinc-500 bg-transparent hover:text-zinc-100 hover:bg-zinc-900/50"} cursor-pointer`;
+      tabBtn.textContent = "";
+      tabBtn.dataset.noTileDrag = "1";
+      tabBtn.draggable = true;
+      tabBtn.style.boxShadow = "";
+      const tabLabel = document.createElement("span");
+      const tabSource = controller.getState().chartPaneSources[tab.chartPaneId];
+      tabLabel.textContent = tabSource?.symbol || tab.title;
+      tabBtn.appendChild(tabLabel);
+      if (chartTile.tabs.length > 1) {
+        const closeInline = document.createElement("span");
+        closeInline.textContent = "x";
+        closeInline.className = "ml-2 text-zinc-600 hover:text-zinc-100 cursor-pointer";
+        closeInline.dataset.noTileDrag = "1";
+        closeInline.draggable = false;
+        closeInline.onpointerdown = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          controller.removeChartTab(chartTileId, tab.id);
+        };
+        tabBtn.appendChild(closeInline);
+      }
+      tabBtn.ondragstart = (event) => {
+        event.dataTransfer?.setData(
+          "application/x-drishya-tab",
+          JSON.stringify({ sourceChartTileId: chartTileId, tabId: tab.id })
+        );
+        event.dataTransfer!.effectAllowed = "move";
+      };
+      tabBtn.ondragover = (event) => {
+        event.preventDefault();
+        tabBtn.style.boxShadow = "inset 2px 0 0 rgba(161,161,170,0.7)";
+      };
+      tabBtn.ondragleave = () => {
+        tabBtn.style.boxShadow = "";
+      };
+      tabBtn.ondrop = (event) => {
+        event.preventDefault();
+        tabBtn.style.boxShadow = "";
+        clearDropPreview();
+        const raw = event.dataTransfer?.getData("application/x-drishya-tab");
+        if (!raw) return;
+        try {
+          const payload = JSON.parse(raw) as { sourceChartTileId: string; tabId: string };
+          const targetIndex = chartTile.tabs.findIndex((candidate) => candidate.id === tab.id);
+          controller.moveChartTab(payload.sourceChartTileId, payload.tabId, chartTileId, targetIndex);
+        } catch {
+          // ignore malformed payload
+        }
+      };
       tabBtn.onclick = () => controller.setActiveChartTab(chartTileId, tab.id);
       tabStrip.appendChild(tabBtn);
+    }
+    const actions = document.createElement("div");
+    actions.className = "ml-auto flex items-center";
+    actions.dataset.noTileDrag = "1";
+    const activeTab = chartTile.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? chartTile.tabs[0];
+    const activePaneId = activeTab?.chartPaneId ?? null;
+    const activeSource = activePaneId ? (controller.getState().chartPaneSources[activePaneId] ?? {}) : {};
+    const activeRuntime = activePaneId ? getRuntime(activePaneId) : null;
 
-      if (chartTile.tabs.length > 1) {
-        const closeBtn = document.createElement("button");
-        closeBtn.className = "h-6 w-6 rounded text-[10px] text-zinc-600 hover:text-zinc-200 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer";
-        closeBtn.textContent = "x";
-        closeBtn.title = "Close tab";
-        closeBtn.onclick = () => controller.removeChartTab(chartTileId, tab.id);
-        tabStrip.appendChild(closeBtn);
+    const mkHeaderBtn = (label: string) => {
+      const btn = document.createElement("button");
+      btn.dataset.noTileDrag = "1";
+      btn.className = "h-7 px-2 rounded-none text-[11px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
+      btn.textContent = label;
+      return btn;
+    };
+    const createDropdown = (owner: HTMLElement, items: { label: string; value: string }[], onSelect: (val: string) => void) => {
+      const dropdown = document.createElement("div");
+      dropdown.className = "fixed bg-zinc-950 border border-workspace-border py-1 shadow-2xl z-50 flex flex-col min-w-[100px]";
+      const rect = owner.getBoundingClientRect();
+      dropdown.style.top = `${rect.bottom}px`;
+      dropdown.style.left = `${rect.left}px`;
+      items.forEach((item) => {
+        const btn = document.createElement("button");
+        btn.className = "px-4 py-2 text-left text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors border-none outline-none bg-transparent cursor-pointer";
+        btn.textContent = item.label;
+        btn.onclick = () => {
+          onSelect(item.value);
+          dropdown.remove();
+        };
+        dropdown.appendChild(btn);
+      });
+      const close = () => {
+        dropdown.remove();
+        window.removeEventListener("click", close);
+      };
+      window.addEventListener("click", close);
+      document.body.appendChild(dropdown);
+    };
+
+    if (activePaneId) {
+      const tfLabel =
+        activeSource.timeframe ??
+        options.marketControls?.selectedTimeframe ??
+        options.marketControls?.timeframes?.[0] ??
+        "TF";
+      const tfBtn = mkHeaderBtn(tfLabel);
+      tfBtn.onclick = (event) => {
+        event.stopPropagation();
+        createDropdown(tfBtn, (options.marketControls?.timeframes ?? []).map((t) => ({ label: t, value: t })), async (tf) => {
+          controller.setChartPaneSource(activePaneId, { timeframe: tf });
+          const symbol = controller.getState().chartPaneSources[activePaneId]?.symbol;
+          if (symbol) {
+            await options.marketControls?.onChartPaneSourceChange?.(activePaneId, { symbol, timeframe: tf });
+          }
+          await options.marketControls?.onTimeframeChange?.(tf);
+        });
+      };
+      actions.appendChild(tfBtn);
+
+      const compareBtn = mkHeaderBtn("+ Compare");
+      compareBtn.onclick = (event) => {
+        event.stopPropagation();
+        createSymbolSearchModal({
+          symbols: options.marketControls?.symbols ?? [],
+          onSelect: async (sym) => options.marketControls?.onCompareSymbol?.(sym),
+          onClose: () => { }
+        });
+      };
+      actions.appendChild(compareBtn);
+
+      const indBtn = mkHeaderBtn("Indicators");
+      indBtn.onclick = (event) => {
+        event.stopPropagation();
+        if (!activeRuntime) return;
+        createIndicatorModal({
+          chart: activeRuntime.chart,
+          controller,
+          onApply: () => draw(),
+          onClose: () => { }
+        });
+      };
+      actions.appendChild(indBtn);
+
+      const replayState = controller.getState().replay;
+      const replayBtn = mkHeaderBtn("Replay");
+      replayBtn.prepend(makeSvgIcon("play", "h-3.5 w-3.5 mr-1"));
+      replayBtn.onclick = () => controller.replay().play();
+      actions.appendChild(replayBtn);
+      if (replayState.playing) {
+        const mkReplayIconBtn = (icon: string, onClick: () => void) => {
+          const btn = document.createElement("button");
+          btn.dataset.noTileDrag = "1";
+          btn.className = "h-7 w-7 rounded-none text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
+          btn.appendChild(makeSvgIcon(icon, "h-3.5 w-3.5"));
+          btn.onclick = onClick;
+          return btn;
+        };
+        actions.append(
+          mkReplayIconBtn("pause", () => controller.replay().pause()),
+          mkReplayIconBtn("stop", () => controller.replay().stop()),
+          mkReplayIconBtn("step-forward", () => { controller.replay().stepBar(); }),
+          mkReplayIconBtn("skip-forward", () => { controller.replay().stepEvent(); })
+        );
       }
     }
+
     const addBtn = document.createElement("button");
-    addBtn.className = "ml-auto h-6 w-6 rounded text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/70 border-none bg-transparent cursor-pointer";
+    addBtn.dataset.noTileDrag = "1";
+    addBtn.className = "h-7 w-7 rounded-none text-[13px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
     addBtn.textContent = "+";
     addBtn.title = "Add tab";
-    addBtn.onclick = () => controller.addChartTab(chartTileId);
-    tabStrip.appendChild(addBtn);
+    addBtn.onclick = () => {
+      const symbols = options.marketControls?.symbols ?? [];
+      if (!symbols.length) {
+        controller.addChartTab(chartTileId);
+        return;
+      }
+      createSymbolSearchModal({
+        symbols,
+        onSelect: async (symbol) => {
+          const tabId = controller.addChartTab(chartTileId);
+          if (!tabId) return;
+          const nextTile = controller.getState().chartTiles[chartTileId];
+          const nextTab = nextTile?.tabs.find((candidate) => candidate.id === tabId);
+          const paneId = nextTab?.chartPaneId;
+          if (!paneId) return;
+          controller.setChartTabTitle(chartTileId, tabId, symbol);
+          controller.setChartPaneSource(paneId, { symbol });
+          await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+            symbol,
+            timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+          });
+          await options.marketControls?.onSymbolChange?.(symbol);
+          draw();
+        },
+        onClose: () => { }
+      });
+    };
+    const treeBtn = document.createElement("button");
+    treeBtn.dataset.noTileDrag = "1";
+    treeBtn.className = "h-7 w-7 rounded-none text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
+    treeBtn.title = "Objects";
+    treeBtn.appendChild(makeSvgIcon("tree", "h-3.5 w-3.5"));
+    treeBtn.onclick = () => {
+      const open = chartTileTreeOpen.get(chartTileId) === true;
+      chartTileTreeOpen.set(chartTileId, !open);
+      renderWorkspaceTiles();
+      draw();
+    };
+    actions.append(addBtn, treeBtn);
+    tabStrip.appendChild(actions);
   };
 
   const renderWorkspaceTiles = () => {
@@ -516,21 +779,60 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         }
       };
       header.onpointerdown = (event) => {
+        if (event.button !== 0) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-no-tile-drag='1']")) return;
         const startX = event.clientX;
-        const startIndex = controller.getState().workspaceTileOrder.indexOf(tileId);
         let dragging = false;
+        let didReorder = false;
+        const draggedShell = shell;
+        (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+        document.body.style.userSelect = "none";
+        document.body.style.cursor = "grabbing";
         const onMove = (moveEvent: PointerEvent) => {
           const dx = moveEvent.clientX - startX;
           if (!dragging && Math.abs(dx) > 10) dragging = true;
           if (!dragging) return;
-          const width = shell?.getBoundingClientRect().width ?? 1;
-          const shift = dx > width * 0.5 ? 1 : (dx < -width * 0.5 ? -1 : 0);
-          const nextIndex = Math.max(0, Math.min(order.length - 1, startIndex + shift));
-          controller.moveWorkspaceTile(tileId, nextIndex);
+          if (draggedShell) {
+            draggedShell.style.transform = `translateX(${dx}px)`;
+            draggedShell.style.zIndex = "30";
+            draggedShell.style.opacity = "0.92";
+            draggedShell.style.pointerEvents = "none";
+          }
+          const stateNow = controller.getState();
+          const orderedIds = stateNow.workspaceTileOrder.filter((id) => stateNow.workspaceTiles[id]);
+          const centers = orderedIds.map((id) => {
+            const el = tileShellById.get(id);
+            const rect = el?.getBoundingClientRect();
+            return rect ? rect.left + rect.width / 2 : Number.POSITIVE_INFINITY;
+          });
+          let targetIndex = orderedIds.length - 1;
+          for (let i = 0; i < centers.length; i += 1) {
+            if (moveEvent.clientX < centers[i]) {
+              targetIndex = i;
+              break;
+            }
+          }
+          const currentIndex = orderedIds.indexOf(tileId);
+          if (currentIndex >= 0 && targetIndex !== currentIndex) {
+            controller.moveWorkspaceTile(tileId, targetIndex);
+            didReorder = true;
+          }
         };
         const onUp = () => {
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
+          if (draggedShell) {
+            draggedShell.style.transform = "";
+            draggedShell.style.zIndex = "";
+            draggedShell.style.opacity = "";
+            draggedShell.style.pointerEvents = "";
+          }
+          document.body.style.userSelect = "";
+          document.body.style.cursor = "";
+          if (didReorder) {
+            savePersistedState();
+          }
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
@@ -538,19 +840,56 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const body = shell.children[1] as HTMLDivElement;
       body.innerHTML = "";
       if (tile.kind === "chart" && tile.chartTileId) {
+        let tabs = chartTileTabById.get(tile.chartTileId);
+        if (!tabs) {
+          tabs = createChartTabStrip(tile.chartTileId);
+        }
+        if (!header.contains(tabs)) {
+          header.appendChild(tabs);
+        }
+        header.ondragover = (event) => {
+          event.preventDefault();
+          if (tabs) tabs.style.boxShadow = "inset 0 0 0 1px rgba(161,161,170,0.45)";
+        };
+        header.ondragleave = () => {
+          if (tabs) tabs.style.boxShadow = "";
+        };
+        header.ondrop = (event) => {
+          event.preventDefault();
+          if (tabs) tabs.style.boxShadow = "";
+          const raw = event.dataTransfer?.getData("application/x-drishya-tab");
+          if (!raw) return;
+          try {
+            const payload = JSON.parse(raw) as { sourceChartTileId: string; tabId: string };
+            controller.moveChartTab(payload.sourceChartTileId, payload.tabId, tile.chartTileId!, Number.MAX_SAFE_INTEGER);
+          } catch {
+            // ignore malformed payload
+          }
+        };
         let tileBody = chartTileBodyByChartTileId.get(tile.chartTileId);
         if (!tileBody) {
           tileBody = document.createElement("div");
           tileBody.className = "h-full w-full min-h-0 min-w-0 flex flex-col";
-          const tabs = createChartTabStrip(tile.chartTileId);
-          tileBody.appendChild(tabs);
           chartTileBodyByChartTileId.set(tile.chartTileId, tileBody);
         }
-        while (tileBody.children.length > 1) {
+        while (tileBody.children.length > 0) {
           tileBody.removeChild(tileBody.lastChild!);
         }
         const stageHost = ensureChartTileStage(tile.chartTileId);
-        tileBody.appendChild(stageHost.stage);
+        const tileTree = ensureTreeHandleForTile(tile.chartTileId);
+        const contentRow = document.createElement("div");
+        contentRow.className = "flex-1 min-h-0 min-w-0 flex";
+        stageHost.stage.classList.add("flex-1");
+        contentRow.appendChild(stageHost.stage);
+        if (chartTileTreeOpen.get(tile.chartTileId) === true) {
+          tileTree.root.style.display = "flex";
+          tileTree.root.style.width = "320px";
+          tileTree.root.style.minWidth = "280px";
+          contentRow.appendChild(tileTree.root);
+        } else {
+          tileTree.root.style.display = "none";
+        }
+        tileBody.appendChild(contentRow);
         const chartTile = state.chartTiles[tile.chartTileId];
         const activeTab = chartTile?.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? chartTile?.tabs[0];
         if (activeTab) {
@@ -564,7 +903,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         body.appendChild(tileBody);
         renderChartTabs(tile.chartTileId);
       } else {
-        body.appendChild(treeHandle.root);
+        // objects tile is intentionally hidden; object tree renders within chart tile.
+        header.ondragover = null;
+        header.ondragleave = null;
+        header.ondrop = null;
       }
       if (tilesRow.children[index] !== shell) {
         if (index >= tilesRow.children.length) {
@@ -617,6 +959,31 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     syncTileWidths();
   };
 
+  const addChartTileAtPointer = (clientX: number) => {
+    const before = controller.getState().workspaceTileOrder.filter((tileId) => controller.getState().workspaceTiles[tileId]?.kind === "chart");
+    controller.addChartTile();
+    const afterState = controller.getState();
+    const after = afterState.workspaceTileOrder.filter((tileId) => afterState.workspaceTiles[tileId]?.kind === "chart");
+    const newTileId = after.find((id) => !before.includes(id));
+    if (!newTileId) return;
+    const ordered = afterState.workspaceTileOrder.filter((id) => afterState.workspaceTiles[id]?.kind === "chart");
+    const centers = ordered.map((id) => {
+      const el = tileShellById.get(id);
+      const rect = el?.getBoundingClientRect();
+      return rect ? rect.left + rect.width / 2 : Number.POSITIVE_INFINITY;
+    });
+    let targetIndex = ordered.length - 1;
+    for (let i = 0; i < centers.length; i += 1) {
+      if (clientX < centers[i]) {
+        targetIndex = i;
+        break;
+      }
+    }
+    controller.moveWorkspaceTile(newTileId, targetIndex);
+    draw();
+    savePersistedState();
+  };
+
   const tileShellById = new Map<string, HTMLDivElement>();
   const tileHeaderById = new Map<string, HTMLDivElement>();
   const chartTileBodyByChartTileId = new Map<string, HTMLDivElement>();
@@ -626,7 +993,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const createTileHeader = (label: string) => {
     const header = document.createElement("div");
-    header.className = "h-8 shrink-0 border-b border-zinc-800/80 bg-zinc-950/95 px-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-400";
+    header.className = "h-9 shrink-0 border-b border-zinc-800/80 bg-zinc-950/95 px-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-400 min-w-0";
     const grip = document.createElement("span");
     grip.textContent = "⋮⋮";
     grip.className = "cursor-grab select-none text-zinc-600";
@@ -639,7 +1006,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const createChartTabStrip = (chartTileId: string) => {
     const strip = document.createElement("div");
-    strip.className = "h-8 shrink-0 border-b border-zinc-800/80 bg-zinc-950/95 px-1 flex items-center gap-1 overflow-x-auto";
+    strip.className = "flex-1 min-w-0 h-7 px-1 flex items-center gap-1 overflow-x-auto";
     chartTileTabById.set(chartTileId, strip);
     return strip;
   };
@@ -659,6 +1026,17 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   // Final assembly of UI pieces
   root.insertBefore(topHandle.root, mainRow);
   mainRow.insertBefore(stripHandle.root, tilesRow);
+  tilesRow.ondragover = (event) => {
+    const isAddTileDrag = event.dataTransfer?.types?.includes("application/x-drishya-add-chart-tile");
+    if (!isAddTileDrag) return;
+    event.preventDefault();
+  };
+  tilesRow.ondrop = (event) => {
+    const isAddTileDrop = event.dataTransfer?.types?.includes("application/x-drishya-add-chart-tile");
+    if (!isAddTileDrop) return;
+    event.preventDefault();
+    addChartTileAtPointer(event.clientX);
+  };
 
   const setupCanvasBackingStore = () => {
     updateChartRuntimeLayout();
@@ -685,7 +1063,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     paneCanvas.id = paneCanvasId;
     container.appendChild(paneCanvas);
     const host = paneHostByPaneId.get(paneId);
-    (host?.chartLayer ?? chartLayer).appendChild(container);
+    const mountLayer = host?.chartLayer && host.chartLayer.isConnected ? host.chartLayer : chartLayer;
+    mountLayer.appendChild(container);
 
     const paneRaw = createWasmChart(paneCanvasId, 300, 300);
     const paneChart = new DrishyaChartClient(paneRaw);
@@ -905,7 +1284,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     for (const runtime of chartRuntimes.values()) {
       runtime.draw();
     }
-    treeHandle.refresh();
+    for (const [chartTileId, handle] of treeHandleByChartTileId) {
+      if (chartTileTreeOpen.get(chartTileId) === true) {
+        handle.refresh();
+      }
+    }
     refreshConfigPanel();
     updateTextCaret();
     savePersistedState();
@@ -995,6 +1378,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       activeChartPaneId: state.activeChartPaneId,
       chartPaneSources: state.chartPaneSources,
       objectTreeOpen: state.isObjectTreeOpen,
+      workspaceTileOrder: state.workspaceTileOrder,
+      workspaceTileRatios: Object.fromEntries(
+        state.workspaceTileOrder.map((tileId) => [tileId, state.workspaceTiles[tileId]?.widthRatio ?? 0])
+      ),
+      chartTileTreeOpen: Object.fromEntries(chartTileTreeOpen.entries()),
       objectTreeWidth,
       ratios: layout.ratios,
       order: layout.order,
@@ -1214,7 +1602,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   return {
     root: root as HTMLDivElement,
     strip: stripHandle.root,
-    tree: treeHandle.root,
+    tree: (() => {
+      const activeTileId = controller.getState().activeChartTileId;
+      return treeHandleByChartTileId.get(activeTileId)?.root ?? document.createElement("div");
+    })(),
     controller,
     replay,
     draw,
@@ -1227,7 +1618,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     setTool: (toolId) => controller.setActiveTool(toolId),
     clearDrawings,
     toggleTheme: () => controller.toggleTheme(),
-    refreshObjectTree: treeHandle.refresh,
+    refreshObjectTree: () => {
+      const activeTileId = controller.getState().activeChartTileId;
+      treeHandleByChartTileId.get(activeTileId)?.refresh();
+    },
     listCharts: () => Object.keys(controller.getState().chartPanes),
     getChart: (chartPaneId) => getRuntime(chartPaneId),
     getActiveChart: () => chartRuntimes.get(controller.getState().activeChartPaneId) ?? null,
@@ -1238,7 +1632,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       controller.setReplayController(null);
       topHandle.destroy();
       stripHandle.destroy();
-      treeHandle.destroy();
+      for (const handle of treeHandleByChartTileId.values()) {
+        handle.destroy();
+      }
+      treeHandleByChartTileId.clear();
       unbindInteractions();
       window.removeEventListener("keydown", onKeyDown);
       if (resizeObserver) {

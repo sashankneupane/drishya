@@ -816,6 +816,89 @@ export class WorkspaceController {
         this.notify();
     }
 
+    setChartTabTitle(chartTileId: WorkspaceChartTileId, tabId: WorkspaceChartTabId, title: string): void {
+        const tile = this.state.chartTiles[chartTileId];
+        if (!tile) return;
+        const trimmed = String(title || "").trim();
+        if (!trimmed) return;
+        const idx = tile.tabs.findIndex((candidate) => candidate.id === tabId);
+        if (idx < 0) return;
+        const current = tile.tabs[idx];
+        if (current.title === trimmed) return;
+        const nextTabs = [...tile.tabs];
+        nextTabs[idx] = { ...current, title: trimmed };
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [chartTileId]: {
+                ...tile,
+                tabs: nextTabs
+            }
+        };
+        this.notify();
+    }
+
+    moveChartTab(
+        sourceChartTileId: WorkspaceChartTileId,
+        tabId: WorkspaceChartTabId,
+        targetChartTileId: WorkspaceChartTileId,
+        targetIndex: number
+    ): void {
+        const sourceTile = this.state.chartTiles[sourceChartTileId];
+        const targetTile = this.state.chartTiles[targetChartTileId];
+        if (!sourceTile || !targetTile) return;
+        const movingTab = sourceTile.tabs.find((tab) => tab.id === tabId);
+        if (!movingTab) return;
+
+        // Keep at least one tab per tile for predictable workspace behavior.
+        if (sourceChartTileId !== targetChartTileId && sourceTile.tabs.length <= 1) return;
+
+        if (sourceChartTileId === targetChartTileId) {
+            const currentIndex = sourceTile.tabs.findIndex((tab) => tab.id === tabId);
+            if (currentIndex < 0) return;
+            const clamped = Math.max(0, Math.min(sourceTile.tabs.length - 1, targetIndex));
+            if (clamped === currentIndex) return;
+            const nextTabs = [...sourceTile.tabs];
+            nextTabs.splice(currentIndex, 1);
+            nextTabs.splice(clamped, 0, movingTab);
+            this.state.chartTiles = {
+                ...this.state.chartTiles,
+                [sourceChartTileId]: {
+                    ...sourceTile,
+                    tabs: nextTabs
+                }
+            };
+            this.notify();
+            return;
+        }
+
+        const sourceTabs = sourceTile.tabs.filter((tab) => tab.id !== tabId);
+        const sourceActiveTabId =
+            sourceTile.activeTabId === tabId
+                ? sourceTabs[0]?.id ?? sourceTile.activeTabId
+                : sourceTile.activeTabId;
+
+        const targetTabs = [...targetTile.tabs];
+        const clampedTargetIndex = Math.max(0, Math.min(targetTabs.length, targetIndex));
+        targetTabs.splice(clampedTargetIndex, 0, movingTab);
+
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [sourceChartTileId]: {
+                ...sourceTile,
+                tabs: sourceTabs,
+                activeTabId: sourceActiveTabId
+            },
+            [targetChartTileId]: {
+                ...targetTile,
+                tabs: targetTabs,
+                activeTabId: movingTab.id
+            }
+        };
+        this.state.activeChartTileId = targetChartTileId;
+        this.state.activeChartPaneId = movingTab.chartPaneId;
+        this.notify();
+    }
+
     addChartTile(): WorkspaceChartTileId {
         const paneId = this.addChartPane();
         const chartTileId = this.nextChartTileId();
@@ -960,18 +1043,19 @@ export class WorkspaceController {
 
     private normalizeWorkspaceTileRatios(): void {
         const order = this.state.workspaceTileOrder.filter((id) => this.state.workspaceTiles[id]);
-        const ratioSum = order.reduce((sum, id) => sum + Math.max(0, this.state.workspaceTiles[id]?.widthRatio ?? 0), 0);
+        const chartOrder = order.filter((id) => this.state.workspaceTiles[id]?.kind === "chart");
+        const ratioSum = chartOrder.reduce((sum, id) => sum + Math.max(0, this.state.workspaceTiles[id]?.widthRatio ?? 0), 0);
         if (ratioSum <= 0) {
-            const each = 1 / Math.max(1, order.length);
+            const each = 1 / Math.max(1, chartOrder.length);
             const next = { ...this.state.workspaceTiles };
-            for (const id of order) {
+            for (const id of chartOrder) {
                 next[id] = { ...next[id], widthRatio: each };
             }
             this.state.workspaceTiles = next;
             return;
         }
         const next = { ...this.state.workspaceTiles };
-        for (const id of order) {
+        for (const id of chartOrder) {
             const raw = Math.max(0, next[id]?.widthRatio ?? 0);
             next[id] = { ...next[id], widthRatio: raw / ratioSum };
         }
