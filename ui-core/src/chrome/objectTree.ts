@@ -7,6 +7,7 @@ export interface ObjectTreeNode {
   id: string;
   label: string;
   kind: ObjectTreeNodeKind;
+  paneKind?: "price" | "chart" | "indicator" | "custom";
   depth: number;
   visible?: boolean;
   deletable?: boolean;
@@ -58,8 +59,10 @@ export function buildObjectTreeNodes(
       id: rootId,
       label: `Chart: ${title}`,
       kind: "pane",
+      paneKind: paneSpecMap[rootId]?.kind ?? (rootId === "price" ? "price" : "chart"),
       depth: 1,
-      visible: pane.visible
+      visible: pane.visible,
+      deletable: rootId !== "price"
     });
 
     const ownedIndicators = indicatorIds.filter((id) => {
@@ -81,8 +84,10 @@ export function buildObjectTreeNodes(
         id: indicatorId,
         label: `Indicator Pane: ${indicatorTitle}`,
         kind: "pane",
+        paneKind: paneSpecMap[indicatorId]?.kind ?? "indicator",
         depth: 2,
-        visible: indicatorPane.visible
+        visible: indicatorPane.visible,
+        deletable: true
       });
       for (const series of state.series) {
         if (series.deleted || series.pane_id !== indicatorId) continue;
@@ -118,8 +123,10 @@ export function buildObjectTreeNodes(
         id: paneId,
         label: `Pane: ${paneId}`,
         kind: "pane",
+        paneKind: paneSpecMap[paneId]?.kind ?? (paneId === "price" ? "price" : "custom"),
         depth: 1,
-        visible: pane.visible
+        visible: pane.visible,
+        deletable: paneId !== "price"
       });
       for (const series of state.series) {
         if (series.deleted || series.pane_id !== paneId) continue;
