@@ -522,7 +522,7 @@ export class WorkspaceController {
                 type: "leaf",
                 chartPaneId: id
             },
-            "vertical",
+            "horizontal",
             DEFAULT_CHART_SPLIT_RATIO
         );
         this.state.activeChartPaneId = id;

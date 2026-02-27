@@ -4,7 +4,6 @@ import { createIndicatorModal } from "./IndicatorModal.js";
 import { createConfigModal } from "./ConfigModal.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
-import { buildPaneSpecForRuntime } from "./paneSpec.js";
 
 interface TopStripOptions {
   chart: DrishyaChartClient;
@@ -222,18 +221,7 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   addPaneLabel.textContent = "Pane";
   addPaneBtn.appendChild(addPaneLabel);
   addPaneBtn.onclick = () => {
-    const paneId = controller.addChartPane();
-    const raw = options.chart.raw();
-    raw.register_pane?.(paneId);
-    raw.set_pane_weight?.(paneId, 1.0);
-    const runtimePanes = options.chart.paneLayouts();
-    if (runtimePanes.length > 0) {
-      const runtimeOrder = runtimePanes.map((p) => p.id);
-      for (const pane of runtimePanes) {
-        controller.registerPane(buildPaneSpecForRuntime(pane.id, controller.getState().paneLayout, runtimeOrder));
-      }
-      controller.setPaneOrder(runtimeOrder);
-    }
+    controller.addChartPane();
     options.onMutate?.();
   };
   leftSide.appendChild(addPaneBtn);

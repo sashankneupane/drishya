@@ -768,7 +768,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         savePersistedState();
         return;
       }
-      const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
+      const namedOrder = state.paneLayout.order.filter((id) => {
+        if (id === "price") return false;
+        const kind = state.paneLayout.panes[id]?.kind;
+        return kind === "indicator" || kind === "custom";
+      });
       raw.set_pane_order_json?.(JSON.stringify(namedOrder));
       const registeredPanes = (() => {
         const json = raw.registered_panes_json?.();
@@ -792,7 +796,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       }
 
       const weightMap: Record<string, number> = {};
-      for (const id of state.paneLayout.order) {
+      for (const id of ["price", ...namedOrder]) {
         if (state.paneLayout.visibility[id] && !state.paneLayout.collapsed[id]) {
           weightMap[id] = state.paneLayout.ratios[id] || 0;
         }
