@@ -514,7 +514,26 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (!synced) {
         runtime.chart.setCrosshair(Math.max(0, Math.min(w, xNorm * w)), y);
       }
+      scheduleFastDrawPane(paneId);
     }
+  };
+
+  let fastDrawRafId: number | null = null;
+  const fastDrawTargets = new Set<string>();
+  const flushFastDraw = () => {
+    fastDrawRafId = null;
+    if (fastDrawTargets.size === 0) return;
+    for (const paneId of fastDrawTargets) {
+      const runtime = chartRuntimes.get(paneId);
+      runtime?.draw();
+    }
+    fastDrawTargets.clear();
+  };
+  const scheduleFastDrawPane = (paneId: string) => {
+    if (!chartRuntimes.has(paneId)) return;
+    fastDrawTargets.add(paneId);
+    if (fastDrawRafId !== null) return;
+    fastDrawRafId = requestAnimationFrame(flushFastDraw);
   };
 
   const ensureRuntimeInteractions = (runtime: ChartPaneRuntime) => {
@@ -525,7 +544,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       chart: runtime.chart,
       rawChart: runtime.rawChart,
       redraw: draw,
-      redrawFast: drawFast,
+      redrawFast: () => scheduleFastDrawPane(paneId),
       getPaneLayouts: () => runtime.chart.paneLayouts(),
       controller,
       paneId,
@@ -688,8 +707,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const drawFast = () => {
-    for (const runtime of chartRuntimes.values()) {
-      runtime.draw();
+    for (const paneId of chartRuntimes.keys()) {
+      scheduleFastDrawPane(paneId);
     }
   };
 
@@ -1030,6 +1049,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       } else {
         window.removeEventListener("resize", setupCanvasBackingStore);
       }
+      if (fastDrawRafId !== null) {
+        cancelAnimationFrame(fastDrawRafId);
+        fastDrawRafId = null;
+      }
+      fastDrawTargets.clear();
       for (const runtime of chartRuntimes.values()) {
         runtime.unbindInteractions?.();
       }
