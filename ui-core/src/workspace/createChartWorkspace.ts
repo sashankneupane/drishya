@@ -306,6 +306,22 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   });
 
   // Controller subscriptions
+  const applyToolToChart = (tool: string) => {
+    if (tool === "crosshair" || tool === "dot" || tool === "normal") {
+      chart.setCursorMode(tool);
+      if (tool === "normal") {
+        chart.setDrawingTool("select");
+      }
+      return;
+    }
+    try {
+      chart.setDrawingTool(tool);
+    } catch (err) {
+      console.warn(`[workspace] failed to set drawing tool '${tool}', falling back to select`, err);
+      chart.setDrawingTool("select");
+    }
+  };
+
   let lastLayoutJson = "";
   const unsubscribe = controller.subscribe((state) => {
     const layout = state.paneLayout;
@@ -323,13 +339,28 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     if (currentLayoutJson !== lastLayoutJson) {
       lastLayoutJson = currentLayoutJson;
       chart.setTheme(state.theme);
-      chart.setDrawingTool(state.activeTool);
+      applyToolToChart(state.activeTool);
       chart.setCursorMode(state.cursorMode);
       chart.setPriceAxisMode(state.priceAxisMode);
 
       const raw = chart.raw();
       const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
       raw.set_pane_order_json?.(JSON.stringify(namedOrder));
+      const registeredPanes = (() => {
+        const json = raw.registered_panes_json?.();
+        if (!json) return [] as string[];
+        try {
+          const parsed = JSON.parse(json);
+          return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+        } catch {
+          return [] as string[];
+        }
+      })();
+      for (const paneId of registeredPanes) {
+        if (!namedOrder.includes(paneId)) {
+          raw.unregister_pane?.(paneId);
+        }
+      }
       for (const id of namedOrder) {
         raw.register_pane?.(id);
         raw.set_pane_visible?.(id, !!state.paneLayout.visibility[id]);

@@ -19,11 +19,9 @@ interface BindWorkspaceInteractionsOptions {
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
   const { canvas, chart, rawChart, redraw, getPaneLayouts, controller } = options;
   const hasDrawingInteraction =
-    typeof rawChart.set_drawing_tool_mode === "function" &&
     typeof rawChart.drawing_pointer_down === "function" &&
     typeof rawChart.drawing_pointer_move === "function" &&
-    typeof rawChart.drawing_pointer_up === "function" &&
-    typeof rawChart.drawing_cursor_hint === "function";
+    typeof rawChart.drawing_pointer_up === "function";
 
   let dragging = false;
   let pointerInCanvas = false;
@@ -71,11 +69,14 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     for (let i = 0; i < panes.length - 1; i++) {
       const upper = panes[i];
       const lower = panes[i + 1];
-      const boundaryY = upper.y + upper.h;
-      const inX = x >= upper.x && x <= upper.x + upper.w;
-      const closeY = Math.abs(y - boundaryY) <= PANE_SEPARATOR_HIT_PX;
-      if (!inX || !closeY) continue;
-      return { index: i, upper, lower };
+      const withinPaneX = x >= upper.x && x <= upper.x + upper.w;
+      if (!withinPaneX) continue;
+      const upperBottom = upper.y + upper.h;
+      const gapPx = Math.max(0, lower.y - upperBottom);
+      const separatorCenterY = upperBottom + gapPx * 0.5;
+      const closeY = Math.abs(y - separatorCenterY) <= PANE_SEPARATOR_HIT_PX;
+      if (!closeY) continue;
+      return { index: i, upper, lower, gapPx };
     }
     return null;
   };
@@ -86,24 +87,44 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const lower = panes[dragState.index + 1];
     if (!upper || !lower) return;
 
+    const state = controller.getState();
+    for (const pane of panes) {
+      if (!state.paneLayout.panes[pane.id]) {
+        controller.registerPane({
+          id: pane.id,
+          kind: pane.id === "price" ? "price" : "indicator",
+          title: pane.id === "price" ? "Price" : pane.id.toUpperCase()
+        });
+      }
+    }
+    controller.setPaneOrder(panes.map((p) => p.id));
+
     const lowerBottom = lower.y + lower.h;
+    const upperBottom = upper.y + upper.h;
+    const gapPx = Math.max(0, lower.y - upperBottom);
     const minY = upper.y + PANE_MIN_HEIGHT_PX;
-    const maxY = lowerBottom - PANE_GAP_PX - PANE_MIN_HEIGHT_PX;
+    const maxY = lowerBottom - gapPx - PANE_MIN_HEIGHT_PX;
     const clampedBoundaryY = Math.max(minY, Math.min(maxY, pointerY));
 
     const newUpperH = Math.max(PANE_MIN_HEIGHT_PX, clampedBoundaryY - upper.y);
-    const newLowerH = Math.max(PANE_MIN_HEIGHT_PX, lowerBottom - (clampedBoundaryY + PANE_GAP_PX));
+    const newLowerH = Math.max(PANE_MIN_HEIGHT_PX, lowerBottom - (clampedBoundaryY + gapPx));
 
     const totalAvailPx = panes.reduce((sum, p) => sum + p.h, 0);
     if (totalAvailPx <= 0) return;
 
-    const newUpperRatio = newUpperH / totalAvailPx;
-    const newLowerRatio = newLowerH / totalAvailPx;
+    const updates: Record<string, number> = {};
+    for (let i = 0; i < panes.length; i += 1) {
+      const pane = panes[i];
+      if (pane.id === upper.id) {
+        updates[pane.id] = newUpperH / totalAvailPx;
+      } else if (pane.id === lower.id) {
+        updates[pane.id] = newLowerH / totalAvailPx;
+      } else {
+        updates[pane.id] = pane.h / totalAvailPx;
+      }
+    }
 
-    controller.updatePaneRatios({
-      [upper.id]: newUpperRatio,
-      [lower.id]: newLowerRatio
-    });
+    controller.updatePaneRatios(updates);
   };
 
   const updateSelectCursorAt = (x: number, y: number) => {
@@ -130,6 +151,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
 
     const separator = paneSeparatorAt(x, y);
     if (separator) {
+      event.preventDefault();
       paneResizeDrag = { index: separator.index };
       applyCursor("row-resize");
       return;
