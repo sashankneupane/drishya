@@ -26,6 +26,14 @@ export interface CreateChartWorkspaceOptions {
   /** When set, workspace state (theme, appearance, pane layout, candle style, UI state) is saved to localStorage and restored on load */
   persistKey?: string;
   marketControls?: {
+    /**
+     * Called when a specific chart pane source is changed via pane UI.
+     * Downstream apps can use this to load pane-scoped OHLCV feeds.
+     */
+    onChartPaneSourceChange?: (
+      chartPaneId: WorkspaceChartPaneId,
+      next: { symbol: string; timeframe?: string }
+    ) => void | Promise<void>;
     symbols: readonly string[];
     timeframes: readonly string[];
     selectedSymbol?: string;

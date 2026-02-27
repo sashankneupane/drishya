@@ -25,6 +25,7 @@ export interface WorkspaceState {
     chartPanes: Record<WorkspaceChartPaneId, WorkspaceChartPaneSpec>;
     chartLayoutTree: WorkspaceChartSplitNode;
     activeChartPaneId: WorkspaceChartPaneId;
+    chartPaneSources: Record<WorkspaceChartPaneId, { symbol?: string; timeframe?: string }>;
     paneLayout: WorkspacePaneLayoutState;
     crosshair: WorkspaceCrosshairState | null;
 }
@@ -113,6 +114,7 @@ export class WorkspaceController {
                 chartPaneId: PRICE_PANE_ID
             },
             activeChartPaneId: initial.activeChartPaneId ?? PRICE_PANE_ID,
+            chartPaneSources: initial.chartPaneSources ?? {},
             paneLayout: initial.paneLayout ?? defaultPaneLayout,
             crosshair: null
         };
@@ -422,6 +424,9 @@ export class WorkspaceController {
         };
         this.state.chartLayoutTree = { type: "leaf", chartPaneId: PRICE_PANE_ID };
         this.state.activeChartPaneId = PRICE_PANE_ID;
+        this.state.chartPaneSources = {
+            [PRICE_PANE_ID]: this.state.chartPaneSources[PRICE_PANE_ID] ?? {}
+        };
         this.notify();
     }
 
@@ -462,6 +467,11 @@ export class WorkspaceController {
         if (!this.state.chartPanes[this.state.activeChartPaneId]) {
             this.state.activeChartPaneId = PRICE_PANE_ID;
         }
+        const nextSources: Record<string, { symbol?: string; timeframe?: string }> = {};
+        for (const id of Object.keys(this.state.chartPanes)) {
+            nextSources[id] = this.state.chartPaneSources[id] ?? {};
+        }
+        this.state.chartPaneSources = nextSources;
         this.notify();
     }
 
@@ -516,6 +526,10 @@ export class WorkspaceController {
             DEFAULT_CHART_SPLIT_RATIO
         );
         this.state.activeChartPaneId = id;
+        this.state.chartPaneSources = {
+            ...this.state.chartPaneSources,
+            [id]: {}
+        };
         this.notify();
         return id;
     }
@@ -543,6 +557,10 @@ export class WorkspaceController {
             DEFAULT_CHART_SPLIT_RATIO
         );
         this.state.activeChartPaneId = id;
+        this.state.chartPaneSources = {
+            ...this.state.chartPaneSources,
+            [id]: {}
+        };
         this.notify();
         return id;
     }
@@ -556,6 +574,9 @@ export class WorkspaceController {
         const nextChartPanes = { ...this.state.chartPanes };
         delete nextChartPanes[paneId];
         this.state.chartPanes = nextChartPanes;
+        const nextSources = { ...this.state.chartPaneSources };
+        delete nextSources[paneId];
+        this.state.chartPaneSources = nextSources;
         this.state.chartLayoutTree = nextTree;
         if (!this.state.chartPanes[this.state.activeChartPaneId]) {
             this.state.activeChartPaneId = PRICE_PANE_ID;
@@ -582,6 +603,25 @@ export class WorkspaceController {
         if (!this.state.chartPanes[paneId]) return;
         if (this.state.activeChartPaneId === paneId) return;
         this.state.activeChartPaneId = paneId;
+        this.notify();
+    }
+
+    setChartPaneSource(
+        chartPaneId: WorkspaceChartPaneId,
+        next: { symbol?: string; timeframe?: string }
+    ): void {
+        const paneId = canonicalPaneId(chartPaneId);
+        if (!this.state.chartPanes[paneId]) return;
+        const prev = this.state.chartPaneSources[paneId] ?? {};
+        const merged = {
+            symbol: next.symbol ?? prev.symbol,
+            timeframe: next.timeframe ?? prev.timeframe
+        };
+        if (prev.symbol === merged.symbol && prev.timeframe === merged.timeframe) return;
+        this.state.chartPaneSources = {
+            ...this.state.chartPaneSources,
+            [paneId]: merged
+        };
         this.notify();
     }
 

@@ -278,6 +278,17 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   root.append(leftSide, rightSide);
 
   const unsubscribe = controller.subscribe((state) => {
+    const paneSource = state.chartPaneSources[state.activeChartPaneId];
+    const nextSymbol = paneSource?.symbol ?? options.selectedSymbol;
+    const nextTimeframe = paneSource?.timeframe ?? options.selectedTimeframe;
+    if (nextSymbol !== selectedSymbol) {
+      selectedSymbol = nextSymbol;
+      updateSymbol();
+    }
+    if (nextTimeframe !== selectedTimeframe) {
+      selectedTimeframe = nextTimeframe;
+      updateTf();
+    }
     if (state.isObjectTreeOpen) {
       objectsBtn.classList.add("text-zinc-100", "bg-zinc-900");
     } else {
