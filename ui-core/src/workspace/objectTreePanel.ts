@@ -37,6 +37,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   close.className = "h-7 w-7 inline-flex items-center justify-center rounded-none text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 transition-colors cursor-pointer border-none bg-transparent";
   close.appendChild(makeSvgIcon("close", "h-3.5 w-3.5"));
   close.onclick = () => {
+    root.style.display = "none";
     if (options.onSetOpen) {
       options.onSetOpen(false);
     } else {

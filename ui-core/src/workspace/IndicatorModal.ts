@@ -84,6 +84,8 @@ export interface IndicatorModalOptions {
     controller: WorkspaceController;
     onClose: () => void;
     onApply?: () => void;
+    getTargetCharts?: () => DrishyaChartClient[];
+    onIndicatorSelected?: (indicatorId: string) => void;
 }
 
 export function createIndicatorModal(options: IndicatorModalOptions) {
@@ -168,8 +170,15 @@ export function createIndicatorModal(options: IndicatorModalOptions) {
             row.onclick = () => {
                 console.log(`[IndicatorModal] Applying ${ind.name} (id: ${ind.id})`);
                 try {
-                    ind.apply(options.chart, options.controller);
+                    const targets = options.getTargetCharts?.() ?? [options.chart];
+                    const applied = new Set<DrishyaChartClient>();
+                    for (const target of targets) {
+                        if (applied.has(target)) continue;
+                        applied.add(target);
+                        ind.apply(target, options.controller);
+                    }
                     syncControllerPanesFromRuntime();
+                    options.onIndicatorSelected?.(ind.id);
                     console.log(`[IndicatorModal] Successfully applied ${ind.name}`);
                 } catch (err) {
                     console.error(`[IndicatorModal] Failed to apply ${ind.name}:`, err);
