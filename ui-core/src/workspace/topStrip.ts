@@ -221,7 +221,7 @@ export function createTopStrip(options: TopStripOptions): TopStripHandle {
   addPaneLabel.textContent = "Pane";
   addPaneBtn.appendChild(addPaneLabel);
   addPaneBtn.onclick = () => {
-    controller.addChartPane();
+    controller.addChartTile();
     options.onMutate?.();
   };
   leftSide.appendChild(addPaneBtn);

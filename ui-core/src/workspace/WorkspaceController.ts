@@ -893,6 +893,18 @@ export class WorkspaceController {
         this.notify();
     }
 
+    updateWorkspaceTileRatios(updates: Record<WorkspaceTileId, number>): void {
+        const nextTiles = { ...this.state.workspaceTiles };
+        for (const [tileId, ratio] of Object.entries(updates)) {
+            const tile = nextTiles[tileId];
+            if (!tile) continue;
+            nextTiles[tileId] = { ...tile, widthRatio: Math.max(0.08, ratio) };
+        }
+        this.state.workspaceTiles = nextTiles;
+        this.normalizeWorkspaceTileRatios();
+        this.notify();
+    }
+
     setChartSplitRatio(path: readonly number[], ratio: number): void {
         const clamped = Math.max(0.1, Math.min(0.9, ratio));
         this.state.chartLayoutTree = updateSplitRatioAtPath(this.state.chartLayoutTree, path, clamped);

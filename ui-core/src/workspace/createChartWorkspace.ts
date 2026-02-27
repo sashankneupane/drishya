@@ -559,6 +559,46 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           tilesRow.insertBefore(shell, tilesRow.children[index]);
         }
       }
+      let resizer = shell.querySelector("[data-tile-resizer='1']") as HTMLDivElement | null;
+      if (!resizer) {
+        resizer = document.createElement("div");
+        resizer.dataset.tileResizer = "1";
+        resizer.className = "absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-zinc-700/60 transition-colors";
+        shell.style.position = "relative";
+        shell.appendChild(resizer);
+      }
+      resizer.style.display = index < order.length - 1 ? "block" : "none";
+      if (resizer.style.display === "block") {
+        const nextTileId = order[index + 1];
+        resizer.onpointerdown = (event) => {
+          event.preventDefault();
+          const rowRect = tilesRow.getBoundingClientRect();
+          const startX = event.clientX;
+          const stateNow = controller.getState();
+          const leftRatio = stateNow.workspaceTiles[tileId]?.widthRatio ?? 0.5;
+          const rightRatio = stateNow.workspaceTiles[nextTileId]?.widthRatio ?? 0.5;
+          const pair = leftRatio + rightRatio;
+          const onMove = (moveEvent: PointerEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const deltaRatio = dx / Math.max(1, rowRect.width);
+            const nextLeft = Math.max(0.12, Math.min(pair - 0.12, leftRatio + deltaRatio));
+            const nextRight = pair - nextLeft;
+            controller.updateWorkspaceTileRatios({
+              [tileId]: nextLeft,
+              [nextTileId]: nextRight
+            });
+          };
+          const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            savePersistedState();
+          };
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+        };
+      } else {
+        resizer.onpointerdown = null;
+      }
     }
     syncTileWidths();
   };
