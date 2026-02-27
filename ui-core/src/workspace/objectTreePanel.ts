@@ -43,7 +43,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   const refresh = () => {
     container.innerHTML = "";
     const state = chart.objectTreeState();
-    const nodes = buildObjectTreeNodes(state);
+    const nodes = buildObjectTreeNodes(state, controller.getState().paneLayout);
 
     if (nodes.length === 0) {
       const empty = document.createElement("div");
@@ -125,6 +125,9 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
             kind: node.kind as any,
             id: node.id
           });
+          if (node.kind === "series") {
+            controller.cleanupEmptyIndicatorPanes(chart.objectTreeState());
+          }
           refresh();
           options.onMutate?.();
         };

@@ -20,7 +20,7 @@ const ICON_SIZE = "h-4 w-4";
 
 // Visibility classes: subtle when idle, high visibility when active/hover
 const BTN_IDLE = "text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50";
-const BTN_ACTIVE = "text-zinc-100 bg-zinc-800/40 border-l-2 border-zinc-100";
+const BTN_ACTIVE = "text-white bg-zinc-700/70 border-l-2 border-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.15)]";
 
 export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
   const { controller } = options;
@@ -29,6 +29,10 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
 
   const toolButtons: Map<string, HTMLElement> = new Map();
   const activePopups: HTMLElement[] = [];
+  const activeToolReadout = document.createElement("div");
+  activeToolReadout.className =
+    "mt-auto px-1 py-2 text-[9px] leading-tight text-zinc-300 bg-zinc-950/60 border-t border-workspace-border text-center break-words";
+  activeToolReadout.textContent = "Active: select";
 
   const closeAllPopups = () => {
     activePopups.forEach(p => p.remove());
@@ -102,7 +106,14 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
 
       cbtn.append(icon, label, hotkey);
       cbtn.onclick = () => {
-        controller.setActiveTool(child.id as DrawingToolId, { force: true });
+        if (child.id === "crosshair" || child.id === "dot" || child.id === "normal") {
+          controller.setCursorMode(child.id as any);
+          if (child.id === "normal") {
+            controller.setActiveTool("select", { force: true });
+          }
+        } else {
+          controller.setActiveTool(child.id as DrawingToolId, { force: true });
+        }
         // Update owner icon
         const iconContainer = ownerBtn.querySelector("div");
         if (iconContainer) iconContainer.replaceChildren(makeSvgIcon(child.id, ICON_SIZE));
@@ -117,6 +128,7 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
 
   const unsubscribe = controller.subscribe((state) => {
     const activeTool = state.activeTool;
+    activeToolReadout.textContent = `Active: ${activeTool}`;
 
     // Update active states
     options.tools.forEach(tool => {
@@ -137,6 +149,8 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
       }
     });
   });
+
+  root.appendChild(activeToolReadout);
 
   // Global click to close popups
   const globalClick = () => closeAllPopups();

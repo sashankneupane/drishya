@@ -1,4 +1,5 @@
 import type { ObjectTreeState } from "../wasm/contracts.js";
+import type { WorkspacePaneLayoutState } from "../workspace/types.js";
 
 export type ObjectTreeNodeKind = "pane" | "series" | "drawing" | "header" | "layer" | "group";
 
@@ -25,7 +26,10 @@ export type ObjectTreeAction =
     id: string;
   };
 
-export function buildObjectTreeNodes(state: ObjectTreeState): ObjectTreeNode[] {
+export function buildObjectTreeNodes(
+  state: ObjectTreeState,
+  paneLayout?: WorkspacePaneLayoutState
+): ObjectTreeNode[] {
   const out: ObjectTreeNode[] = [];
 
   out.push({
@@ -35,26 +39,100 @@ export function buildObjectTreeNodes(state: ObjectTreeState): ObjectTreeNode[] {
     depth: 0
   });
 
-  for (const pane of state.panes) {
+  const panesById = new Map(state.panes.map((pane) => [pane.id, pane] as const));
+  const orderedPaneIds =
+    paneLayout?.order?.filter((id) => panesById.has(id)) ?? state.panes.map((pane) => pane.id);
+  const paneSpecMap = paneLayout?.panes ?? {};
+
+  const chartRoots = orderedPaneIds.filter((id) => {
+    const kind = paneSpecMap[id]?.kind;
+    return kind === "price" || kind === "chart" || (!kind && id === "price");
+  });
+  const indicatorIds = orderedPaneIds.filter((id) => !chartRoots.includes(id));
+
+  for (const rootId of chartRoots) {
+    const pane = panesById.get(rootId);
+    if (!pane) continue;
+    const title = paneSpecMap[rootId]?.title ?? (rootId === "price" ? "Main Chart" : rootId.toUpperCase());
     out.push({
-      id: pane.id,
-      label: `Pane: ${pane.id}`,
+      id: rootId,
+      label: `Chart: ${title}`,
       kind: "pane",
       depth: 1,
       visible: pane.visible
     });
+
+    const ownedIndicators = indicatorIds.filter((id) => {
+      const spec = paneSpecMap[id];
+      if (spec?.parentChartPaneId) return spec.parentChartPaneId === rootId;
+      const idx = orderedPaneIds.indexOf(id);
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        const prevId = orderedPaneIds[i];
+        if (chartRoots.includes(prevId)) return prevId === rootId;
+      }
+      return rootId === "price";
+    });
+
+    for (const indicatorId of ownedIndicators) {
+      const indicatorPane = panesById.get(indicatorId);
+      if (!indicatorPane) continue;
+      const indicatorTitle = paneSpecMap[indicatorId]?.title ?? indicatorId.toUpperCase();
+      out.push({
+        id: indicatorId,
+        label: `Indicator Pane: ${indicatorTitle}`,
+        kind: "pane",
+        depth: 2,
+        visible: indicatorPane.visible
+      });
+      for (const series of state.series) {
+        if (series.deleted || series.pane_id !== indicatorId) continue;
+        out.push({
+          id: series.id,
+          label: `Series: ${series.name}`,
+          kind: "series",
+          depth: 3,
+          visible: series.visible,
+          deletable: true
+        });
+      }
+    }
+
+    for (const series of state.series) {
+      if (series.deleted || series.pane_id !== rootId) continue;
+      out.push({
+        id: series.id,
+        label: `Series: ${series.name}`,
+        kind: "series",
+        depth: 2,
+        visible: series.visible,
+        deletable: true
+      });
+    }
   }
 
-  for (const series of state.series) {
-    if (series.deleted) continue;
-    out.push({
-      id: series.id,
-      label: `Series: ${series.name} [${series.pane_id}]`,
-      kind: "series",
-      depth: 1,
-      visible: series.visible,
-      deletable: true
-    });
+  if (chartRoots.length === 0) {
+    for (const paneId of orderedPaneIds) {
+      const pane = panesById.get(paneId);
+      if (!pane) continue;
+      out.push({
+        id: paneId,
+        label: `Pane: ${paneId}`,
+        kind: "pane",
+        depth: 1,
+        visible: pane.visible
+      });
+      for (const series of state.series) {
+        if (series.deleted || series.pane_id !== paneId) continue;
+        out.push({
+          id: series.id,
+          label: `Series: ${series.name}`,
+          kind: "series",
+          depth: 2,
+          visible: series.visible,
+          deletable: true
+        });
+      }
+    }
   }
 
   out.push({
@@ -136,4 +214,3 @@ function addGroupsRecursively(group: any, depth: number, state: ObjectTreeState,
     });
   }
 }
-
