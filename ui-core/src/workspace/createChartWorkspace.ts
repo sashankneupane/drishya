@@ -555,6 +555,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         const activeTab = chartTile?.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? chartTile?.tabs[0];
         if (activeTab) {
           paneHostByPaneId.set(activeTab.chartPaneId, stageHost);
+          const runtime = getRuntime(activeTab.chartPaneId);
+          if (runtime && runtime.container.parentElement !== stageHost.chartLayer) {
+            runtime.container.parentElement?.removeChild(runtime.container);
+            stageHost.chartLayer.appendChild(runtime.container);
+          }
         }
         body.appendChild(tileBody);
         renderChartTabs(tile.chartTileId);
