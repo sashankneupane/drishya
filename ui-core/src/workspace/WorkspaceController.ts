@@ -1,8 +1,9 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { WorkspaceTheme } from "./types.js";
+import type { WorkspaceTheme, WorkspacePaneLayoutState, WorkspacePaneId } from "./types.js";
 import type { CursorMode } from "../wasm/contracts.js";
 import type { ReplayState } from "../wasm/contracts.js";
 import type { ReplayController } from "./replay/ReplayController.js";
+import { PRICE_PANE_ID } from "./constants.js";
 
 export interface WorkspaceState {
     theme: WorkspaceTheme;
@@ -12,7 +13,34 @@ export interface WorkspaceState {
     cursorMode: CursorMode;
     priceAxisMode: "linear" | "log" | "percent";
     replay: ReplayState;
+    paneLayout: WorkspacePaneLayoutState;
 }
+
+export function normalizePaneRatios(
+    ratios: Record<WorkspacePaneId, number>,
+    visibleIds: WorkspacePaneId[]
+): Record<WorkspacePaneId, number> {
+    const normalized = { ...ratios };
+    let sum = 0;
+    for (const id of visibleIds) {
+        normalized[id] = Math.max(0, ratios[id] ?? 0);
+        sum += normalized[id];
+    }
+
+    if (sum <= 0) {
+        const fallback = 1 / Math.max(1, visibleIds.length);
+        for (const id of visibleIds) {
+            normalized[id] = fallback;
+        }
+    } else {
+        for (const id of visibleIds) {
+            normalized[id] /= sum;
+        }
+    }
+
+    return normalized;
+}
+
 
 export type WorkspaceListener = (state: WorkspaceState) => void;
 
@@ -28,6 +56,20 @@ export class WorkspaceController {
     private replayUnsubscribe: (() => void) | null = null;
 
     constructor(initial: Partial<WorkspaceState> = {}) {
+        const defaultPaneLayout: WorkspacePaneLayoutState = {
+            order: [PRICE_PANE_ID],
+            ratios: { [PRICE_PANE_ID]: 1.0 },
+            visibility: { [PRICE_PANE_ID]: true },
+            collapsed: { [PRICE_PANE_ID]: false },
+            panes: {
+                [PRICE_PANE_ID]: {
+                    id: PRICE_PANE_ID,
+                    kind: "price",
+                    title: "Price"
+                }
+            }
+        };
+
         this.state = {
             theme: initial.theme ?? "dark",
             activeTool: initial.activeTool ?? "select",
@@ -35,7 +77,8 @@ export class WorkspaceController {
             isLeftStripOpen: initial.isLeftStripOpen ?? true,
             cursorMode: initial.cursorMode ?? "crosshair",
             priceAxisMode: initial.priceAxisMode ?? "linear",
-            replay: { playing: false, cursor_ts: null }
+            replay: { playing: false, cursor_ts: null },
+            paneLayout: initial.paneLayout ?? defaultPaneLayout
         };
     }
 

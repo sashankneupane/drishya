@@ -66,3 +66,22 @@ export interface ChartWorkspaceHandle {
   getAppearanceConfig?: () => ChartAppearanceConfig | null;
   destroy: () => void;
 }
+
+export type WorkspacePaneId = string;
+
+export type WorkspacePaneKind = "price" | "indicator" | "custom";
+
+export interface WorkspacePaneSpec {
+  id: WorkspacePaneId;
+  kind: WorkspacePaneKind;
+  title?: string;
+  minHeight?: number; // Minimum height in pixels
+}
+
+export interface WorkspacePaneLayoutState {
+  order: WorkspacePaneId[];
+  ratios: Record<WorkspacePaneId, number>; // 0.0 to 1.0, should sum to 1.0
+  visibility: Record<WorkspacePaneId, boolean>; // true if visible
+  collapsed: Record<WorkspacePaneId, boolean>; // true if collapsed to titlebar
+  panes: Record<WorkspacePaneId, WorkspacePaneSpec>;
+}
