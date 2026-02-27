@@ -4,7 +4,7 @@ use crate::{
     types::Candle,
 };
 
-pub(super) fn series_value_at_index(series: &PlotSeries, index: usize) -> Option<f64> {
+pub(crate) fn series_value_at_index(series: &PlotSeries, index: usize) -> Option<f64> {
     // Prefer later primitives so readouts pick the main signal line
     // (e.g. RSI value) over static guide lines (e.g. 70/30).
     for primitive in series.primitives.iter().rev() {
@@ -34,7 +34,7 @@ pub(super) fn series_value_at_index(series: &PlotSeries, index: usize) -> Option
     None
 }
 
-pub(super) fn nearest_candle_index(x: f32, ts: TimeScale, total_len: usize) -> Option<usize> {
+pub(crate) fn nearest_candle_index(x: f32, ts: TimeScale, total_len: usize) -> Option<usize> {
     if total_len == 0 {
         return None;
     }
@@ -51,7 +51,7 @@ pub(super) fn nearest_candle_index(x: f32, ts: TimeScale, total_len: usize) -> O
     Some(clamped as usize)
 }
 
-pub(super) fn world_x_at_pixel(x: f32, ts: TimeScale) -> Option<f64> {
+pub(crate) fn world_x_at_pixel(x: f32, ts: TimeScale) -> Option<f64> {
     let span = ts.world_span();
     if span <= 0.0 || ts.pane.w <= 0.0 {
         return None;
@@ -60,7 +60,7 @@ pub(super) fn world_x_at_pixel(x: f32, ts: TimeScale) -> Option<f64> {
     Some(ts.world_start_x + u * span)
 }
 
-pub(super) fn timestamp_for_world_x(world_x: f64, candles: &[Candle]) -> Option<i64> {
+pub(crate) fn timestamp_for_world_x(world_x: f64, candles: &[Candle]) -> Option<i64> {
     let first = candles.first()?;
     let last = candles.last()?;
     let idx = world_x.round() as i64;
@@ -97,7 +97,7 @@ fn inferred_time_step_seconds(candles: &[Candle]) -> i64 {
     60
 }
 
-pub(super) fn compute_pane_value_bounds(
+pub(crate) fn compute_pane_value_bounds(
     series: &[PlotSeries],
     pane: &PaneId,
     visible_start: usize,
