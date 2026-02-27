@@ -25,6 +25,7 @@ interface PersistedWorkspaceState {
   theme?: "dark" | "light";
   appearance?: ChartAppearanceConfig;
   paneState?: string | null;
+  paneStates?: Record<string, string | null>;
   candleStyle?: string;
   activeTool?: string;
   cursorMode?: string;
@@ -35,6 +36,7 @@ interface PersistedWorkspaceState {
   paneLayout?: WorkspacePaneLayoutState;
   chartPaneSources?: Record<string, { symbol?: string; timeframe?: string }>;
   indicators?: string[];
+  indicatorsByPane?: Record<string, string[]>;
 }
 
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
@@ -58,6 +60,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     });
   }
   let restoredObjectTreeWidth: number | null = null;
+  let restoredPaneStatesByPane: Record<string, string | null> = {};
+  let restoredIndicatorsByPane: Record<string, string[]> = {};
 
   // root element fills host completely and hides any overflow
   const root = document.createElement("div");
@@ -137,49 +141,49 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
   applyAppearance(DEFAULT_APPEARANCE_CONFIG);
 
-  const applyBuiltInIndicator = (id: string) => {
+  const applyBuiltInIndicator = (targetChart: DrishyaChartClient, id: string) => {
     switch (id) {
       case "sma":
-        chart.addSmaOverlay(20);
+        targetChart.addSmaOverlay(20);
         return;
       case "ema":
-        chart.addEmaOverlay(20);
+        targetChart.addEmaOverlay(20);
         return;
       case "bb":
-        chart.addBbandsOverlay(20, 2.0);
+        targetChart.addBbandsOverlay(20, 2.0);
         return;
       case "rsi":
-        chart.addRsiPaneIndicator(14);
+        targetChart.addRsiPaneIndicator(14);
         return;
       case "macd":
-        chart.addMacdPaneIndicator(12, 26, 9);
+        targetChart.addMacdPaneIndicator(12, 26, 9);
         return;
       case "atr":
-        chart.addAtrPaneIndicator(14);
+        targetChart.addAtrPaneIndicator(14);
         return;
       case "stoch":
-        chart.addStochasticPaneIndicator(14, 3, 3);
+        targetChart.addStochasticPaneIndicator(14, 3, 3);
         return;
       case "obv":
-        chart.addObvPaneIndicator();
+        targetChart.addObvPaneIndicator();
         return;
       case "vwap":
-        chart.addVwapOverlay();
+        targetChart.addVwapOverlay();
         return;
       case "adx":
-        chart.addAdxPaneIndicator(14);
+        targetChart.addAdxPaneIndicator(14);
         return;
       case "mom":
-        chart.addMomentumHistogramOverlay();
+        targetChart.addMomentumHistogramOverlay();
         return;
       default:
         return;
     }
   };
 
-  const collectActiveBuiltInIndicators = (): string[] => {
+  const collectActiveBuiltInIndicators = (targetChart: DrishyaChartClient): string[] => {
     const ids = new Set<string>();
-    for (const series of chart.objectTreeState().series) {
+    for (const series of targetChart.objectTreeState().series) {
       if (series.deleted) continue;
       const seriesId = series.id;
       if (seriesId.startsWith("sma:")) ids.add("sma");
@@ -233,13 +237,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
           chart.setCandleStyle(validStyle);
         }
-        if (saved.paneState) chart.restorePaneStateJson(saved.paneState);
-        if (Array.isArray(saved.indicators)) {
-          for (const id of saved.indicators) {
-            if (typeof id === "string") {
-              applyBuiltInIndicator(id);
-            }
-          }
+        restoredPaneStatesByPane = saved.paneStates ?? {};
+        restoredIndicatorsByPane = saved.indicatorsByPane ?? {};
+        if (!Object.keys(restoredPaneStatesByPane).length && saved.paneState !== undefined) {
+          restoredPaneStatesByPane.price = saved.paneState;
+        }
+        if (!Object.keys(restoredIndicatorsByPane).length && Array.isArray(saved.indicators)) {
+          restoredIndicatorsByPane.price = saved.indicators.filter((x): x is string => typeof x === "string");
         }
       }
     } catch {
@@ -256,6 +260,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       timer = setTimeout(() => {
         timer = null;
         try {
+          const paneStates: Record<string, string | null> = {};
+          const indicatorsByPane: Record<string, string[]> = {};
+          for (const [paneId, runtime] of chartRuntimes) {
+            paneStates[paneId] = runtime.chart.getPaneStateJson();
+            indicatorsByPane[paneId] = collectActiveBuiltInIndicators(runtime.chart);
+          }
           const state: PersistedWorkspaceState = {
             theme: controller.getState().theme,
             // Do not persist activeTool for the demo app; always restore as "select"
@@ -264,12 +274,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             objectTreeWidth,
             isLeftStripOpen: controller.getState().isLeftStripOpen,
             priceAxisMode: controller.getState().priceAxisMode,
-            candleStyle: chart.candleStyle(),
-            appearance: chart.getAppearanceConfig() ?? undefined,
+            candleStyle: getActiveRuntime()?.chart.candleStyle() ?? chart.candleStyle(),
+            appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? chart.getAppearanceConfig() ?? undefined,
             paneLayout: controller.getState().paneLayout,
             chartPaneSources: controller.getState().chartPaneSources,
-            indicators: collectActiveBuiltInIndicators(),
-            paneState: chart.getPaneStateJson()
+            paneStates,
+            indicatorsByPane
           };
           localStorage.setItem(persistKey, JSON.stringify(state));
         } catch {
@@ -430,6 +440,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       paneChart.setAppearanceConfig(DEFAULT_APPEARANCE_CONFIG);
     } catch {
       // ignore unsupported appearance config in older wasm
+    }
+    const restoredPaneState = restoredPaneStatesByPane[paneId];
+    if (restoredPaneState) {
+      paneChart.restorePaneStateJson(restoredPaneState);
+    }
+    const restoredIndicators = restoredIndicatorsByPane[paneId] ?? [];
+    for (const indicatorId of restoredIndicators) {
+      applyBuiltInIndicator(paneChart, indicatorId);
     }
 
     const runtime: ChartPaneRuntime = {
