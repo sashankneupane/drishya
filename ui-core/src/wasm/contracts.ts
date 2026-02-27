@@ -60,6 +60,25 @@ export interface PaneLayoutSnapshot {
   panes: PaneLayout[];
 }
 
+export interface ChartPaneViewport {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface CrosshairPaneReadoutDto {
+  pane_id: string;
+  value: number;
+}
+
+export interface CrosshairSyncSnapshotDto {
+  x: number;
+  index: number | null;
+  timestamp: number | null;
+  readouts: CrosshairPaneReadoutDto[];
+}
+
 export interface PaneTreeState {
   id: string;
   visible: boolean;
@@ -200,6 +219,7 @@ export interface WasmChartLike {
   reset_y_axis_zoom?(paneId: string): void;
   set_crosshair_at?(x: number, y: number): void;
   clear_crosshair?(): void;
+  crosshair_sync_snapshot_json?(): string;
   set_price_axis_mode?(mode: string): void;
   price_axis_mode?(): string;
 
@@ -259,6 +279,10 @@ export interface WasmChartLike {
   // Group F: Panes + Series
   set_pane_weight?(paneId: string, ratio: number): void;
   set_pane_weights_json?(json: string): void;
+  set_chart_pane_viewports_json?(json: string): void;
+  chart_pane_viewports_json?(): string;
+  set_pane_chart_pane_map_json?(json: string): void;
+  pane_chart_pane_map_json?(): string;
   reset_pane_weights?(): void;
   set_pane_visible?(paneId: string, visible: boolean): void;
   register_pane?(paneId: string): void;

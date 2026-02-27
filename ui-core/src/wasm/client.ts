@@ -7,9 +7,11 @@ import type {
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
+  ChartPaneViewport,
   ReplayState,
   RestoreChartStateOptions,
-  WasmChartLike
+  WasmChartLike,
+  CrosshairSyncSnapshotDto
 } from "./contracts";
 
 import type { ObjectTreeAction } from "../chrome/objectTree.js";
@@ -71,6 +73,12 @@ export class DrishyaChartClient {
 
   clearCrosshair(): void {
     this.wasm.clear_crosshair?.();
+  }
+
+  crosshairSyncSnapshot(): CrosshairSyncSnapshotDto | null {
+    const raw = this.wasm.crosshair_sync_snapshot_json?.();
+    if (!raw) return null;
+    return safeJsonParse<CrosshairSyncSnapshotDto>(raw);
   }
 
   setCursorMode(mode: string): void {
@@ -291,6 +299,26 @@ export class DrishyaChartClient {
 
   setPaneWeights(weightMap: Record<string, number>): void {
     this.wasm.set_pane_weights_json?.(JSON.stringify(weightMap));
+  }
+
+  setChartPaneViewports(viewports: Record<string, ChartPaneViewport>): void {
+    this.wasm.set_chart_pane_viewports_json?.(JSON.stringify(viewports));
+  }
+
+  chartPaneViewports(): Record<string, ChartPaneViewport> {
+    const raw = this.wasm.chart_pane_viewports_json?.();
+    if (!raw) return {};
+    return safeJsonParse<Record<string, ChartPaneViewport>>(raw) ?? {};
+  }
+
+  setPaneChartPaneMap(mapping: Record<string, string>): void {
+    this.wasm.set_pane_chart_pane_map_json?.(JSON.stringify(mapping));
+  }
+
+  paneChartPaneMap(): Record<string, string> {
+    const raw = this.wasm.pane_chart_pane_map_json?.();
+    if (!raw) return {};
+    return safeJsonParse<Record<string, string>>(raw) ?? {};
   }
 
   getPaneStateJson(): string | null {
