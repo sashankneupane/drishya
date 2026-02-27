@@ -1,6 +1,5 @@
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../wasm/contracts.js";
-import type { CrosshairSyncPositionDto } from "../wasm/contracts.js";
 import { buildPaneSpecForRuntime } from "./paneSpec.js";
 import type { LayoutRect } from "../layout/splitTree.js";
 import type { WorkspaceChartSplitDirection, WorkspaceChartSplitNode } from "./types.js";
@@ -23,7 +22,6 @@ interface BindWorkspaceInteractionsOptions {
   getPaneViewport?: () => LayoutRect | null;
   getWorkspaceViewport?: () => LayoutRect;
   onSourceReadoutClick?: () => void;
-  onCrosshairSync?: (snapshot: CrosshairSyncPositionDto | null) => void;
 }
 
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
@@ -38,8 +36,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     onSourceReadoutClick,
     paneId,
     getPaneViewport,
-    getWorkspaceViewport,
-    onCrosshairSync
+    getWorkspaceViewport
   } = options;
   const drawFast = redrawFast ?? redraw;
   let fastDrawQueued = false;
@@ -65,7 +62,6 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let paneResizeDrag: { index: number } | null = null;
   let drawingInteractionActive = false;
   let movedWhileDragging = false;
-  let lastCrosshairKey: string | null = null;
   let chartSplitDrag: {
     path: number[];
     direction: WorkspaceChartSplitDirection;
@@ -486,13 +482,6 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     chart.setCrosshair(x, y);
-    const syncPosition = chart.crosshairSyncPosition();
-    onCrosshairSync?.(syncPosition);
-    const syncKey = syncPosition
-      ? `${syncPosition.timestamp ?? "none"}:${Math.round(syncPosition.x)}`
-      : null;
-    const crosshairChanged = syncKey !== lastCrosshairKey;
-    lastCrosshairKey = syncKey;
 
     const zones = axisZones();
     if (zones && pointInRect(x, y, zones.yAxis)) {
@@ -507,18 +496,12 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     if (!dragging) updateSelectCursorAt(x, y);
-    // Notice: we don't call redraw() here manually if updateSyncCrosshair triggers one via controller,
-    // but we optimized the subscription to avoid that. So we MUST call redraw here.
-    if (crosshairChanged) {
-      requestFastDraw();
-    }
+    requestFastDraw();
   };
 
   const onMouseLeave = () => {
     pointerInCanvas = false;
     chart.clearCrosshair();
-    onCrosshairSync?.(null);
-    lastCrosshairKey = null;
     if (!dragging) applyCursor("default");
     requestFastDraw();
   };

@@ -33,19 +33,6 @@ impl WasmChart {
         self.chart.set_crosshair_at(x, y);
     }
 
-    /// Sets crosshair by source timestamp, mapped to current viewport/cadence.
-    /// Returns false when mapping is unavailable (e.g., no candles).
-    pub fn set_crosshair_at_timestamp(&mut self, timestamp: i64, y: f32) -> bool {
-        let layout = self.chart.current_layout();
-        let pane = layout.price_pane().unwrap_or(layout.plot);
-        let scale = self.chart.current_time_scale(pane);
-        if let Some(x) = self.chart.pixel_x_for_timestamp(timestamp, scale) {
-            self.chart.set_crosshair_at(x, y);
-            return true;
-        }
-        false
-    }
-
     /// Clears crosshair overlay.
     pub fn clear_crosshair(&mut self) {
         self.chart.clear_crosshair();

@@ -487,45 +487,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return runtime;
   };
 
-  const lastSyncKeyBySource = new Map<string, string>();
-  const syncCrosshairFromPane = (
-    sourcePaneId: string,
-    snapshot: ReturnType<DrishyaChartClient["crosshairSyncPosition"]>
-  ) => {
-    if (!snapshot) {
-      lastSyncKeyBySource.delete(sourcePaneId);
-      for (const [paneId, runtime] of chartRuntimes) {
-        if (paneId === sourcePaneId) continue;
-        runtime.chart.clearCrosshair();
-        scheduleFastDrawPane(paneId);
-      }
-      return;
-    }
-    const syncKey = `${snapshot.timestamp ?? "none"}:${Math.round(snapshot.x)}`;
-    if (lastSyncKeyBySource.get(sourcePaneId) === syncKey) {
-      return;
-    }
-    lastSyncKeyBySource.set(sourcePaneId, syncKey);
-    const sourceRuntime = chartRuntimes.get(sourcePaneId);
-    if (!sourceRuntime) return;
-    const sourceW = Math.max(1, sourceRuntime.canvas.clientWidth);
-    const xNorm = snapshot.x / sourceW;
-    for (const [paneId, runtime] of chartRuntimes) {
-      if (paneId === sourcePaneId) continue;
-      const w = Math.max(1, runtime.canvas.clientWidth);
-      const h = Math.max(1, runtime.canvas.clientHeight);
-      const y = Math.floor(h * 0.5);
-      const synced =
-        typeof snapshot.timestamp === "number"
-          ? runtime.chart.setCrosshairTimestamp(snapshot.timestamp, y)
-          : false;
-      if (!synced) {
-        runtime.chart.setCrosshair(Math.max(0, Math.min(w, xNorm * w)), y);
-      }
-      scheduleFastDrawPane(paneId);
-    }
-  };
-
   let fastDrawRafId: number | null = null;
   const fastDrawTargets = new Set<string>();
   const flushFastDraw = () => {
@@ -582,7 +543,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           onClose: () => { }
         });
       },
-      onCrosshairSync: (snapshot) => syncCrosshairFromPane(paneId, snapshot)
     });
   };
 
