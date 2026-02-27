@@ -5,16 +5,19 @@ const PANE_GAP_PX = 4;
 const PANE_SEPARATOR_HIT_PX = 6;
 const PANE_MIN_HEIGHT_PX = 24;
 
+import type { WorkspaceController } from "./WorkspaceController.js";
+
 interface BindWorkspaceInteractionsOptions {
   canvas: HTMLCanvasElement;
   chart: DrishyaChartClient;
   rawChart: WasmChartLike;
   redraw: () => void;
   getPaneLayouts: () => PaneLayout[];
+  controller: WorkspaceController;
 }
 
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
-  const { canvas, chart, rawChart, redraw, getPaneLayouts } = options;
+  const { canvas, chart, rawChart, redraw, getPaneLayouts, controller } = options;
   const hasDrawingInteraction =
     typeof rawChart.set_drawing_tool_mode === "function" &&
     typeof rawChart.drawing_pointer_down === "function" &&
@@ -78,7 +81,6 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   };
 
   const applyPaneResizeAtY = (dragState: { index: number }, pointerY: number) => {
-    if (typeof rawChart.set_pane_weights_json !== "function") return;
     const panes = getPaneLayouts();
     const upper = panes[dragState.index];
     const lower = panes[dragState.index + 1];
@@ -92,11 +94,16 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const newUpperH = Math.max(PANE_MIN_HEIGHT_PX, clampedBoundaryY - upper.y);
     const newLowerH = Math.max(PANE_MIN_HEIGHT_PX, lowerBottom - (clampedBoundaryY + PANE_GAP_PX));
 
-    const weightMap: Record<string, number> = {};
-    for (const pane of panes) weightMap[pane.id] = pane.h;
-    weightMap[upper.id] = newUpperH;
-    weightMap[lower.id] = newLowerH;
-    chart.setPaneWeights(weightMap);
+    const totalAvailPx = panes.reduce((sum, p) => sum + p.h, 0);
+    if (totalAvailPx <= 0) return;
+
+    const newUpperRatio = newUpperH / totalAvailPx;
+    const newLowerRatio = newLowerH / totalAvailPx;
+
+    controller.updatePaneRatios({
+      [upper.id]: newUpperRatio,
+      [lower.id]: newLowerRatio
+    });
   };
 
   const updateSelectCursorAt = (x: number, y: number) => {

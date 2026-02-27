@@ -295,7 +295,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chart,
     rawChart,
     redraw: draw,
-    getPaneLayouts: () => chart.paneLayouts()
+    getPaneLayouts: () => chart.paneLayouts(),
+    controller
   });
 
   // Controller subscriptions
@@ -304,6 +305,15 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chart.setDrawingTool(state.activeTool);
     chart.setCursorMode(state.cursorMode);
     chart.setPriceAxisMode(state.priceAxisMode);
+
+    const weightMap: Record<string, number> = {};
+    for (const id of state.paneLayout.order) {
+      if (state.paneLayout.visibility[id] && !state.paneLayout.collapsed[id]) {
+        weightMap[id] = state.paneLayout.ratios[id] || 0;
+      }
+    }
+    chart.setPaneWeights(weightMap);
+
     draw();
     savePersistedState();
   });

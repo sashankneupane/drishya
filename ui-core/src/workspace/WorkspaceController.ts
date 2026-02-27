@@ -287,6 +287,21 @@ export class WorkspaceController {
         this.notify();
     }
 
+    updatePaneRatios(updates: Record<WorkspacePaneId, number>): void {
+        const currentRatios = { ...this.state.paneLayout.ratios };
+        for (const [id, val] of Object.entries(updates)) {
+            currentRatios[id] = Math.max(0, val);
+        }
+
+        const normalizedRatios = normalizePaneRatios(
+            currentRatios,
+            this.state.paneLayout.order.filter(id => this.state.paneLayout.visibility[id] && !this.state.paneLayout.collapsed[id])
+        );
+
+        this.state.paneLayout = { ...this.state.paneLayout, ratios: normalizedRatios };
+        this.notify();
+    }
+
     setPaneOrder(order: WorkspacePaneId[]): void {
         const validOrder = order.filter(id => this.state.paneLayout.panes[id]);
 
