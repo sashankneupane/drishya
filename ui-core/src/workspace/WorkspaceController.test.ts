@@ -75,6 +75,20 @@ function testWorkspaceController() {
     if (controller.getState().activeChartPaneId !== PRICE_PANE_ID) throw new Error("setActiveChartPane should work");
     controller.removeChartPane(chart3);
     if (controller.getState().chartPanes[chart3]) throw new Error("removeChartPane should remove pane");
+    if (controller.getState().activeChartPaneId !== PRICE_PANE_ID) throw new Error("Active pane should fallback to price after removing active pane");
+
+    // Test pane-scoped source routing state
+    controller.setChartPaneSource(PRICE_PANE_ID, { symbol: "BTCUSDT", timeframe: "1m" });
+    controller.setChartPaneSource(chart2, { symbol: "ETHUSDT", timeframe: "5m" });
+    state = controller.getState();
+    if (state.chartPaneSources[PRICE_PANE_ID]?.symbol !== "BTCUSDT") throw new Error("Price pane source symbol mismatch");
+    if (state.chartPaneSources[chart2]?.symbol !== "ETHUSDT") throw new Error("Secondary pane source symbol mismatch");
+    if (state.chartPaneSources[chart2]?.timeframe !== "5m") throw new Error("Secondary pane source timeframe mismatch");
+
+    // Removing a chart pane should clean up pane-scoped source state
+    controller.removeChartPane(chart2);
+    state = controller.getState();
+    if (state.chartPaneSources[chart2]) throw new Error("Removed pane source state should be cleaned up");
 
     // Test cleanupEmptyIndicatorPanes
     controller.registerPane({ id: "ind-to-clean", kind: "indicator", title: "CleanMe" });

@@ -131,12 +131,15 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return chartRuntimes.get(activeId) ?? chartRuntimes.get("price") ?? null;
   };
   const getRuntime = (paneId: string) => chartRuntimes.get(paneId) ?? null;
+  const getPrimaryRuntime = () => chartRuntimes.get("price") ?? chartRuntimes.values().next().value ?? null;
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
-    try {
-      chart.setAppearanceConfig(config);
-    } catch {
-      // ignore if wasm doesn't support appearance config
+    for (const runtime of chartRuntimes.values()) {
+      try {
+        runtime.chart.setAppearanceConfig(config);
+      } catch {
+        // ignore if wasm doesn't support appearance config
+      }
     }
   };
   applyAppearance(DEFAULT_APPEARANCE_CONFIG);
@@ -209,11 +212,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         const saved = JSON.parse(raw) as PersistedWorkspaceState;
         if (saved.theme) {
           controller.setTheme(saved.theme);
-          chart.setTheme(saved.theme);
+          for (const runtime of chartRuntimes.values()) {
+            runtime.chart.setTheme(saved.theme);
+          }
         }
         if (saved.cursorMode) {
           controller.setCursorMode(saved.cursorMode as "crosshair" | "dot" | "normal");
-          chart.setCursorMode(saved.cursorMode);
+          getPrimaryRuntime()?.chart.setCursorMode(saved.cursorMode);
         }
         if (saved.isObjectTreeOpen !== undefined) controller.setObjectTreeOpen(saved.isObjectTreeOpen);
         if (typeof saved.objectTreeWidth === "number" && Number.isFinite(saved.objectTreeWidth)) {
@@ -222,7 +227,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         if (saved.isLeftStripOpen !== undefined) controller.setLeftStripOpen(saved.isLeftStripOpen);
         if (saved.priceAxisMode) {
           controller.setPriceAxisMode(saved.priceAxisMode);
-          chart.setPriceAxisMode(saved.priceAxisMode);
+          getPrimaryRuntime()?.chart.setPriceAxisMode(saved.priceAxisMode);
         }
         if (saved.paneLayout) {
           controller.loadPaneLayout(saved.paneLayout);
@@ -235,7 +240,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         if (saved.appearance) applyAppearance(saved.appearance);
         const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
         if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
-          chart.setCandleStyle(validStyle);
+          getPrimaryRuntime()?.chart.setCandleStyle(validStyle);
         }
         restoredPaneStatesByPane = saved.paneStates ?? {};
         restoredIndicatorsByPane = saved.indicatorsByPane ?? {};
@@ -274,8 +279,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             objectTreeWidth,
             isLeftStripOpen: controller.getState().isLeftStripOpen,
             priceAxisMode: controller.getState().priceAxisMode,
-            candleStyle: getActiveRuntime()?.chart.candleStyle() ?? chart.candleStyle(),
-            appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? chart.getAppearanceConfig() ?? undefined,
+            candleStyle: getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle(),
+            appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? undefined,
             paneLayout: controller.getState().paneLayout,
             chartPaneSources: controller.getState().chartPaneSources,
             paneStates,
@@ -305,7 +310,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const topHandle = createTopStrip({
     chart: chartFacade,
     controller,
-    getAppearanceConfig: () => chart.getAppearanceConfig(),
+    getAppearanceConfig: () => getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? null,
     applyAppearanceConfig: (cfg) => {
       applyAppearanceConfig(cfg);
       savePersistedState();
@@ -348,7 +353,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const stripHandle = createLeftStrip({
     tools: WORKSPACE_DRAW_TOOLS,
     controller,
-    drawingToolsEnabled: typeof rawChart.set_drawing_tool_mode === "function",
+    drawingToolsEnabled: typeof getPrimaryRuntime()?.rawChart.set_drawing_tool_mode === "function",
     onClear: () => {
       clearDrawings();
       draw();
@@ -704,8 +709,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       }
     }
 
-    chart.setChartPaneViewports(chartPaneViewports);
-    chart.setPaneChartPaneMap(paneChartPaneMap);
+    for (const runtime of chartRuntimes.values()) {
+      runtime.chart.setChartPaneViewports(chartPaneViewports);
+      runtime.chart.setPaneChartPaneMap(paneChartPaneMap);
+    }
   };
 
   const unsubscribe = controller.subscribe((state) => {
@@ -739,7 +746,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       syncReadoutSourceLabel(state);
       updateChartRuntimeLayout();
 
-      const raw = getActiveRuntime()?.rawChart ?? chart.raw();
+      const raw = getActiveRuntime()?.rawChart ?? getPrimaryRuntime()?.rawChart;
+      if (!raw) {
+        draw();
+        savePersistedState();
+        return;
+      }
       const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
       raw.set_pane_order_json?.(JSON.stringify(namedOrder));
       const registeredPanes = (() => {
@@ -800,22 +812,24 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const key = event.key;
 
     // Inline text editing: when a Text drawing is selected and not locked, type directly
-    const selectedId = chart.selectedDrawingId();
+    const activeChart = getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart;
+    if (!activeChart) return;
+    const selectedId = activeChart.selectedDrawingId();
     if (selectedId !== null) {
-      const config = chart.getSelectedDrawingConfig();
+      const config = activeChart.getSelectedDrawingConfig();
       const isTextDrawing =
         config && typeof config.text_content === "string" && !config.locked;
       if (isTextDrawing && config) {
         let text = config.text_content ?? "";
         if (event.key === "Escape") {
-          chart.clearSelectedDrawing();
+          activeChart.clearSelectedDrawing();
           draw();
           event.preventDefault();
           return;
         }
         if (event.key === "Backspace") {
           text = text.slice(0, -1);
-          chart.setDrawingConfig(selectedId, { text_content: text });
+          activeChart.setDrawingConfig(selectedId, { text_content: text });
           draw();
           event.preventDefault();
           return;
@@ -823,14 +837,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         // Delete is not intercepted here; it falls through to delete the drawing
         if (event.key === "Enter") {
           text += "\n";
-          chart.setDrawingConfig(selectedId, { text_content: text });
+          activeChart.setDrawingConfig(selectedId, { text_content: text });
           draw();
           event.preventDefault();
           return;
         }
         if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
           text += key;
-          chart.setDrawingConfig(selectedId, { text_content: text });
+          activeChart.setDrawingConfig(selectedId, { text_content: text });
           draw();
           event.preventDefault();
           return;
@@ -859,18 +873,19 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
 
     if (event.key === "Escape") {
-      if (typeof rawChart.cancel_drawing_interaction === "function") {
-        rawChart.cancel_drawing_interaction();
+      const activeRaw = getActiveRuntime()?.rawChart ?? getPrimaryRuntime()?.rawChart;
+      if (activeRaw && typeof activeRaw.cancel_drawing_interaction === "function") {
+        activeRaw.cancel_drawing_interaction();
       }
-      chart.clearSelectedDrawing();
-      chart.clearSelectedSeries();
+      activeChart.clearSelectedDrawing();
+      activeChart.clearSelectedSeries();
       controller.setActiveTool("select", { force: true });
       draw();
       return;
     }
 
     if (event.key === "Backspace" || event.key === "Delete") {
-      if (chart.deleteSelectedDrawing() || chart.deleteSelectedSeries()) {
+      if (activeChart.deleteSelectedDrawing() || activeChart.deleteSelectedSeries()) {
         event.preventDefault();
         draw();
       }
@@ -896,19 +911,21 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   setupCanvasBackingStore();
   syncReadoutSourceLabel(controller.getState());
-  chart.setDrawingTool(controller.getState().activeTool);
+  getActiveRuntime()?.chart.setDrawingTool(controller.getState().activeTool);
   draw();
 
   const applyAppearanceConfig = (config: { background: string; candle_up: string; candle_down: string }) => {
     try {
-      chart.setAppearanceConfig(config);
+      for (const runtime of chartRuntimes.values()) {
+        runtime.chart.setAppearanceConfig(config);
+      }
       draw();
     } catch {
       // invalid config - fail gracefully
     }
   };
 
-  const getAppearanceConfig = () => chart.getAppearanceConfig();
+  const getAppearanceConfig = () => getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? null;
 
   return {
     root: root as HTMLDivElement,
