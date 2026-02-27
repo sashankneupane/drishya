@@ -483,42 +483,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       draw: () => paneChart.draw(),
       resize: (width: number, height: number) => paneChart.resize(width, height)
     };
-    runtime.unbindInteractions = bindWorkspaceInteractions({
-      canvas: paneCanvas,
-      chart: paneChart,
-      rawChart: paneRaw,
-      redraw: draw,
-      getPaneLayouts: () => paneChart.paneLayouts(),
-      controller,
-      paneId,
-      getPaneViewport: () => runtime.viewport ?? null,
-      getWorkspaceViewport: () => {
-        const stageRect = stage.getBoundingClientRect();
-        return {
-          x: 0,
-          y: 0,
-          w: Math.max(1, Math.floor(stageRect.width)),
-          h: Math.max(1, Math.floor(stageRect.height))
-        };
-      },
-      onSourceReadoutClick: () => {
-        const symbols = options.marketControls?.symbols ?? [];
-        if (symbols.length === 0) return;
-        createSymbolSearchModal({
-          symbols,
-          onSelect: async (nextSymbol) => {
-            controller.setChartPaneSource(paneId, { symbol: nextSymbol });
-            await options.marketControls?.onChartPaneSourceChange?.(paneId, {
-              symbol: nextSymbol,
-              timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
-            });
-            await options.marketControls?.onSymbolChange?.(nextSymbol);
-          },
-          onClose: () => { }
-        });
-      },
-      onCrosshairSync: (snapshot) => syncCrosshairFromPane(paneId, snapshot)
-    });
+    ensureRuntimeInteractions(runtime);
     return runtime;
   };
 
@@ -560,6 +525,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       chart: runtime.chart,
       rawChart: runtime.rawChart,
       redraw: draw,
+      redrawFast: drawFast,
       getPaneLayouts: () => runtime.chart.paneLayouts(),
       controller,
       paneId,
@@ -719,6 +685,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     refreshConfigPanel();
     updateTextCaret();
     savePersistedState();
+  };
+
+  const drawFast = () => {
+    for (const runtime of chartRuntimes.values()) {
+      runtime.draw();
+    }
   };
 
   const syncReadoutSourceLabel = (state: ReturnType<typeof controller.getState>) => {

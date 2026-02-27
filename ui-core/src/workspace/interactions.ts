@@ -16,6 +16,7 @@ interface BindWorkspaceInteractionsOptions {
   chart: DrishyaChartClient;
   rawChart: WasmChartLike;
   redraw: () => void;
+  redrawFast?: () => void;
   getPaneLayouts: () => PaneLayout[];
   controller: WorkspaceController;
   paneId?: string;
@@ -31,6 +32,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     chart,
     rawChart,
     redraw,
+    redrawFast,
     getPaneLayouts,
     controller,
     onSourceReadoutClick,
@@ -39,6 +41,16 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     getWorkspaceViewport,
     onCrosshairSync
   } = options;
+  const drawFast = redrawFast ?? redraw;
+  let fastDrawQueued = false;
+  const requestFastDraw = () => {
+    if (fastDrawQueued) return;
+    fastDrawQueued = true;
+    requestAnimationFrame(() => {
+      fastDrawQueued = false;
+      drawFast();
+    });
+  };
   const hasDrawingInteraction =
     typeof rawChart.drawing_pointer_down === "function" &&
     typeof rawChart.drawing_pointer_move === "function" &&
@@ -351,7 +363,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (hasDrawingInteraction && drawingInteractionActive) {
       const rect = canvas.getBoundingClientRect();
       if (chart.drawingPointerUp(lastX - rect.left, lastY - rect.top)) {
-        redraw();
+        requestFastDraw();
       }
     }
 
@@ -398,14 +410,14 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
           ? (globalX - chartSplitDrag.rect.x) / Math.max(1, chartSplitDrag.rect.w)
           : (globalY - chartSplitDrag.rect.y) / Math.max(1, chartSplitDrag.rect.h);
       controller.setChartSplitRatio(chartSplitDrag.path, ratio);
-      redraw();
+      requestFastDraw();
       return;
     }
 
     if (paneResizeDrag) {
       const rect = canvas.getBoundingClientRect();
       applyPaneResizeAtY(paneResizeDrag, event.clientY - rect.top);
-      redraw();
+      requestFastDraw();
       return;
     }
 
@@ -414,7 +426,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       axisZoomDrag.lastClient = event.clientY;
       if (dy !== 0) {
         chart.zoomY(axisZoomDrag.anchor, Math.max(0.85, Math.min(1.15, 1.0 + dy * 0.01)));
-        redraw();
+        requestFastDraw();
       }
       return;
     }
@@ -424,7 +436,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       axisZoomDrag.lastClient = event.clientX;
       if (dx !== 0) {
         chart.zoomX(axisZoomDrag.anchor, Math.max(0.85, Math.min(1.15, 1.0 + dx * 0.01)));
-        redraw();
+        requestFastDraw();
       }
       return;
     }
@@ -438,7 +450,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       movedWhileDragging = true;
     }
     chart.pan2d(dx, dy, anchorY);
-    redraw();
+    requestFastDraw();
     return;
   };
 
@@ -448,7 +460,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
     const rect = canvas.getBoundingClientRect();
     if (chart.drawingPointerMove(event.clientX - rect.left, event.clientY - rect.top)) {
-      redraw();
+      requestFastDraw();
     }
   };
 
@@ -461,14 +473,14 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (splitSeparator) {
       chart.clearCrosshair();
       applyCursor(splitSeparator.direction === "horizontal" ? "col-resize" : "row-resize");
-      redraw();
+      requestFastDraw();
       return;
     }
 
     if (paneSeparatorAt(x, y)) {
       chart.clearCrosshair();
       applyCursor("row-resize");
-      redraw();
+      requestFastDraw();
       return;
     }
 
@@ -478,19 +490,19 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const zones = axisZones();
     if (zones && pointInRect(x, y, zones.yAxis)) {
       applyCursor("ns-resize");
-      redraw();
+      requestFastDraw();
       return;
     }
     if (zones && pointInRect(x, y, zones.xAxis)) {
       applyCursor("ew-resize");
-      redraw();
+      requestFastDraw();
       return;
     }
 
     if (!dragging) updateSelectCursorAt(x, y);
     // Notice: we don't call redraw() here manually if updateSyncCrosshair triggers one via controller,
     // but we optimized the subscription to avoid that. So we MUST call redraw here.
-    redraw();
+    requestFastDraw();
   };
 
   const onMouseLeave = () => {
@@ -498,7 +510,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     chart.clearCrosshair();
     onCrosshairSync?.(null);
     if (!dragging) applyCursor("default");
-    redraw();
+    requestFastDraw();
   };
 
   const onWheel = (event: WheelEvent) => {
@@ -510,7 +522,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const sensitivity = event.ctrlKey ? 0.00065 : 0.00095;
     const factor = Math.exp(delta * sensitivity);
     chart.zoomX(x, Math.max(0.96, Math.min(1.04, factor)));
-    redraw();
+    requestFastDraw();
   };
 
   canvas.addEventListener("mouseenter", onMouseEnter);
