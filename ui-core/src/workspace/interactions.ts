@@ -19,12 +19,26 @@ interface BindWorkspaceInteractionsOptions {
   getPaneLayouts: () => PaneLayout[];
   controller: WorkspaceController;
   paneId?: string;
+  getPaneViewport?: () => LayoutRect | null;
+  getWorkspaceViewport?: () => LayoutRect;
   onSourceReadoutClick?: () => void;
   onCrosshairSync?: (snapshot: CrosshairSyncSnapshotDto | null) => void;
 }
 
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
-  const { canvas, chart, rawChart, redraw, getPaneLayouts, controller, onSourceReadoutClick, paneId, onCrosshairSync } = options;
+  const {
+    canvas,
+    chart,
+    rawChart,
+    redraw,
+    getPaneLayouts,
+    controller,
+    onSourceReadoutClick,
+    paneId,
+    getPaneViewport,
+    getWorkspaceViewport,
+    onCrosshairSync
+  } = options;
   const hasDrawingInteraction =
     typeof rawChart.drawing_pointer_down === "function" &&
     typeof rawChart.drawing_pointer_move === "function" &&
@@ -94,13 +108,15 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   };
 
   const chartSplitSeparatorAt = (x: number, y: number) => {
-    const rect = canvas.getBoundingClientRect();
-    const viewport: LayoutRect = {
+    const paneViewport = getPaneViewport?.() ?? {
       x: 0,
       y: 0,
-      w: Math.max(1, Math.floor(rect.width)),
-      h: Math.max(1, Math.floor(rect.height))
+      w: Math.max(1, Math.floor(canvas.getBoundingClientRect().width)),
+      h: Math.max(1, Math.floor(canvas.getBoundingClientRect().height))
     };
+    const viewport: LayoutRect = getWorkspaceViewport?.() ?? paneViewport;
+    const globalX = paneViewport.x + x;
+    const globalY = paneViewport.y + y;
     const out: {
       path: number[];
       direction: WorkspaceChartSplitDirection;
@@ -110,13 +126,13 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     for (const item of out) {
       if (item.direction === "horizontal") {
         const dividerX = item.rect.x + item.rect.w * 0.5;
-        const closeX = Math.abs(x - dividerX) <= PANE_SEPARATOR_HIT_PX;
-        const inY = y >= item.rect.y && y <= item.rect.y + item.rect.h;
+        const closeX = Math.abs(globalX - dividerX) <= PANE_SEPARATOR_HIT_PX;
+        const inY = globalY >= item.rect.y && globalY <= item.rect.y + item.rect.h;
         if (closeX && inY) return item;
       } else {
         const dividerY = item.rect.y + item.rect.h * 0.5;
-        const closeY = Math.abs(y - dividerY) <= PANE_SEPARATOR_HIT_PX;
-        const inX = x >= item.rect.x && x <= item.rect.x + item.rect.w;
+        const closeY = Math.abs(globalY - dividerY) <= PANE_SEPARATOR_HIT_PX;
+        const inX = globalX >= item.rect.x && globalX <= item.rect.x + item.rect.w;
         if (closeY && inX) return item;
       }
     }
@@ -345,10 +361,13 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       const rect = canvas.getBoundingClientRect();
       const localX = event.clientX - rect.left;
       const localY = event.clientY - rect.top;
+      const paneViewport = getPaneViewport?.() ?? { x: 0, y: 0, w: rect.width, h: rect.height };
+      const globalX = paneViewport.x + localX;
+      const globalY = paneViewport.y + localY;
       const ratio =
         chartSplitDrag.direction === "horizontal"
-          ? (localX - chartSplitDrag.rect.x) / Math.max(1, chartSplitDrag.rect.w)
-          : (localY - chartSplitDrag.rect.y) / Math.max(1, chartSplitDrag.rect.h);
+          ? (globalX - chartSplitDrag.rect.x) / Math.max(1, chartSplitDrag.rect.w)
+          : (globalY - chartSplitDrag.rect.y) / Math.max(1, chartSplitDrag.rect.h);
       controller.setChartSplitRatio(chartSplitDrag.path, ratio);
       redraw();
       return;

@@ -460,6 +460,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       paneId,
       container,
       canvas: paneCanvas,
+      viewport: { x: 0, y: 0, w: 0, h: 0 },
       rawChart: paneRaw,
       chart: paneChart,
       draw: () => paneChart.draw(),
@@ -473,6 +474,16 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       getPaneLayouts: () => paneChart.paneLayouts(),
       controller,
       paneId,
+      getPaneViewport: () => runtime.viewport ?? null,
+      getWorkspaceViewport: () => {
+        const stageRect = stage.getBoundingClientRect();
+        return {
+          x: 0,
+          y: 0,
+          w: Math.max(1, Math.floor(stageRect.width)),
+          h: Math.max(1, Math.floor(stageRect.height))
+        };
+      },
       onSourceReadoutClick: () => {
         const symbols = options.marketControls?.symbols ?? [];
         if (symbols.length === 0) return;
@@ -541,6 +552,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       runtime.container.style.top = `${paneRect.rect.y}px`;
       runtime.container.style.width = `${paneRect.rect.w}px`;
       runtime.container.style.height = `${paneRect.rect.h}px`;
+      runtime.viewport = { ...paneRect.rect };
 
       const dpr = Math.max(1, window.devicePixelRatio || 1);
       const width = Math.max(300, Math.floor(paneRect.rect.w));
