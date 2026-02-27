@@ -17,10 +17,11 @@ interface BindWorkspaceInteractionsOptions {
   redraw: () => void;
   getPaneLayouts: () => PaneLayout[];
   controller: WorkspaceController;
+  onSourceReadoutClick?: () => void;
 }
 
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
-  const { canvas, chart, rawChart, redraw, getPaneLayouts, controller } = options;
+  const { canvas, chart, rawChart, redraw, getPaneLayouts, controller, onSourceReadoutClick } = options;
   const hasDrawingInteraction =
     typeof rawChart.drawing_pointer_down === "function" &&
     typeof rawChart.drawing_pointer_move === "function" &&
@@ -191,6 +192,11 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }, x, y);
     if (activeChartPaneId) {
       controller.setActiveChartPane(activeChartPaneId);
+    }
+    if (chart.sourceReadoutHitTest(x, y)) {
+      event.preventDefault();
+      onSourceReadoutClick?.();
+      return;
     }
 
     const chartSplit = chartSplitSeparatorAt(x, y);

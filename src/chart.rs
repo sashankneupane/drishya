@@ -59,6 +59,7 @@ pub struct Chart {
     pane_y_zoom_factors: HashMap<String, f32>,
     pane_y_pan_factors: HashMap<String, f32>,
     readout_source_label: String,
+    readout_source_label_bounds: std::cell::RefCell<Option<crate::types::Rect>>,
     pub crosshair: Option<Point>,
     pub cursor_mode: CursorMode,
     theme: ThemeId,
@@ -102,6 +103,7 @@ impl Chart {
             pane_y_zoom_factors: HashMap::new(),
             pane_y_pan_factors: HashMap::new(),
             readout_source_label: String::new(),
+            readout_source_label_bounds: std::cell::RefCell::new(None),
             crosshair: None,
             cursor_mode: CursorMode::Crosshair,
             theme: ThemeId::Dark,
@@ -223,6 +225,17 @@ impl Chart {
 
     pub fn readout_source_label(&self) -> &str {
         &self.readout_source_label
+    }
+
+    pub fn set_readout_source_label_bounds(&self, bounds: Option<crate::types::Rect>) {
+        *self.readout_source_label_bounds.borrow_mut() = bounds;
+    }
+
+    pub fn readout_source_label_hit_test(&self, x: f32, y: f32) -> bool {
+        let Some(rect) = *self.readout_source_label_bounds.borrow() else {
+            return false;
+        };
+        x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
     }
 
     pub(crate) fn compare_registry(&self) -> &CompareRegistry {

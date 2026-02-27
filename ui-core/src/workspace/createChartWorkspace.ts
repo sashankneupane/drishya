@@ -8,6 +8,7 @@ import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { computeChartPaneRects, computeIndicatorRectsForChartPane } from "./layout/index.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
+import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import { createTopStrip } from "./topStrip.js";
 import { ReplayController } from "./replay/ReplayController.js";
 import { WorkspaceController } from "./WorkspaceController.js";
@@ -393,7 +394,24 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     rawChart,
     redraw: draw,
     getPaneLayouts: () => chart.paneLayouts(),
-    controller
+    controller,
+    onSourceReadoutClick: () => {
+      const symbols = options.marketControls?.symbols ?? [];
+      if (symbols.length === 0) return;
+      const paneId = controller.getState().activeChartPaneId;
+      createSymbolSearchModal({
+        symbols,
+        onSelect: async (nextSymbol) => {
+          controller.setChartPaneSource(paneId, { symbol: nextSymbol });
+          await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+            symbol: nextSymbol,
+            timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+          });
+          await options.marketControls?.onSymbolChange?.(nextSymbol);
+        },
+        onClose: () => { }
+      });
+    }
   });
 
   // Controller subscriptions

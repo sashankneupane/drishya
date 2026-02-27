@@ -84,6 +84,11 @@ impl WasmChart {
         self.chart.set_readout_source_label(label.to_string());
     }
 
+    /// Returns true when point is inside the source segment of OHLCV readout text.
+    pub fn source_readout_hit_test(&self, x: f32, y: f32) -> bool {
+        self.chart.readout_source_label_hit_test(x, y)
+    }
+
     /// Sets pane size ratio weight for layout. Use `price` for the main pane,
     /// or the named pane id such as `rsi` / `momentum`.
     pub fn set_pane_weight(&mut self, pane_id: &str, ratio: f32) {

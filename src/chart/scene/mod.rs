@@ -111,6 +111,8 @@ impl Chart {
         }
 
         let layout: ChartLayout = self.current_layout();
+        let source_label = self.readout_source_label().to_string();
+        self.set_readout_source_label_bounds(source_label_bounds(&layout, &source_label));
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
         let (min_price, max_price, max_vol) = if visible.is_empty() {
             self.compute_visible_bounds(&self.candles)
@@ -380,7 +382,7 @@ impl Chart {
                     &layout,
                     ps,
                     ts_price,
-                    self.readout_source_label(),
+                    &source_label,
                 ) {
                     out.extend(readout);
                 }
@@ -394,12 +396,9 @@ impl Chart {
 
         if crosshair_index.is_none() {
             if let Some(idx) = readout_index {
-                if let Some(close_readout) = build_last_close_readout_commands(
-                    &self.candles,
-                    idx,
-                    &layout,
-                    self.readout_source_label(),
-                ) {
+                if let Some(close_readout) =
+                    build_last_close_readout_commands(&self.candles, idx, &layout, &source_label)
+                {
                     out.extend(close_readout);
                 }
             }
@@ -697,6 +696,20 @@ fn format_axis_value_label(
         }
         _ => PriceFormatter { decimals: 2 }.format_value(value),
     }
+}
+
+fn source_label_bounds(layout: &ChartLayout, source_label: &str) -> Option<crate::types::Rect> {
+    if source_label.is_empty() {
+        return None;
+    }
+    let char_w = 6.7f32;
+    let width = source_label.chars().count() as f32 * char_w + 2.0;
+    Some(crate::types::Rect {
+        x: layout.plot.x + 8.0,
+        y: layout.plot.y + 3.0,
+        w: width.max(8.0),
+        h: 14.0,
+    })
 }
 
 fn build_non_price_pane_readout_commands(
