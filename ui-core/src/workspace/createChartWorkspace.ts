@@ -6,7 +6,7 @@ import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "./constants.js"
 import { createDrawingConfigPanel } from "./components/DrawingConfigPanel.js";
 import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
-import { computeChartPaneRects, computeIndicatorRectsForChartPane } from "./layout/index.js";
+import { computeIndicatorRectsForChartPane } from "./layout/index.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
 import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import { createTopStrip } from "./topStrip.js";
@@ -488,6 +488,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const renderWorkspaceTiles = () => {
     const state = controller.getState();
     const order = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+    paneHostByPaneId.clear();
     const seen = new Set(order);
     for (const existing of Array.from(tileShellById.keys())) {
       if (seen.has(existing)) continue;
@@ -551,13 +552,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         while (tileBody.children.length > 1) {
           tileBody.removeChild(tileBody.lastChild!);
         }
-        if (tile.chartTileId === state.activeChartTileId) {
-          tileBody.appendChild(chartTileBody);
-        } else {
-          const inactive = document.createElement("div");
-          inactive.className = "flex-1 min-h-0 min-w-0 flex items-center justify-center text-zinc-600 text-xs";
-          inactive.textContent = "Activate this tile to focus chart runtime";
-          tileBody.appendChild(inactive);
+        const stageHost = ensureChartTileStage(tile.chartTileId);
+        tileBody.appendChild(stageHost.stage);
+        const chartTile = state.chartTiles[tile.chartTileId];
+        const activeTab = chartTile?.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? chartTile?.tabs[0];
+        if (activeTab) {
+          paneHostByPaneId.set(activeTab.chartPaneId, stageHost);
         }
         body.appendChild(tileBody);
         renderChartTabs(tile.chartTileId);
@@ -619,9 +619,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const tileHeaderById = new Map<string, HTMLDivElement>();
   const chartTileBodyByChartTileId = new Map<string, HTMLDivElement>();
   const chartTileTabById = new Map<string, HTMLDivElement>();
-  const chartTileBody = document.createElement("div");
-  chartTileBody.className = "h-full w-full min-h-0 min-w-0 flex flex-col";
-  chartTileBody.appendChild(stage);
+  const chartTileStageByChartTileId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
+  const paneHostByPaneId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
 
   const createTileHeader = (label: string) => {
     const header = document.createElement("div");
@@ -641,6 +640,18 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     strip.className = "h-8 shrink-0 border-b border-zinc-800/80 bg-zinc-950/95 px-1 flex items-center gap-1 overflow-x-auto";
     chartTileTabById.set(chartTileId, strip);
     return strip;
+  };
+
+  const ensureChartTileStage = (chartTileId: string) => {
+    const existing = chartTileStageByChartTileId.get(chartTileId);
+    if (existing) return existing;
+    const tileStage = document.createElement("div");
+    tileStage.className = "min-h-0 min-w-0 bg-chart-bg flex-shrink-0 relative overflow-hidden flex-1";
+    const tileChartLayer = document.createElement("div");
+    tileChartLayer.className = "absolute inset-0";
+    tileStage.appendChild(tileChartLayer);
+    chartTileStageByChartTileId.set(chartTileId, { stage: tileStage, chartLayer: tileChartLayer });
+    return { stage: tileStage, chartLayer: tileChartLayer };
   };
 
   // Final assembly of UI pieces
@@ -683,7 +694,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const paneCanvasId = `drishya-canvas-${paneId}-${Math.random().toString(36).slice(2, 10)}`;
     paneCanvas.id = paneCanvasId;
     container.appendChild(paneCanvas);
-    chartLayer.appendChild(container);
 
     const paneRaw = createWasmChart(paneCanvasId, 300, 300);
     const paneChart = new DrishyaChartClient(paneRaw);
@@ -748,7 +758,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       paneId,
       getPaneViewport: () => runtime.viewport ?? null,
       getWorkspaceViewport: () => {
-        const stageRect = stage.getBoundingClientRect();
+        const hostStage = paneHostByPaneId.get(paneId)?.stage ?? stage;
+        const stageRect = hostStage.getBoundingClientRect();
         return {
           x: 0,
           y: 0,
@@ -777,34 +788,37 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const updateChartRuntimeLayout = () => {
     const state = controller.getState();
-    const stageRect = stage.getBoundingClientRect();
-    const viewport: LayoutRect = {
-      x: 0,
-      y: 0,
-      w: Math.max(1, Math.floor(stageRect.width)),
-      h: Math.max(1, Math.floor(stageRect.height))
-    };
-    const chartPaneRects = computeChartPaneRects(state.chartLayoutTree, viewport)
-      .filter((paneRect) => state.chartPanes[paneRect.chartPaneId]?.visible !== false);
-    const activePaneIds = new Set(chartPaneRects.map((p) => p.chartPaneId));
+    const activePaneIds = new Set<string>();
 
-    for (const paneRect of chartPaneRects) {
-      const paneId = paneRect.chartPaneId;
+    for (const [paneId, host] of paneHostByPaneId) {
+      if (state.chartPanes[paneId]?.visible === false) continue;
+      const stageRect = host.stage.getBoundingClientRect();
+      const rect: LayoutRect = {
+        x: 0,
+        y: 0,
+        w: Math.max(1, Math.floor(stageRect.width)),
+        h: Math.max(1, Math.floor(stageRect.height))
+      };
+      activePaneIds.add(paneId);
       let runtime = chartRuntimes.get(paneId);
       if (!runtime) {
         runtime = createRuntimeForPane(paneId);
         chartRuntimes.set(paneId, runtime);
       }
       ensureRuntimeInteractions(runtime);
-      runtime.container.style.left = `${paneRect.rect.x}px`;
-      runtime.container.style.top = `${paneRect.rect.y}px`;
-      runtime.container.style.width = `${paneRect.rect.w}px`;
-      runtime.container.style.height = `${paneRect.rect.h}px`;
-      runtime.viewport = { ...paneRect.rect };
+      if (runtime.container.parentElement !== host.chartLayer) {
+        runtime.container.parentElement?.removeChild(runtime.container);
+        host.chartLayer.appendChild(runtime.container);
+      }
+      runtime.container.style.left = "0px";
+      runtime.container.style.top = "0px";
+      runtime.container.style.width = `${rect.w}px`;
+      runtime.container.style.height = `${rect.h}px`;
+      runtime.viewport = rect;
 
       const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const width = Math.max(300, Math.floor(paneRect.rect.w));
-      const height = Math.max(300, Math.floor(paneRect.rect.h));
+      const width = Math.max(300, Math.floor(rect.w));
+      const height = Math.max(300, Math.floor(rect.h));
       runtime.canvas.width = Math.floor(width * dpr);
       runtime.canvas.height = Math.floor(height * dpr);
       const ctx = runtime.canvas.getContext("2d");
@@ -814,7 +828,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
     for (const [paneId, runtime] of chartRuntimes) {
       if (activePaneIds.has(paneId)) continue;
-      if (paneId === "price" && state.chartPanes.price) continue;
       runtime.unbindInteractions?.();
       if (runtime.container.parentElement) {
         runtime.container.parentElement.removeChild(runtime.container);
@@ -948,33 +961,32 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   let lastLayoutJson = "";
   const syncChartPaneContracts = (state: ReturnType<typeof controller.getState>) => {
-    const stageRect = stage.getBoundingClientRect();
-    const viewport: LayoutRect = {
-      x: 0,
-      y: 0,
-      w: Math.max(1, Math.floor(stageRect.width)),
-      h: Math.max(1, Math.floor(stageRect.height))
-    };
-    const chartPaneRects = computeChartPaneRects(state.chartLayoutTree, viewport);
     const chartPaneViewports: Record<string, { x: number; y: number; w: number; h: number }> = {};
     const paneChartPaneMap: Record<string, string> = {};
 
-    for (const paneRect of chartPaneRects) {
-      const chartPane = state.chartPanes[paneRect.chartPaneId];
+    for (const [paneId, host] of paneHostByPaneId) {
+      const chartPane = state.chartPanes[paneId];
       if (chartPane && chartPane.visible === false) continue;
-      chartPaneViewports[paneRect.chartPaneId] = {
-        x: paneRect.rect.x,
-        y: paneRect.rect.y,
-        w: paneRect.rect.w,
-        h: paneRect.rect.h
+      const hostRect = host.stage.getBoundingClientRect();
+      const rect: LayoutRect = {
+        x: 0,
+        y: 0,
+        w: Math.max(1, Math.floor(hostRect.width)),
+        h: Math.max(1, Math.floor(hostRect.height))
+      };
+      chartPaneViewports[paneId] = {
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h
       };
       const scopedPanes = computeIndicatorRectsForChartPane(
         state.paneLayout,
-        paneRect.chartPaneId,
-        paneRect.rect
+        paneId,
+        rect
       );
       for (const scoped of scopedPanes) {
-        paneChartPaneMap[scoped.paneId] = paneRect.chartPaneId;
+        paneChartPaneMap[scoped.paneId] = paneId;
       }
     }
 
@@ -1193,13 +1205,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       setupCanvasBackingStore();
       draw();
     });
-    resizeObserver.observe(stage);
+    resizeObserver.observe(tilesRow);
   } else {
     window.addEventListener("resize", setupCanvasBackingStore);
   }
 
-  setupCanvasBackingStore();
   renderWorkspaceTiles();
+  setupCanvasBackingStore();
   syncReadoutSourceLabel(controller.getState());
   getActiveRuntime()?.chart.setDrawingTool(controller.getState().activeTool);
   draw();
