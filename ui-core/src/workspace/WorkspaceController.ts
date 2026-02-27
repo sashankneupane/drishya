@@ -1,8 +1,18 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { WorkspaceTheme, WorkspacePaneLayoutState, WorkspacePaneId, WorkspacePaneSpec, WorkspaceCrosshairState } from "./types.js";
+import type {
+    WorkspaceTheme,
+    WorkspacePaneLayoutState,
+    WorkspacePaneId,
+    WorkspacePaneSpec,
+    WorkspaceCrosshairState,
+    WorkspaceChartPaneSpec,
+    WorkspaceChartPaneId,
+    WorkspaceChartSplitNode,
+    WorkspaceChartSplitDirection
+} from "./types.js";
 import type { CursorMode, ReplayState, ObjectTreeState } from "../wasm/contracts.js";
 import type { ReplayController } from "./replay/ReplayController.js";
-import { PRICE_PANE_ID, DEFAULT_INDICATOR_PANE_RATIO } from "./constants.js";
+import { PRICE_PANE_ID, DEFAULT_INDICATOR_PANE_RATIO, DEFAULT_CHART_SPLIT_RATIO } from "./constants.js";
 
 export interface WorkspaceState {
     theme: WorkspaceTheme;
@@ -12,6 +22,9 @@ export interface WorkspaceState {
     cursorMode: CursorMode;
     priceAxisMode: "linear" | "log" | "percent";
     replay: ReplayState;
+    chartPanes: Record<WorkspaceChartPaneId, WorkspaceChartPaneSpec>;
+    chartLayoutTree: WorkspaceChartSplitNode;
+    activeChartPaneId: WorkspaceChartPaneId;
     paneLayout: WorkspacePaneLayoutState;
     crosshair: WorkspaceCrosshairState | null;
 }
@@ -41,6 +54,16 @@ export function normalizePaneRatios(
     return normalized;
 }
 
+function canonicalPaneId(id: string): string {
+    const trimmed = String(id || "").trim();
+    if (!trimmed) return trimmed;
+    if (trimmed === "price-pane") return PRICE_PANE_ID;
+    if (trimmed.endsWith("-pane")) {
+        return trimmed.slice(0, -"-pane".length);
+    }
+    return trimmed;
+}
+
 
 export type WorkspaceListener = (state: WorkspaceState) => void;
 
@@ -65,7 +88,7 @@ export class WorkspaceController {
                 [PRICE_PANE_ID]: {
                     id: PRICE_PANE_ID,
                     kind: "price",
-                    title: "Price"
+                    title: "Main Chart"
                 }
             }
         };
@@ -78,6 +101,18 @@ export class WorkspaceController {
             cursorMode: initial.cursorMode ?? "crosshair",
             priceAxisMode: initial.priceAxisMode ?? "linear",
             replay: { playing: false, cursor_ts: null },
+            chartPanes: initial.chartPanes ?? {
+                [PRICE_PANE_ID]: {
+                    id: PRICE_PANE_ID,
+                    title: "Main Chart",
+                    visible: true
+                }
+            },
+            chartLayoutTree: initial.chartLayoutTree ?? {
+                type: "leaf",
+                chartPaneId: PRICE_PANE_ID
+            },
+            activeChartPaneId: initial.activeChartPaneId ?? PRICE_PANE_ID,
             paneLayout: initial.paneLayout ?? defaultPaneLayout,
             crosshair: null
         };
@@ -94,7 +129,13 @@ export class WorkspaceController {
 
     private notify(): void {
         const currentState = this.getState();
-        this.listeners.forEach((l) => l(currentState));
+        this.listeners.forEach((l) => {
+            try {
+                l(currentState);
+            } catch (err) {
+                console.error("[WorkspaceController] listener failed", err);
+            }
+        });
     }
 
     setTheme(theme: WorkspaceTheme): void {
@@ -191,17 +232,26 @@ export class WorkspaceController {
     /* --- Pane Layout Controller APIs --- */
 
     registerPane(spec: WorkspacePaneSpec): void {
-        const panes = { ...this.state.paneLayout.panes, [spec.id]: spec };
-        let order = [...this.state.paneLayout.order];
-        if (!order.includes(spec.id)) {
-            order.push(spec.id);
+        const paneId = canonicalPaneId(spec.id);
+        if (!paneId) return;
+        const paneSpec: WorkspacePaneSpec = { ...spec, id: paneId };
+        if (
+            paneSpec.kind === "indicator" &&
+            !paneSpec.parentChartPaneId
+        ) {
+            paneSpec.parentChartPaneId = this.findLastChartPaneId();
         }
-        const visibility = { ...this.state.paneLayout.visibility, [spec.id]: true };
-        const collapsed = { ...this.state.paneLayout.collapsed, [spec.id]: false };
+        const panes = { ...this.state.paneLayout.panes, [paneId]: paneSpec };
+        let order = [...this.state.paneLayout.order];
+        if (!order.includes(paneId)) {
+            order.push(paneId);
+        }
+        const visibility = { ...this.state.paneLayout.visibility, [paneId]: true };
+        const collapsed = { ...this.state.paneLayout.collapsed, [paneId]: false };
 
         const ratios = { ...this.state.paneLayout.ratios };
-        if (!(spec.id in ratios)) {
-            ratios[spec.id] = spec.kind === "indicator" ? DEFAULT_INDICATOR_PANE_RATIO : 0.2;
+        if (!(paneId in ratios)) {
+            ratios[paneId] = paneSpec.kind === "indicator" ? DEFAULT_INDICATOR_PANE_RATIO : 0.2;
         }
 
         const normalizedRatios = normalizePaneRatios(ratios, order.filter(id => visibility[id] && !collapsed[id]));
@@ -211,6 +261,7 @@ export class WorkspaceController {
     }
 
     unregisterPane(paneId: WorkspacePaneId): void {
+        paneId = canonicalPaneId(paneId);
         if (!this.state.paneLayout.panes[paneId]) return;
 
         const panes = { ...this.state.paneLayout.panes };
@@ -234,6 +285,7 @@ export class WorkspaceController {
     }
 
     setPaneVisible(paneId: WorkspacePaneId, visible: boolean): void {
+        paneId = canonicalPaneId(paneId);
         if (this.state.paneLayout.visibility[paneId] === visible) return;
 
         const visibility = { ...this.state.paneLayout.visibility, [paneId]: visible };
@@ -243,10 +295,17 @@ export class WorkspaceController {
         );
 
         this.state.paneLayout = { ...this.state.paneLayout, visibility, ratios: normalizedRatios };
+        if (this.state.chartPanes[paneId]) {
+            this.state.chartPanes = {
+                ...this.state.chartPanes,
+                [paneId]: { ...this.state.chartPanes[paneId], visible }
+            };
+        }
         this.notify();
     }
 
     setPaneCollapsed(paneId: WorkspacePaneId, isCollapsed: boolean): void {
+        paneId = canonicalPaneId(paneId);
         if (this.state.paneLayout.collapsed[paneId] === isCollapsed) return;
 
         const collapsed = { ...this.state.paneLayout.collapsed, [paneId]: isCollapsed };
@@ -260,6 +319,7 @@ export class WorkspaceController {
     }
 
     setPaneRatio(paneId: WorkspacePaneId, ratio: number): void {
+        paneId = canonicalPaneId(paneId);
         const targetRatio = Math.max(0, Math.min(1, ratio));
         const visibleIds = this.state.paneLayout.order.filter(id => this.state.paneLayout.visibility[id] && !this.state.paneLayout.collapsed[id]);
 
@@ -299,7 +359,9 @@ export class WorkspaceController {
     updatePaneRatios(updates: Record<WorkspacePaneId, number>): void {
         const currentRatios = { ...this.state.paneLayout.ratios };
         for (const [id, val] of Object.entries(updates)) {
-            currentRatios[id] = Math.max(0, val);
+            const paneId = canonicalPaneId(id);
+            if (!paneId) continue;
+            currentRatios[paneId] = Math.max(0, val);
         }
 
         const normalizedRatios = normalizePaneRatios(
@@ -312,20 +374,26 @@ export class WorkspaceController {
     }
 
     setPaneOrder(order: WorkspacePaneId[]): void {
-        const validOrder = order.filter(id => this.state.paneLayout.panes[id]);
+        const validOrder = order
+            .map(canonicalPaneId)
+            .filter(id => this.state.paneLayout.panes[id]);
+        const deduped: WorkspacePaneId[] = [];
+        for (const id of validOrder) {
+            if (!deduped.includes(id)) deduped.push(id);
+        }
 
         for (const id of this.state.paneLayout.order) {
-            if (!validOrder.includes(id)) {
-                validOrder.push(id);
+            if (!deduped.includes(id)) {
+                deduped.push(id);
             }
         }
 
         const normalizedRatios = normalizePaneRatios(
             this.state.paneLayout.ratios,
-            validOrder.filter(id => this.state.paneLayout.visibility[id] && !this.state.paneLayout.collapsed[id])
+            deduped.filter(id => this.state.paneLayout.visibility[id] && !this.state.paneLayout.collapsed[id])
         );
 
-        this.state.paneLayout = { ...this.state.paneLayout, order: validOrder, ratios: normalizedRatios };
+        this.state.paneLayout = { ...this.state.paneLayout, order: deduped, ratios: normalizedRatios };
         this.notify();
     }
 
@@ -339,18 +407,27 @@ export class WorkspaceController {
                 [PRICE_PANE_ID]: {
                     id: PRICE_PANE_ID,
                     kind: "price",
-                    title: "Price"
+                    title: "Main Chart"
                 }
             }
         };
 
         this.state.paneLayout = defaultPaneLayout;
+        this.state.chartPanes = {
+            [PRICE_PANE_ID]: {
+                id: PRICE_PANE_ID,
+                title: "Main Chart",
+                visible: true
+            }
+        };
+        this.state.chartLayoutTree = { type: "leaf", chartPaneId: PRICE_PANE_ID };
+        this.state.activeChartPaneId = PRICE_PANE_ID;
         this.notify();
     }
 
     loadPaneLayout(layout: WorkspacePaneLayoutState): void {
         if (!layout.order || !layout.ratios || !layout.panes) return;
-        const normalizeId = (id: string) => (id === "price-pane" ? PRICE_PANE_ID : id);
+        const normalizeId = canonicalPaneId;
         const order = (Array.isArray(layout.order) ? layout.order : [PRICE_PANE_ID]).map(normalizeId);
         const ratios = Object.fromEntries(
             Object.entries(layout.ratios || { [PRICE_PANE_ID]: 1.0 }).map(([id, ratio]) => [normalizeId(id), ratio])
@@ -377,6 +454,14 @@ export class WorkspaceController {
             collapsed,
             panes
         };
+        this.state.chartPanes = ensureChartPaneRegistryFromPaneLayout(this.state.paneLayout, this.state.chartPanes);
+        this.state.chartLayoutTree = ensureChartSplitTreeFromChartPanes(
+            this.state.chartLayoutTree,
+            Object.keys(this.state.chartPanes)
+        );
+        if (!this.state.chartPanes[this.state.activeChartPaneId]) {
+            this.state.activeChartPaneId = PRICE_PANE_ID;
+        }
         this.notify();
     }
 
@@ -403,14 +488,253 @@ export class WorkspaceController {
         }
     }
 
-    addPane(): void {
-        const id = `pane-${Math.random().toString(36).slice(2, 7)}`;
+    addPane(): string {
+        return this.addChartPane();
+    }
+
+    addChartPane(): string {
+        const id = this.nextChartPaneId();
+        const nextIndex =
+            Object.keys(this.state.chartPanes).filter((pid) => pid !== PRICE_PANE_ID).length + 1;
         this.registerPane({
             id,
-            kind: "indicator",
-            title: "Indicator Pane"
+            kind: "chart",
+            title: `Chart ${nextIndex}`
         });
+        this.state.chartPanes = {
+            ...this.state.chartPanes,
+            [id]: { id, title: `Chart ${nextIndex}`, visible: true }
+        };
+        this.state.chartLayoutTree = splitLeaf(
+            this.state.chartLayoutTree,
+            this.state.activeChartPaneId || PRICE_PANE_ID,
+            {
+                type: "leaf",
+                chartPaneId: id
+            },
+            "vertical",
+            DEFAULT_CHART_SPLIT_RATIO
+        );
+        this.state.activeChartPaneId = id;
+        this.notify();
+        return id;
     }
+
+    splitChartPane(targetPaneId: WorkspaceChartPaneId, direction: WorkspaceChartSplitDirection): string {
+        const target = canonicalPaneId(targetPaneId);
+        if (!this.state.chartPanes[target]) {
+            throw new Error(`Unknown chart pane: ${targetPaneId}`);
+        }
+        const id = this.nextChartPaneId();
+        this.registerPane({
+            id,
+            kind: "chart",
+            title: `Chart ${Object.keys(this.state.chartPanes).length + 1}`
+        });
+        this.state.chartPanes = {
+            ...this.state.chartPanes,
+            [id]: { id, title: `Chart ${Object.keys(this.state.chartPanes).length + 1}`, visible: true }
+        };
+        this.state.chartLayoutTree = splitLeaf(
+            this.state.chartLayoutTree,
+            target,
+            { type: "leaf", chartPaneId: id },
+            direction,
+            DEFAULT_CHART_SPLIT_RATIO
+        );
+        this.state.activeChartPaneId = id;
+        this.notify();
+        return id;
+    }
+
+    removeChartPane(chartPaneId: WorkspaceChartPaneId): void {
+        const paneId = canonicalPaneId(chartPaneId);
+        if (paneId === PRICE_PANE_ID) return;
+        if (!this.state.chartPanes[paneId]) return;
+        const nextTree = removeLeaf(this.state.chartLayoutTree, paneId);
+        if (!nextTree) return;
+        const nextChartPanes = { ...this.state.chartPanes };
+        delete nextChartPanes[paneId];
+        this.state.chartPanes = nextChartPanes;
+        this.state.chartLayoutTree = nextTree;
+        if (!this.state.chartPanes[this.state.activeChartPaneId]) {
+            this.state.activeChartPaneId = PRICE_PANE_ID;
+        }
+        const ownedIndicatorIds = Object.entries(this.state.paneLayout.panes)
+            .filter(([id, spec]) => spec.kind === "indicator" && spec.parentChartPaneId === paneId)
+            .map(([id]) => id);
+        for (const id of ownedIndicatorIds) {
+            const spec = this.state.paneLayout.panes[id];
+            if (!spec) continue;
+            this.state.paneLayout = {
+                ...this.state.paneLayout,
+                panes: {
+                    ...this.state.paneLayout.panes,
+                    [id]: { ...spec, parentChartPaneId: PRICE_PANE_ID }
+                }
+            };
+        }
+        this.unregisterPane(paneId);
+    }
+
+    setActiveChartPane(chartPaneId: WorkspaceChartPaneId): void {
+        const paneId = canonicalPaneId(chartPaneId);
+        if (!this.state.chartPanes[paneId]) return;
+        if (this.state.activeChartPaneId === paneId) return;
+        this.state.activeChartPaneId = paneId;
+        this.notify();
+    }
+
+    setChartSplitRatio(path: readonly number[], ratio: number): void {
+        const clamped = Math.max(0.1, Math.min(0.9, ratio));
+        this.state.chartLayoutTree = updateSplitRatioAtPath(this.state.chartLayoutTree, path, clamped);
+        this.notify();
+    }
+
+    private nextChartPaneId(): string {
+        let maxN = 1;
+        for (const id of Object.keys(this.state.chartPanes)) {
+            if (id === PRICE_PANE_ID) continue;
+            const m = /^chart-(\d+)$/.exec(id);
+            if (!m) continue;
+            const n = Number(m[1]);
+            if (Number.isFinite(n) && n > maxN) maxN = n;
+        }
+        return `chart-${maxN + 1}`;
+    }
+
+    private findLastChartPaneId(): string {
+        for (let i = this.state.paneLayout.order.length - 1; i >= 0; i -= 1) {
+            const id = this.state.paneLayout.order[i];
+            const kind = this.state.paneLayout.panes[id]?.kind;
+            if (kind === "price" || kind === "chart") {
+                return id;
+            }
+        }
+        return PRICE_PANE_ID;
+    }
+}
+
+function splitLeaf(
+    node: WorkspaceChartSplitNode,
+    targetPaneId: WorkspaceChartPaneId,
+    insertedLeaf: WorkspaceChartSplitNode,
+    direction: WorkspaceChartSplitDirection,
+    ratio: number
+): WorkspaceChartSplitNode {
+    if (node.type === "leaf") {
+        if (node.chartPaneId !== targetPaneId) return node;
+        return {
+            type: "split",
+            direction,
+            ratio,
+            first: node,
+            second: insertedLeaf
+        };
+    }
+    return {
+        ...node,
+        first: splitLeaf(node.first, targetPaneId, insertedLeaf, direction, ratio),
+        second: splitLeaf(node.second, targetPaneId, insertedLeaf, direction, ratio)
+    };
+}
+
+function removeLeaf(node: WorkspaceChartSplitNode, targetPaneId: WorkspaceChartPaneId): WorkspaceChartSplitNode | null {
+    if (node.type === "leaf") {
+        return node.chartPaneId === targetPaneId ? null : node;
+    }
+    const first = removeLeaf(node.first, targetPaneId);
+    const second = removeLeaf(node.second, targetPaneId);
+    if (!first && !second) return null;
+    if (!first) return second;
+    if (!second) return first;
+    return { ...node, first, second };
+}
+
+function updateSplitRatioAtPath(
+    node: WorkspaceChartSplitNode,
+    path: readonly number[],
+    ratio: number
+): WorkspaceChartSplitNode {
+    if (path.length === 0) {
+        if (node.type !== "split") return node;
+        return { ...node, ratio };
+    }
+    if (node.type !== "split") return node;
+    const [head, ...tail] = path;
+    if (head === 0) {
+        return { ...node, first: updateSplitRatioAtPath(node.first, tail, ratio) };
+    }
+    return { ...node, second: updateSplitRatioAtPath(node.second, tail, ratio) };
+}
+
+function ensureChartPaneRegistryFromPaneLayout(
+    paneLayout: WorkspacePaneLayoutState,
+    previous: Record<WorkspaceChartPaneId, WorkspaceChartPaneSpec>
+): Record<WorkspaceChartPaneId, WorkspaceChartPaneSpec> {
+    const out: Record<WorkspaceChartPaneId, WorkspaceChartPaneSpec> = {};
+    for (const id of paneLayout.order) {
+        const spec = paneLayout.panes[id];
+        if (!spec) continue;
+        if (spec.kind !== "price" && spec.kind !== "chart") continue;
+        out[id] = {
+            id,
+            title: spec.title ?? (id === PRICE_PANE_ID ? "Main Chart" : id.toUpperCase()),
+            visible: paneLayout.visibility[id] ?? true
+        };
+    }
+    if (!out[PRICE_PANE_ID]) {
+        out[PRICE_PANE_ID] = previous[PRICE_PANE_ID] ?? {
+            id: PRICE_PANE_ID,
+            title: "Main Chart",
+            visible: true
+        };
+    }
+    return out;
+}
+
+function ensureChartSplitTreeFromChartPanes(
+    tree: WorkspaceChartSplitNode,
+    chartPaneIds: string[]
+): WorkspaceChartSplitNode {
+    const existing = new Set(chartPaneIds);
+    const leaves: string[] = [];
+    collectLeafIds(tree, leaves);
+    const filtered = leaves.filter((id) => existing.has(id));
+    if (filtered.length === 0) {
+        return { type: "leaf", chartPaneId: PRICE_PANE_ID };
+    }
+    let root: WorkspaceChartSplitNode = { type: "leaf", chartPaneId: filtered[0] };
+    for (let i = 1; i < filtered.length; i += 1) {
+        root = {
+            type: "split",
+            direction: "vertical",
+            ratio: DEFAULT_CHART_SPLIT_RATIO,
+            first: root,
+            second: { type: "leaf", chartPaneId: filtered[i] }
+        };
+    }
+    for (const paneId of chartPaneIds) {
+        if (!filtered.includes(paneId)) {
+            root = {
+                type: "split",
+                direction: "vertical",
+                ratio: DEFAULT_CHART_SPLIT_RATIO,
+                first: root,
+                second: { type: "leaf", chartPaneId: paneId }
+            };
+        }
+    }
+    return root;
+}
+
+function collectLeafIds(node: WorkspaceChartSplitNode, out: string[]): void {
+    if (node.type === "leaf") {
+        out.push(node.chartPaneId);
+        return;
+    }
+    collectLeafIds(node.first, out);
+    collectLeafIds(node.second, out);
 }
 
 function sameCrosshair(a: WorkspaceCrosshairState | null, b: WorkspaceCrosshairState | null): boolean {

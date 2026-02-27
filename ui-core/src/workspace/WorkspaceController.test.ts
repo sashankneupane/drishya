@@ -9,6 +9,8 @@ function testWorkspaceController() {
     const initialState = controller.getState();
     if (initialState.theme !== "dark") throw new Error("Initial theme should be dark");
     if (initialState.paneLayout.order[0] !== PRICE_PANE_ID) throw new Error("Primary pane should be price");
+    if (initialState.activeChartPaneId !== PRICE_PANE_ID) throw new Error("Initial active chart pane should be price");
+    if (initialState.chartLayoutTree.type !== "leaf") throw new Error("Initial chart layout should be a leaf");
 
     // Test theme toggle
     let themeChanged = false;
@@ -56,6 +58,48 @@ function testWorkspaceController() {
     controller.unregisterPane("ind1");
     state = controller.getState();
     if (state.paneLayout.order.length !== 1) throw new Error("Should revert to 1 pane");
+
+    // Test chart pane split lifecycle
+    const chart2 = controller.addChartPane();
+    state = controller.getState();
+    if (chart2 !== "chart-2") throw new Error("Chart pane ids should be deterministic");
+    if (!state.chartPanes[chart2]) throw new Error("New chart pane should be registered");
+    if (state.chartLayoutTree.type !== "split") throw new Error("Layout should become split after addChartPane");
+    if (state.activeChartPaneId !== chart2) throw new Error("Active chart pane should move to new pane");
+
+    const chart3 = controller.splitChartPane(chart2, "vertical");
+    state = controller.getState();
+    if (chart3 !== "chart-3") throw new Error("splitChartPane should create deterministic id");
+    if (!state.chartPanes[chart3]) throw new Error("Split pane should be present");
+    controller.setActiveChartPane(PRICE_PANE_ID);
+    if (controller.getState().activeChartPaneId !== PRICE_PANE_ID) throw new Error("setActiveChartPane should work");
+    controller.removeChartPane(chart3);
+    if (controller.getState().chartPanes[chart3]) throw new Error("removeChartPane should remove pane");
+
+    // Test cleanupEmptyIndicatorPanes
+    controller.registerPane({ id: "ind-to-clean", kind: "indicator", title: "CleanMe" });
+    const rsiPaneId = "ind-to-clean";
+    const treeState: any = {
+        series: [{ id: "main", name: "Main", pane_id: PRICE_PANE_ID, visible: true, deleted: false }],
+        panes: [{ id: PRICE_PANE_ID, visible: true }, { id: rsiPaneId, visible: true }]
+    };
+    controller.cleanupEmptyIndicatorPanes(treeState);
+    if (controller.getState().paneLayout.panes[rsiPaneId]) throw new Error("Empty indicator pane should be cleaned up");
+
+    // Test crosshair state propagation
+    controller.setCrosshair({ x: 100, index: 5, timestamp: 1234, readouts: [{ paneId: PRICE_PANE_ID, value: 50.5 }] });
+    if (controller.getState().crosshair?.x !== 100) throw new Error("Crosshair state update failed");
+
+    // Test loadPaneLayout
+    const newLayout: any = {
+        order: [PRICE_PANE_ID],
+        ratios: { [PRICE_PANE_ID]: 1.0 },
+        panes: { [PRICE_PANE_ID]: { id: PRICE_PANE_ID, kind: "price", title: "Restored" } },
+        visibility: { [PRICE_PANE_ID]: true },
+        collapsed: { [PRICE_PANE_ID]: false }
+    };
+    controller.loadPaneLayout(newLayout);
+    if (controller.getState().paneLayout.panes[PRICE_PANE_ID]?.title !== "Restored") throw new Error("loadPaneLayout failed");
 
     console.log("WorkspaceController tests passed!");
 }

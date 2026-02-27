@@ -68,13 +68,30 @@ export interface ChartWorkspaceHandle {
 }
 
 export type WorkspacePaneId = string;
+export type WorkspaceChartPaneId = string;
+export type WorkspaceChartSplitDirection = "horizontal" | "vertical";
 
-export type WorkspacePaneKind = "price" | "indicator" | "custom";
+export type WorkspaceChartSplitNode =
+  | {
+      type: "leaf";
+      chartPaneId: WorkspaceChartPaneId;
+    }
+  | {
+      type: "split";
+      direction: WorkspaceChartSplitDirection;
+      ratio: number;
+      first: WorkspaceChartSplitNode;
+      second: WorkspaceChartSplitNode;
+    };
+
+export type WorkspacePaneKind = "price" | "chart" | "indicator" | "custom";
 
 export interface WorkspacePaneSpec {
   id: WorkspacePaneId;
   kind: WorkspacePaneKind;
   title?: string;
+  /** Indicator panes are owned by a chart/price pane for object-tree grouping. */
+  parentChartPaneId?: WorkspacePaneId;
   minHeight?: number; // Minimum height in pixels
 }
 
@@ -84,4 +101,22 @@ export interface WorkspacePaneLayoutState {
   visibility: Record<WorkspacePaneId, boolean>; // true if visible
   collapsed: Record<WorkspacePaneId, boolean>; // true if collapsed to titlebar
   panes: Record<WorkspacePaneId, WorkspacePaneSpec>;
+}
+
+export interface WorkspaceChartPaneSpec {
+  id: WorkspaceChartPaneId;
+  title: string;
+  visible: boolean;
+}
+
+export interface WorkspaceCrosshairReadout {
+  paneId: string;
+  value: number;
+}
+
+export interface WorkspaceCrosshairState {
+  x: number;
+  index: number | null;
+  timestamp: number | null;
+  readouts: WorkspaceCrosshairReadout[];
 }

@@ -76,3 +76,4 @@ export const WORKSPACE_DRAW_TOOLS: readonly WorkspaceToolDef[] = [
 export const PRICE_PANE_ID = "price";
 export const MIN_PANE_HEIGHT_PX = 40;
 export const DEFAULT_INDICATOR_PANE_RATIO = 0.2; // E.g. 20% of the available height for a new indicator pane
+export const DEFAULT_CHART_SPLIT_RATIO = 0.5;
