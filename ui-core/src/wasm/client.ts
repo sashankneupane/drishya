@@ -245,12 +245,40 @@ export class DrishyaChartClient {
     this.wasm.add_sma_overlay?.(period);
   }
 
+  addEmaOverlay(period: number): void {
+    this.wasm.add_ema_overlay?.(period);
+  }
+
   addBbandsOverlay(period: number, stdMult: number): void {
     this.wasm.add_bbands_overlay?.(period, stdMult);
   }
 
+  addMacdPaneIndicator(fast: number, slow: number, signal: number): void {
+    this.wasm.add_macd_pane_indicator?.(fast, slow, signal);
+  }
+
   addRsiPaneIndicator(period: number): void {
     this.wasm.add_rsi_pane_indicator?.(period);
+  }
+
+  addAtrPaneIndicator(period: number): void {
+    this.wasm.add_atr_pane_indicator?.(period);
+  }
+
+  addStochasticPaneIndicator(k: number, d: number, smooth: number): void {
+    this.wasm.add_stochastic_pane_indicator?.(k, d, smooth);
+  }
+
+  addObvPaneIndicator(): void {
+    this.wasm.add_obv_pane_indicator?.();
+  }
+
+  addVwapOverlay(): void {
+    this.wasm.add_vwap_overlay?.();
+  }
+
+  addAdxPaneIndicator(period: number): void {
+    this.wasm.add_adx_pane_indicator?.(period);
   }
 
   addMomentumHistogramOverlay(): void {

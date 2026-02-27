@@ -244,8 +244,15 @@ export interface WasmChartLike {
 
   // Group H: Built-in indicators (transitional)
   add_sma_overlay?(period: number): void;
+  add_ema_overlay?(period: number): void;
   add_bbands_overlay?(period: number, stdMult: number): void;
+  add_macd_pane_indicator?(fast: number, slow: number, signal: number): void;
   add_rsi_pane_indicator?(period: number): void;
+  add_atr_pane_indicator?(period: number): void;
+  add_stochastic_pane_indicator?(k: number, d: number, smooth: number): void;
+  add_obv_pane_indicator?(): void;
+  add_vwap_overlay?(): void;
+  add_adx_pane_indicator?(period: number): void;
   add_momentum_histogram_overlay?(): void;
   clear_indicator_overlays?(): void;
 
