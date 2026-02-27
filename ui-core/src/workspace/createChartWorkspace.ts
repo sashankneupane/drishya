@@ -117,6 +117,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   // Mount elements to documented DOM before WASM initialization
   mainRow.appendChild(tilesRow);
+  // Keep a mounted fallback stage so wasm chart creation always has a DOM canvas target.
+  stage.style.display = "none";
+  tilesRow.appendChild(stage);
   root.appendChild(mainRow);
   host.appendChild(root);
 
@@ -676,6 +679,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const paneCanvasId = `drishya-canvas-${paneId}-${Math.random().toString(36).slice(2, 10)}`;
     paneCanvas.id = paneCanvasId;
     container.appendChild(paneCanvas);
+    const host = paneHostByPaneId.get(paneId);
+    (host?.chartLayer ?? chartLayer).appendChild(container);
 
     const paneRaw = createWasmChart(paneCanvasId, 300, 300);
     const paneChart = new DrishyaChartClient(paneRaw);
