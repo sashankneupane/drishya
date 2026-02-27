@@ -552,6 +552,47 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   };
 
+  const ensureRuntimeInteractions = (runtime: ChartPaneRuntime) => {
+    if (runtime.unbindInteractions) return;
+    const paneId = runtime.paneId;
+    runtime.unbindInteractions = bindWorkspaceInteractions({
+      canvas: runtime.canvas,
+      chart: runtime.chart,
+      rawChart: runtime.rawChart,
+      redraw: draw,
+      getPaneLayouts: () => runtime.chart.paneLayouts(),
+      controller,
+      paneId,
+      getPaneViewport: () => runtime.viewport ?? null,
+      getWorkspaceViewport: () => {
+        const stageRect = stage.getBoundingClientRect();
+        return {
+          x: 0,
+          y: 0,
+          w: Math.max(1, Math.floor(stageRect.width)),
+          h: Math.max(1, Math.floor(stageRect.height))
+        };
+      },
+      onSourceReadoutClick: () => {
+        const symbols = options.marketControls?.symbols ?? [];
+        if (symbols.length === 0) return;
+        createSymbolSearchModal({
+          symbols,
+          onSelect: async (nextSymbol) => {
+            controller.setChartPaneSource(paneId, { symbol: nextSymbol });
+            await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+              symbol: nextSymbol,
+              timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+            });
+            await options.marketControls?.onSymbolChange?.(nextSymbol);
+          },
+          onClose: () => { }
+        });
+      },
+      onCrosshairSync: (snapshot) => syncCrosshairFromPane(paneId, snapshot)
+    });
+  };
+
   const updateChartRuntimeLayout = () => {
     const state = controller.getState();
     const stageRect = stage.getBoundingClientRect();
@@ -572,6 +613,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         runtime = createRuntimeForPane(paneId);
         chartRuntimes.set(paneId, runtime);
       }
+      ensureRuntimeInteractions(runtime);
       runtime.container.style.left = `${paneRect.rect.x}px`;
       runtime.container.style.top = `${paneRect.rect.y}px`;
       runtime.container.style.width = `${paneRect.rect.w}px`;
