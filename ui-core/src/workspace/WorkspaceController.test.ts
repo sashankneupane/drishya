@@ -134,6 +134,26 @@ function testWorkspaceController() {
     const ratioSum = (state.workspaceTiles["tile-chart-1"]?.widthRatio ?? 0) + (state.workspaceTiles["tile-objects"]?.widthRatio ?? 0);
     if (Math.abs(ratioSum - 1.0) > 0.001) throw new Error("Workspace tile ratios should normalize to 1");
 
+    // Load workspace tiles payload should preserve active chart tile/tab linkage
+    controller.loadWorkspaceTiles(
+        {
+            "tile-chart-9": { id: "tile-chart-9", kind: "chart", title: "Chart", widthRatio: 0.7, chartTileId: "chart-tile-9" },
+            "tile-objects": { id: "tile-objects", kind: "objects", title: "Objects", widthRatio: 0.3 }
+        },
+        ["tile-chart-9", "tile-objects"],
+        {
+            "chart-tile-9": {
+                id: "chart-tile-9",
+                tabs: [{ id: "tab-9", title: "Main", chartPaneId: PRICE_PANE_ID }],
+                activeTabId: "tab-9"
+            }
+        },
+        "chart-tile-9"
+    );
+    state = controller.getState();
+    if (state.activeChartTileId !== "chart-tile-9") throw new Error("loadWorkspaceTiles should restore active chart tile");
+    if (state.workspaceTileOrder[0] !== "tile-chart-9") throw new Error("loadWorkspaceTiles should restore tile order");
+
     // Test cleanupEmptyIndicatorPanes
     controller.registerPane({ id: "ind-to-clean", kind: "indicator", title: "CleanMe" });
     const rsiPaneId = "ind-to-clean";

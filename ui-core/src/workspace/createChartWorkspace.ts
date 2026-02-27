@@ -424,11 +424,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     onMutate: () => draw()
   });
 
-  const treeResizeHandle = document.createElement("div");
-  treeResizeHandle.className = "h-full w-2 shrink-0 cursor-col-resize bg-transparent hover:bg-zinc-800/70 transition-colors";
-  treeResizeHandle.title = "Resize Objects";
-  treeResizeHandle.style.display = "none";
-
   const OBJECT_TREE_MIN_WIDTH = 300;
   const OBJECT_TREE_MAX_WIDTH = 760;
   let objectTreeWidth = 360;
@@ -658,35 +653,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   root.insertBefore(topHandle.root, mainRow);
   mainRow.insertBefore(stripHandle.root, tilesRow);
 
-  let treeResizing = false;
-  const onTreeResizeMouseMove = (event: MouseEvent) => {
-    if (!treeResizing) return;
-    const rect = mainRow.getBoundingClientRect();
-    const width = rect.right - event.clientX;
-    applyObjectTreeWidth(width);
-    draw();
-  };
-  const onTreeResizeMouseUp = () => {
-    if (!treeResizing) return;
-    treeResizing = false;
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-    savePersistedState();
-  };
-  treeResizeHandle.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-    treeResizing = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  });
-  window.addEventListener("mousemove", onTreeResizeMouseMove);
-  window.addEventListener("mouseup", onTreeResizeMouseUp);
-
   const setupCanvasBackingStore = () => {
     updateChartRuntimeLayout();
   };
 
   const createRuntimeForPane = (paneId: string): ChartPaneRuntime => {
+    const state = controller.getState();
+    let chartTileId: string | undefined;
+    let chartTabId: string | undefined;
+    for (const [candidateTileId, chartTile] of Object.entries(state.chartTiles)) {
+      const tab = chartTile.tabs.find((candidate) => candidate.chartPaneId === paneId);
+      if (tab) {
+        chartTileId = candidateTileId;
+        chartTabId = tab.id;
+        break;
+      }
+    }
+    const runtimeKey = chartTileId && chartTabId ? `${chartTileId}:${chartTabId}` : paneId;
     const container = document.createElement("div");
     container.className = "absolute overflow-hidden";
     const paneCanvas = document.createElement("canvas");
@@ -713,6 +696,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
 
     const runtime: ChartPaneRuntime = {
+      runtimeKey,
+      chartTileId,
+      chartTabId,
       paneId,
       container,
       canvas: paneCanvas,
@@ -1023,13 +1009,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (!activeChart) return;
       activeChart.setCursorMode(state.cursorMode);
       activeChart.setPriceAxisMode(state.priceAxisMode);
-      const objectsTileId = state.workspaceTileOrder.find((tileId) => state.workspaceTiles[tileId]?.kind === "objects");
-      if (objectsTileId && state.workspaceTiles[objectsTileId]) {
-        const objectsTile = state.workspaceTiles[objectsTileId];
-        if (state.isObjectTreeOpen && objectsTile.widthRatio < 0.12) {
-          controller.setWorkspaceTileWidthRatio(objectsTileId, 0.2);
-        }
-      }
       renderWorkspaceTiles();
       syncChartPaneContracts(state);
       syncReadoutSourceLabel(state);
@@ -1258,8 +1237,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       stripHandle.destroy();
       treeHandle.destroy();
       unbindInteractions();
-      window.removeEventListener("mousemove", onTreeResizeMouseMove);
-      window.removeEventListener("mouseup", onTreeResizeMouseUp);
       window.removeEventListener("keydown", onKeyDown);
       if (resizeObserver) {
         resizeObserver.disconnect();
