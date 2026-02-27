@@ -40,6 +40,10 @@ interface PersistedWorkspaceState {
   chartLayoutTree?: WorkspaceChartSplitNode;
   activeChartPaneId?: string;
   chartPaneSources?: Record<string, { symbol?: string; timeframe?: string }>;
+  workspaceTiles?: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
+  workspaceTileOrder?: string[];
+  chartTiles?: Record<string, { id: string; tabs: Array<{ id: string; title: string; chartPaneId: string }>; activeTabId: string }>;
+  activeChartTileId?: string;
   indicators?: string[];
   indicatorsByPane?: Record<string, string[]>;
 }
@@ -75,9 +79,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const mainRow = document.createElement("div");
   mainRow.className = "flex flex-1 min-h-0 min-w-0 relative";
+  const tilesRow = document.createElement("div");
+  tilesRow.className = "flex flex-1 min-h-0 min-w-0 relative overflow-hidden";
 
   const stage = document.createElement("div");
-  stage.className = "flex-1 min-h-0 min-w-0 bg-chart-bg flex-shrink-0 relative overflow-hidden";
+  stage.className = "min-h-0 min-w-0 bg-chart-bg flex-shrink-0 relative overflow-hidden flex-1";
   const chartLayer = document.createElement("div");
   chartLayer.className = "absolute inset-0";
   stage.appendChild(chartLayer);
@@ -110,7 +116,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
 
   // Mount elements to documented DOM before WASM initialization
-  mainRow.appendChild(stage);
+  mainRow.appendChild(tilesRow);
   root.appendChild(mainRow);
   host.appendChild(root);
 
@@ -251,6 +257,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             controller.setChartPaneSource(paneId, source ?? {});
           }
         }
+        if (saved.workspaceTiles && saved.workspaceTileOrder && saved.chartTiles) {
+          controller.loadWorkspaceTiles?.(
+            saved.workspaceTiles as any,
+            saved.workspaceTileOrder,
+            saved.chartTiles as any,
+            saved.activeChartTileId
+          );
+        }
         if (saved.appearance) applyAppearance(saved.appearance);
         const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
         if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
@@ -300,6 +314,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             chartLayoutTree: controller.getState().chartLayoutTree,
             activeChartPaneId: controller.getState().activeChartPaneId,
             chartPaneSources: controller.getState().chartPaneSources,
+            workspaceTiles: controller.getState().workspaceTiles,
+            workspaceTileOrder: controller.getState().workspaceTileOrder,
+            chartTiles: controller.getState().chartTiles,
+            activeChartTileId: controller.getState().activeChartTileId,
             paneStates,
             indicatorsByPane
           };
@@ -404,19 +422,178 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let objectTreeWidth = 360;
   const applyObjectTreeWidth = (width: number) => {
     objectTreeWidth = Math.max(OBJECT_TREE_MIN_WIDTH, Math.min(OBJECT_TREE_MAX_WIDTH, Math.floor(width)));
-    treeHandle.root.style.width = `${objectTreeWidth}px`;
-    treeHandle.root.style.minWidth = `${OBJECT_TREE_MIN_WIDTH}px`;
+    treeHandle.root.style.width = "100%";
+    treeHandle.root.style.minWidth = "0";
   };
   if (restoredObjectTreeWidth !== null) {
     applyObjectTreeWidth(restoredObjectTreeWidth);
   }
 
+  const syncTileWidths = () => {
+    const state = controller.getState();
+    const order = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+    for (const tileId of order) {
+      const tile = state.workspaceTiles[tileId];
+      const el = tileShellById.get(tileId);
+      if (!tile || !el) continue;
+      const ratio = Math.max(0.08, tile.widthRatio || 0);
+      el.style.flex = `0 0 ${ratio * 100}%`;
+      el.style.minWidth = tile.kind === "objects" ? "260px" : "360px";
+    }
+  };
+
+  const renderChartTabs = (chartTileId: string) => {
+    const tabStrip = chartTileTabById.get(chartTileId);
+    if (!tabStrip) return;
+    tabStrip.innerHTML = "";
+    const chartTile = controller.getState().chartTiles[chartTileId];
+    if (!chartTile) return;
+    for (const tab of chartTile.tabs) {
+      const tabBtn = document.createElement("button");
+      const active = tab.id === chartTile.activeTabId;
+      tabBtn.className = `h-6 px-2 rounded text-[10px] border ${active ? "border-zinc-600 text-zinc-100 bg-zinc-900/80" : "border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/50"} cursor-pointer`;
+      tabBtn.textContent = tab.title;
+      tabBtn.onclick = () => controller.setActiveChartTab(chartTileId, tab.id);
+      tabStrip.appendChild(tabBtn);
+
+      if (chartTile.tabs.length > 1) {
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "h-6 w-6 rounded text-[10px] text-zinc-600 hover:text-zinc-200 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer";
+        closeBtn.textContent = "x";
+        closeBtn.title = "Close tab";
+        closeBtn.onclick = () => controller.removeChartTab(chartTileId, tab.id);
+        tabStrip.appendChild(closeBtn);
+      }
+    }
+    const addBtn = document.createElement("button");
+    addBtn.className = "ml-auto h-6 w-6 rounded text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/70 border-none bg-transparent cursor-pointer";
+    addBtn.textContent = "+";
+    addBtn.title = "Add tab";
+    addBtn.onclick = () => controller.addChartTab(chartTileId);
+    tabStrip.appendChild(addBtn);
+  };
+
+  const renderWorkspaceTiles = () => {
+    const state = controller.getState();
+    const order = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+    const seen = new Set(order);
+    for (const existing of Array.from(tileShellById.keys())) {
+      if (seen.has(existing)) continue;
+      tileShellById.get(existing)?.remove();
+      tileShellById.delete(existing);
+      tileHeaderById.delete(existing);
+    }
+
+    for (let index = 0; index < order.length; index += 1) {
+      const tileId = order[index];
+      const tile = state.workspaceTiles[tileId];
+      if (!tile) continue;
+      let shell = tileShellById.get(tileId);
+      if (!shell) {
+        shell = document.createElement("div");
+        shell.className = "h-full min-h-0 min-w-0 flex flex-col border-r border-zinc-900/80 bg-zinc-950/60";
+        const header = createTileHeader(tile.title);
+        tileHeaderById.set(tileId, header);
+        const body = document.createElement("div");
+        body.className = "flex-1 min-h-0 min-w-0";
+        shell.append(header, body);
+        tileShellById.set(tileId, shell);
+      }
+      const header = tileHeaderById.get(tileId)!;
+      header.onclick = () => {
+        if (tile.kind === "chart" && tile.chartTileId) {
+          controller.setActiveChartTile(tile.chartTileId);
+        }
+      };
+      header.onpointerdown = (event) => {
+        const startX = event.clientX;
+        const startIndex = controller.getState().workspaceTileOrder.indexOf(tileId);
+        let dragging = false;
+        const onMove = (moveEvent: PointerEvent) => {
+          const dx = moveEvent.clientX - startX;
+          if (!dragging && Math.abs(dx) > 10) dragging = true;
+          if (!dragging) return;
+          const width = shell?.getBoundingClientRect().width ?? 1;
+          const shift = dx > width * 0.5 ? 1 : (dx < -width * 0.5 ? -1 : 0);
+          const nextIndex = Math.max(0, Math.min(order.length - 1, startIndex + shift));
+          controller.moveWorkspaceTile(tileId, nextIndex);
+        };
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+      };
+      const body = shell.children[1] as HTMLDivElement;
+      body.innerHTML = "";
+      if (tile.kind === "chart" && tile.chartTileId) {
+        let tileBody = chartTileBodyByChartTileId.get(tile.chartTileId);
+        if (!tileBody) {
+          tileBody = document.createElement("div");
+          tileBody.className = "h-full w-full min-h-0 min-w-0 flex flex-col";
+          const tabs = createChartTabStrip(tile.chartTileId);
+          tileBody.appendChild(tabs);
+          chartTileBodyByChartTileId.set(tile.chartTileId, tileBody);
+        }
+        while (tileBody.children.length > 1) {
+          tileBody.removeChild(tileBody.lastChild!);
+        }
+        if (tile.chartTileId === state.activeChartTileId) {
+          tileBody.appendChild(chartTileBody);
+        } else {
+          const inactive = document.createElement("div");
+          inactive.className = "flex-1 min-h-0 min-w-0 flex items-center justify-center text-zinc-600 text-xs";
+          inactive.textContent = "Activate this tile to focus chart runtime";
+          tileBody.appendChild(inactive);
+        }
+        body.appendChild(tileBody);
+        renderChartTabs(tile.chartTileId);
+      } else {
+        body.appendChild(treeHandle.root);
+      }
+      if (tilesRow.children[index] !== shell) {
+        if (index >= tilesRow.children.length) {
+          tilesRow.appendChild(shell);
+        } else {
+          tilesRow.insertBefore(shell, tilesRow.children[index]);
+        }
+      }
+    }
+    syncTileWidths();
+  };
+
+  const tileShellById = new Map<string, HTMLDivElement>();
+  const tileHeaderById = new Map<string, HTMLDivElement>();
+  const chartTileBodyByChartTileId = new Map<string, HTMLDivElement>();
+  const chartTileTabById = new Map<string, HTMLDivElement>();
+  const chartTileBody = document.createElement("div");
+  chartTileBody.className = "h-full w-full min-h-0 min-w-0 flex flex-col";
+  chartTileBody.appendChild(stage);
+
+  const createTileHeader = (label: string) => {
+    const header = document.createElement("div");
+    header.className = "h-8 shrink-0 border-b border-zinc-800/80 bg-zinc-950/95 px-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-400";
+    const grip = document.createElement("span");
+    grip.textContent = "⋮⋮";
+    grip.className = "cursor-grab select-none text-zinc-600";
+    const title = document.createElement("span");
+    title.textContent = label;
+    title.className = "truncate";
+    header.append(grip, title);
+    return header;
+  };
+
+  const createChartTabStrip = (chartTileId: string) => {
+    const strip = document.createElement("div");
+    strip.className = "h-8 shrink-0 border-b border-zinc-800/80 bg-zinc-950/95 px-1 flex items-center gap-1 overflow-x-auto";
+    chartTileTabById.set(chartTileId, strip);
+    return strip;
+  };
+
   // Final assembly of UI pieces
   root.insertBefore(topHandle.root, mainRow);
-  mainRow.insertBefore(stripHandle.root, stage);
-  mainRow.appendChild(treeResizeHandle);
-  mainRow.appendChild(treeHandle.root);
-  applyObjectTreeWidth(objectTreeWidth);
+  mainRow.insertBefore(stripHandle.root, tilesRow);
 
   let treeResizing = false;
   const onTreeResizeMouseMove = (event: MouseEvent) => {
@@ -782,7 +959,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (!activeChart) return;
       activeChart.setCursorMode(state.cursorMode);
       activeChart.setPriceAxisMode(state.priceAxisMode);
-      treeResizeHandle.style.display = state.isObjectTreeOpen ? "block" : "none";
+      const objectsTileId = state.workspaceTileOrder.find((tileId) => state.workspaceTiles[tileId]?.kind === "objects");
+      if (objectsTileId && state.workspaceTiles[objectsTileId]) {
+        const objectsTile = state.workspaceTiles[objectsTileId];
+        if (state.isObjectTreeOpen && objectsTile.widthRatio < 0.12) {
+          controller.setWorkspaceTileWidthRatio(objectsTileId, 0.2);
+        }
+      }
+      renderWorkspaceTiles();
       syncChartPaneContracts(state);
       syncReadoutSourceLabel(state);
       updateChartRuntimeLayout();
@@ -963,6 +1147,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
 
   setupCanvasBackingStore();
+  renderWorkspaceTiles();
   syncReadoutSourceLabel(controller.getState());
   getActiveRuntime()?.chart.setDrawingTool(controller.getState().activeTool);
   draw();
