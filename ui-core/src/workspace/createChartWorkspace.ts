@@ -823,11 +823,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
     for (const [paneId, runtime] of chartRuntimes) {
       if (activePaneIds.has(paneId)) continue;
-      runtime.unbindInteractions?.();
+      // Keep inactive tab runtimes alive so switching tabs is instant and stateful.
+      // We only detach their DOM host; runtime/chart state remains in memory.
       if (runtime.container.parentElement) {
         runtime.container.parentElement.removeChild(runtime.container);
       }
-      chartRuntimes.delete(paneId);
     }
   };
 
