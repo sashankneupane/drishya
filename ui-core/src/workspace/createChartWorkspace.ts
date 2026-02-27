@@ -346,7 +346,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   });
 
   const treeHandle = createObjectTreePanel({
-    chart,
+    getChart: () => getActiveRuntime()?.chart ?? getRuntime("price")?.chart ?? null,
     controller,
     symbols: options.marketControls?.symbols ?? [],
     onPaneSourceChange: async (paneId, symbol) => {
