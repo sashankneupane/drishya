@@ -183,6 +183,15 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+    const activeChartPaneId = chartPaneAtPoint(controller.getState().chartLayoutTree, {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Math.floor(rect.width)),
+      h: Math.max(1, Math.floor(rect.height))
+    }, x, y);
+    if (activeChartPaneId) {
+      controller.setActiveChartPane(activeChartPaneId);
+    }
 
     const chartSplit = chartSplitSeparatorAt(x, y);
     if (chartSplit) {
@@ -498,4 +507,29 @@ function collectChartSplitSeparators(
     [...path, 1],
     out
   );
+}
+
+function chartPaneAtPoint(
+  node: WorkspaceChartSplitNode,
+  rect: LayoutRect,
+  x: number,
+  y: number
+): string | null {
+  if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) {
+    return null;
+  }
+  if (node.type === "leaf") {
+    return node.chartPaneId;
+  }
+  const ratio = Math.max(0.1, Math.min(0.9, node.ratio));
+  if (node.direction === "horizontal") {
+    const firstW = Math.floor(rect.w * ratio);
+    const firstRect: LayoutRect = { x: rect.x, y: rect.y, w: firstW, h: rect.h };
+    const secondRect: LayoutRect = { x: rect.x + firstW, y: rect.y, w: rect.w - firstW, h: rect.h };
+    return chartPaneAtPoint(node.first, firstRect, x, y) ?? chartPaneAtPoint(node.second, secondRect, x, y);
+  }
+  const firstH = Math.floor(rect.h * ratio);
+  const firstRect: LayoutRect = { x: rect.x, y: rect.y, w: rect.w, h: firstH };
+  const secondRect: LayoutRect = { x: rect.x, y: rect.y + firstH, w: rect.w, h: rect.h - firstH };
+  return chartPaneAtPoint(node.first, firstRect, x, y) ?? chartPaneAtPoint(node.second, secondRect, x, y);
 }
