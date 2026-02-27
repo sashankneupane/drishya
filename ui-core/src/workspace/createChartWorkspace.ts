@@ -121,6 +121,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     draw: () => chart.draw(),
     resize: (width: number, height: number) => chart.resize(width, height)
   });
+
+  const getActiveRuntime = () => {
+    const activeId = controller.getState().activeChartPaneId;
+    return chartRuntimes.get(activeId) ?? chartRuntimes.get("price") ?? null;
+  };
+  const getRuntime = (paneId: string) => chartRuntimes.get(paneId) ?? null;
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
     try {
@@ -274,8 +280,20 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   })();
 
   // top control strip
+  const chartFacade = new Proxy({} as DrishyaChartClient, {
+    get(_target, prop: keyof DrishyaChartClient) {
+      const runtime = getActiveRuntime();
+      const activeChart = runtime?.chart ?? chart;
+      const value = (activeChart as any)[prop];
+      if (typeof value === "function") {
+        return (...args: unknown[]) => (activeChart as any)[prop](...args);
+      }
+      return value;
+    }
+  }) as DrishyaChartClient;
+
   const topHandle = createTopStrip({
-    chart,
+    chart: chartFacade,
     controller,
     getAppearanceConfig: () => chart.getAppearanceConfig(),
     applyAppearanceConfig: (cfg) => {
@@ -309,8 +327,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     },
     onCompareSymbol: options.marketControls?.onCompareSymbol,
     onCandleTypeChange: (mode) => {
-      chart.setCandleStyle(mode);
-      chart.draw();
+      getActiveRuntime()?.chart.setCandleStyle(mode);
+      getActiveRuntime()?.chart.draw();
       savePersistedState();
     },
     onLayout: () => { },
@@ -472,9 +490,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const clearDrawings = () => {
-    chart.clearDrawings();
-    if (typeof rawChart.cancel_drawing_interaction === "function") {
-      rawChart.cancel_drawing_interaction();
+    const runtime = getActiveRuntime();
+    if (!runtime) return;
+    runtime.chart.clearDrawings();
+    if (typeof runtime.rawChart.cancel_drawing_interaction === "function") {
+      runtime.rawChart.cancel_drawing_interaction();
     }
     controller.setActiveTool("select");
   };
@@ -483,7 +503,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let configPanelDrawingId: number | null = null;
 
   const refreshConfigPanel = () => {
-    const id = chart.selectedDrawingId();
+    const activeChart = getActiveRuntime()?.chart ?? chart;
+    const id = activeChart.selectedDrawingId();
     if (id === null) {
       if (configPanelEl) {
         configPanelEl.remove();
@@ -492,7 +513,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       }
       return;
     }
-    const config = chart.getSelectedDrawingConfig();
+    const config = activeChart.getSelectedDrawingConfig();
     if (!config) {
       if (configPanelEl) {
         configPanelEl.remove();
@@ -504,12 +525,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     if (configPanelEl && configPanelDrawingId === id) return;
     if (configPanelEl) configPanelEl.remove();
     configPanelEl = createDrawingConfigPanel({
-      chart,
+      chart: activeChart,
       drawingId: id,
       config,
       onMutate: draw,
       onClose: () => {
-        chart.clearSelectedDrawing();
+        activeChart.clearSelectedDrawing();
         draw();
       }
     });
@@ -518,7 +539,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const updateTextCaret = () => {
-    const bounds = chart.selectedTextCaretBounds?.() ?? null;
+    const bounds = getActiveRuntime()?.chart.selectedTextCaretBounds?.() ?? null;
     caretOverlay.innerHTML = "";
     if (bounds) {
       const caret = document.createElement("div");
@@ -548,17 +569,21 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const syncReadoutSourceLabel = (state: ReturnType<typeof controller.getState>) => {
-    const source = state.chartPaneSources[state.activeChartPaneId] ?? {};
-    const symbol = source.symbol ?? options.marketControls?.selectedSymbol ?? "";
-    const timeframe = source.timeframe ?? options.marketControls?.selectedTimeframe ?? "";
-    const label = [symbol, timeframe].filter(Boolean).join(" · ");
-    chart.setReadoutSourceLabel(label);
+    for (const paneId of chartRuntimes.keys()) {
+      const runtime = getRuntime(paneId);
+      if (!runtime) continue;
+      const source = state.chartPaneSources[paneId] ?? {};
+      const symbol = source.symbol ?? options.marketControls?.selectedSymbol ?? "";
+      const timeframe = source.timeframe ?? options.marketControls?.selectedTimeframe ?? "";
+      const label = [symbol, timeframe].filter(Boolean).join(" · ");
+      runtime.chart.setReadoutSourceLabel(label);
+    }
   };
 
   const unbindInteractions = bindWorkspaceInteractions({
     canvas,
-    chart,
-    rawChart,
+    chart: getActiveRuntime()?.chart ?? chart,
+    rawChart: getActiveRuntime()?.rawChart ?? rawChart,
     redraw: draw,
     getPaneLayouts: () => chart.paneLayouts(),
     controller,
@@ -583,18 +608,19 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   // Controller subscriptions
   const applyToolToChart = (tool: string) => {
+    const activeChart = getActiveRuntime()?.chart ?? chart;
     if (tool === "crosshair" || tool === "dot" || tool === "normal") {
-      chart.setCursorMode(tool);
+      activeChart.setCursorMode(tool);
       if (tool === "normal") {
-        chart.setDrawingTool("select");
+        activeChart.setDrawingTool("select");
       }
       return;
     }
     try {
-      chart.setDrawingTool(tool);
+      activeChart.setDrawingTool(tool);
     } catch (err) {
       console.warn(`[workspace] failed to set drawing tool '${tool}', falling back to select`, err);
-      chart.setDrawingTool("select");
+      activeChart.setDrawingTool("select");
     }
   };
 
@@ -653,16 +679,19 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
     if (currentLayoutJson !== lastLayoutJson) {
       lastLayoutJson = currentLayoutJson;
-      chart.setTheme(state.theme);
+      for (const runtime of chartRuntimes.values()) {
+        runtime.chart.setTheme(state.theme);
+      }
       applyToolToChart(state.activeTool);
-      chart.setCursorMode(state.cursorMode);
-      chart.setPriceAxisMode(state.priceAxisMode);
+      const activeChart = getActiveRuntime()?.chart ?? chart;
+      activeChart.setCursorMode(state.cursorMode);
+      activeChart.setPriceAxisMode(state.priceAxisMode);
       treeResizeHandle.style.display = state.isObjectTreeOpen ? "block" : "none";
       syncChartPaneContracts(state);
       syncReadoutSourceLabel(state);
       updateChartRuntimeLayout();
 
-      const raw = chart.raw();
+      const raw = getActiveRuntime()?.rawChart ?? chart.raw();
       const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
       raw.set_pane_order_json?.(JSON.stringify(namedOrder));
       const registeredPanes = (() => {
@@ -692,7 +721,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           weightMap[id] = state.paneLayout.ratios[id] || 0;
         }
       }
-      chart.setPaneWeights(weightMap);
+      activeChart.setPaneWeights(weightMap);
       draw();
       savePersistedState();
     }
