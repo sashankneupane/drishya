@@ -1,5 +1,8 @@
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../wasm/contracts.js";
+import { buildPaneSpecForRuntime } from "./paneSpec.js";
+import type { LayoutRect } from "../layout/splitTree.js";
+import type { WorkspaceChartSplitDirection, WorkspaceChartSplitNode } from "./types.js";
 
 const PANE_GAP_PX = 4;
 const PANE_SEPARATOR_HIT_PX = 10;
@@ -30,6 +33,11 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let panAnchorY: number | null = null;
   let axisZoomDrag: { axis: "x" | "y"; lastClient: number; anchor: number } | null = null;
   let paneResizeDrag: { index: number } | null = null;
+  let chartSplitDrag: {
+    path: number[];
+    direction: WorkspaceChartSplitDirection;
+    rect: LayoutRect;
+  } | null = null;
 
   const applyCursor = (cursor: string) => {
     canvas.style.cursor = cursor;
@@ -81,6 +89,36 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     return null;
   };
 
+  const chartSplitSeparatorAt = (x: number, y: number) => {
+    const rect = canvas.getBoundingClientRect();
+    const viewport: LayoutRect = {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Math.floor(rect.width)),
+      h: Math.max(1, Math.floor(rect.height))
+    };
+    const out: {
+      path: number[];
+      direction: WorkspaceChartSplitDirection;
+      rect: LayoutRect;
+    }[] = [];
+    collectChartSplitSeparators(controller.getState().chartLayoutTree, viewport, [], out);
+    for (const item of out) {
+      if (item.direction === "horizontal") {
+        const dividerX = item.rect.x + item.rect.w * 0.5;
+        const closeX = Math.abs(x - dividerX) <= PANE_SEPARATOR_HIT_PX;
+        const inY = y >= item.rect.y && y <= item.rect.y + item.rect.h;
+        if (closeX && inY) return item;
+      } else {
+        const dividerY = item.rect.y + item.rect.h * 0.5;
+        const closeY = Math.abs(y - dividerY) <= PANE_SEPARATOR_HIT_PX;
+        const inX = x >= item.rect.x && x <= item.rect.x + item.rect.w;
+        if (closeY && inX) return item;
+      }
+    }
+    return null;
+  };
+
   const applyPaneResizeAtY = (dragState: { index: number }, pointerY: number) => {
     const panes = getPaneLayouts();
     const upper = panes[dragState.index];
@@ -88,16 +126,13 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (!upper || !lower) return;
 
     const state = controller.getState();
+    const runtimeOrder = panes.map((p) => p.id);
     for (const pane of panes) {
       if (!state.paneLayout.panes[pane.id]) {
-        controller.registerPane({
-          id: pane.id,
-          kind: pane.id === "price" ? "price" : "indicator",
-          title: pane.id === "price" ? "Price" : pane.id.toUpperCase()
-        });
+        controller.registerPane(buildPaneSpecForRuntime(pane.id, controller.getState().paneLayout, runtimeOrder));
       }
     }
-    controller.setPaneOrder(panes.map((p) => p.id));
+    controller.setPaneOrder(runtimeOrder);
 
     const lowerBottom = lower.y + lower.h;
     const upperBottom = upper.y + upper.h;
@@ -148,6 +183,14 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+
+    const chartSplit = chartSplitSeparatorAt(x, y);
+    if (chartSplit) {
+      event.preventDefault();
+      chartSplitDrag = chartSplit;
+      applyCursor(chartSplit.direction === "horizontal" ? "col-resize" : "row-resize");
+      return;
+    }
 
     const separator = paneSeparatorAt(x, y);
     if (separator) {
@@ -257,6 +300,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     axisZoomDrag = null;
+    chartSplitDrag = null;
     paneResizeDrag = null;
     dragging = false;
     panAnchorY = null;
@@ -274,6 +318,19 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const prevY = lastY;
     lastX = event.clientX;
     lastY = event.clientY;
+
+    if (chartSplitDrag) {
+      const rect = canvas.getBoundingClientRect();
+      const localX = event.clientX - rect.left;
+      const localY = event.clientY - rect.top;
+      const ratio =
+        chartSplitDrag.direction === "horizontal"
+          ? (localX - chartSplitDrag.rect.x) / Math.max(1, chartSplitDrag.rect.w)
+          : (localY - chartSplitDrag.rect.y) / Math.max(1, chartSplitDrag.rect.h);
+      controller.setChartSplitRatio(chartSplitDrag.path, ratio);
+      redraw();
+      return;
+    }
 
     if (paneResizeDrag) {
       const rect = canvas.getBoundingClientRect();
@@ -321,6 +378,14 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+
+    const splitSeparator = chartSplitSeparatorAt(x, y);
+    if (splitSeparator) {
+      chart.clearCrosshair();
+      applyCursor(splitSeparator.direction === "horizontal" ? "col-resize" : "row-resize");
+      redraw();
+      return;
+    }
 
     if (paneSeparatorAt(x, y)) {
       chart.clearCrosshair();
@@ -391,4 +456,46 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     window.removeEventListener("mousemove", onWindowMouseMove);
     window.removeEventListener("mouseup", onMouseUp);
   };
+}
+
+function collectChartSplitSeparators(
+  node: WorkspaceChartSplitNode,
+  rect: LayoutRect,
+  path: number[],
+  out: { path: number[]; direction: WorkspaceChartSplitDirection; rect: LayoutRect }[]
+): void {
+  if (node.type === "leaf") return;
+  const ratio = Math.max(0.1, Math.min(0.9, node.ratio));
+  if (node.direction === "horizontal") {
+    const firstW = Math.floor(rect.w * ratio);
+    const secondW = rect.w - firstW;
+    out.push({
+      path,
+      direction: node.direction,
+      rect: { x: rect.x + firstW - 1, y: rect.y, w: 2, h: rect.h }
+    });
+    collectChartSplitSeparators(node.first, { x: rect.x, y: rect.y, w: firstW, h: rect.h }, [...path, 0], out);
+    collectChartSplitSeparators(
+      node.second,
+      { x: rect.x + firstW, y: rect.y, w: secondW, h: rect.h },
+      [...path, 1],
+      out
+    );
+    return;
+  }
+
+  const firstH = Math.floor(rect.h * ratio);
+  const secondH = rect.h - firstH;
+  out.push({
+    path,
+    direction: node.direction,
+    rect: { x: rect.x, y: rect.y + firstH - 1, w: rect.w, h: 2 }
+  });
+  collectChartSplitSeparators(node.first, { x: rect.x, y: rect.y, w: rect.w, h: firstH }, [...path, 0], out);
+  collectChartSplitSeparators(
+    node.second,
+    { x: rect.x, y: rect.y + firstH, w: rect.w, h: secondH },
+    [...path, 1],
+    out
+  );
 }
