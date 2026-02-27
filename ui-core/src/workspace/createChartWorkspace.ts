@@ -8,7 +8,6 @@ import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { computeChartPaneRects, computeIndicatorRectsForChartPane } from "./layout/index.js";
 import { createObjectTreePanel } from "./objectTreePanel.js";
-import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import { createTopStrip } from "./topStrip.js";
 import { ReplayController } from "./replay/ReplayController.js";
 import { WorkspaceController } from "./WorkspaceController.js";
@@ -83,11 +82,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   caretOverlay.setAttribute("aria-hidden", "true");
   caretOverlay.style.display = "none";
   stage.appendChild(caretOverlay);
-
-  const paneMetaOverlay = document.createElement("div");
-  paneMetaOverlay.className = "absolute inset-0 z-30 pointer-events-none";
-  paneMetaOverlay.setAttribute("aria-hidden", "true");
-  stage.appendChild(paneMetaOverlay);
 
   if (typeof document !== "undefined" && !document.getElementById("drishya-caret-style")) {
     const caretStyle = document.createElement("style");
@@ -377,73 +371,20 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   };
 
-  const renderChartPaneMeta = () => {
-    paneMetaOverlay.innerHTML = "";
-    const state = controller.getState();
-    const stageRect = stage.getBoundingClientRect();
-    const viewport: LayoutRect = {
-      x: 0,
-      y: 0,
-      w: Math.max(1, Math.floor(stageRect.width)),
-      h: Math.max(1, Math.floor(stageRect.height))
-    };
-    const chartPaneRects = computeChartPaneRects(state.chartLayoutTree, viewport);
-    for (const paneRect of chartPaneRects) {
-      const paneId = paneRect.chartPaneId;
-      const source = state.chartPaneSources[paneId] ?? {};
-      const symbol = source.symbol ?? options.marketControls?.selectedSymbol ?? "Source";
-      const timeframe = source.timeframe ?? options.marketControls?.selectedTimeframe ?? "";
-
-      const row = document.createElement("div");
-      row.className = "absolute top-0 left-0 flex items-center gap-2 pointer-events-auto";
-      row.style.transform = `translate(${paneRect.rect.x + 8}px, ${paneRect.rect.y + 6}px)`;
-
-      const activeTag = document.createElement("button");
-      activeTag.className = state.activeChartPaneId === paneId
-        ? "h-6 px-2 rounded text-[10px] uppercase tracking-wide bg-zinc-800/90 text-zinc-100 border border-zinc-600/90 cursor-pointer"
-        : "h-6 px-2 rounded text-[10px] uppercase tracking-wide bg-zinc-950/80 text-zinc-500 border border-zinc-800/90 cursor-pointer hover:text-zinc-200";
-      activeTag.textContent = state.activeChartPaneId === paneId ? "Active" : "Pane";
-      activeTag.onclick = (event) => {
-        event.stopPropagation();
-        controller.setActiveChartPane(paneId);
-      };
-      row.appendChild(activeTag);
-
-      const sourceBtn = document.createElement("button");
-      sourceBtn.className = "h-6 px-2 rounded text-[10px] bg-zinc-950/85 text-zinc-300 border border-zinc-800/90 hover:text-zinc-100 hover:border-zinc-600 transition-colors cursor-pointer";
-      sourceBtn.textContent = timeframe ? `${symbol} · ${timeframe}` : symbol;
-      sourceBtn.title = "Change chart source";
-      sourceBtn.onclick = (event) => {
-        event.stopPropagation();
-        controller.setActiveChartPane(paneId);
-        const symbols = options.marketControls?.symbols ?? [];
-        if (symbols.length === 0) return;
-        createSymbolSearchModal({
-          symbols,
-          onSelect: async (nextSymbol) => {
-            controller.setChartPaneSource(paneId, { symbol: nextSymbol });
-            await options.marketControls?.onChartPaneSourceChange?.(paneId, {
-              symbol: nextSymbol,
-              timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
-            });
-            await options.marketControls?.onSymbolChange?.(nextSymbol);
-          },
-          onClose: () => { }
-        });
-      };
-      row.appendChild(sourceBtn);
-
-      paneMetaOverlay.appendChild(row);
-    }
-  };
-
   const draw = () => {
     chart.draw();
     treeHandle.refresh();
     refreshConfigPanel();
     updateTextCaret();
-    renderChartPaneMeta();
     savePersistedState();
+  };
+
+  const syncReadoutSourceLabel = (state: ReturnType<typeof controller.getState>) => {
+    const source = state.chartPaneSources[state.activeChartPaneId] ?? {};
+    const symbol = source.symbol ?? options.marketControls?.selectedSymbol ?? "";
+    const timeframe = source.timeframe ?? options.marketControls?.selectedTimeframe ?? "";
+    const label = [symbol, timeframe].filter(Boolean).join(" · ");
+    chart.setReadoutSourceLabel(label);
   };
 
   const unbindInteractions = bindWorkspaceInteractions({
@@ -533,6 +474,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       chart.setPriceAxisMode(state.priceAxisMode);
       treeResizeHandle.style.display = state.isObjectTreeOpen ? "block" : "none";
       syncChartPaneContracts(state);
+      syncReadoutSourceLabel(state);
 
       const raw = chart.raw();
       const namedOrder = state.paneLayout.order.filter((id) => id !== "price");
@@ -690,6 +632,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
 
   setupCanvasBackingStore();
+  syncReadoutSourceLabel(controller.getState());
   chart.setDrawingTool(controller.getState().activeTool);
   draw();
 

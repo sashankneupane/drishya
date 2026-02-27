@@ -283,6 +283,7 @@ export interface WasmChartLike {
   chart_pane_viewports_json?(): string;
   set_pane_chart_pane_map_json?(json: string): void;
   pane_chart_pane_map_json?(): string;
+  set_readout_source_label?(label: string): void;
   reset_pane_weights?(): void;
   set_pane_visible?(paneId: string, visible: boolean): void;
   register_pane?(paneId: string): void;

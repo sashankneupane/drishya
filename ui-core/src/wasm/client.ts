@@ -315,6 +315,10 @@ export class DrishyaChartClient {
     this.wasm.set_pane_chart_pane_map_json?.(JSON.stringify(mapping));
   }
 
+  setReadoutSourceLabel(label: string): void {
+    this.wasm.set_readout_source_label?.(label);
+  }
+
   paneChartPaneMap(): Record<string, string> {
     const raw = this.wasm.pane_chart_pane_map_json?.();
     if (!raw) return {};

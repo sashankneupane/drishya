@@ -380,6 +380,7 @@ impl Chart {
                     &layout,
                     ps,
                     ts_price,
+                    self.readout_source_label(),
                 ) {
                     out.extend(readout);
                 }
@@ -393,9 +394,12 @@ impl Chart {
 
         if crosshair_index.is_none() {
             if let Some(idx) = readout_index {
-                if let Some(close_readout) =
-                    build_last_close_readout_commands(&self.candles, idx, &layout)
-                {
+                if let Some(close_readout) = build_last_close_readout_commands(
+                    &self.candles,
+                    idx,
+                    &layout,
+                    self.readout_source_label(),
+                ) {
                     out.extend(close_readout);
                 }
             }
@@ -560,16 +564,22 @@ fn build_last_close_readout_commands(
     candles: &[Candle],
     index: usize,
     layout: &ChartLayout,
+    source_label: &str,
 ) -> Option<Vec<DrawCommand>> {
     let candle = candles.get(index)?;
+    let prefix = if source_label.is_empty() {
+        String::new()
+    } else {
+        format!("{source_label}  ")
+    };
     Some(vec![DrawCommand::Text {
         pos: Point {
             x: layout.plot.x + 8.0,
             y: layout.plot.y + 14.0,
         },
         text: format!(
-            "O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
-            candle.open, candle.high, candle.low, candle.close, candle.volume
+            "{}O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
+            prefix, candle.open, candle.high, candle.low, candle.close, candle.volume
         ),
         style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
     }])
@@ -582,6 +592,7 @@ fn build_crosshair_readout_commands(
     layout: &ChartLayout,
     ps: PriceScale,
     ts: TimeScale,
+    source_label: &str,
 ) -> Option<Vec<DrawCommand>> {
     if candles.is_empty() {
         return None;
@@ -599,10 +610,17 @@ fn build_crosshair_readout_commands(
 
     let mut out = Vec::new();
 
-    let ohlcv = format!(
-        "O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
-        candle.open, candle.high, candle.low, candle.close, candle.volume
-    );
+    let ohlcv = if source_label.is_empty() {
+        format!(
+            "O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
+            candle.open, candle.high, candle.low, candle.close, candle.volume
+        )
+    } else {
+        format!(
+            "{}  O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
+            source_label, candle.open, candle.high, candle.low, candle.close, candle.volume
+        )
+    };
     out.push(DrawCommand::Text {
         pos: Point {
             x: layout.plot.x + 8.0,

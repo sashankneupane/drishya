@@ -58,6 +58,7 @@ pub struct Chart {
     pane_chart_pane_map: HashMap<String, String>,
     pane_y_zoom_factors: HashMap<String, f32>,
     pane_y_pan_factors: HashMap<String, f32>,
+    readout_source_label: String,
     pub crosshair: Option<Point>,
     pub cursor_mode: CursorMode,
     theme: ThemeId,
@@ -100,6 +101,7 @@ impl Chart {
             pane_chart_pane_map: HashMap::new(),
             pane_y_zoom_factors: HashMap::new(),
             pane_y_pan_factors: HashMap::new(),
+            readout_source_label: String::new(),
             crosshair: None,
             cursor_mode: CursorMode::Crosshair,
             theme: ThemeId::Dark,
@@ -213,6 +215,14 @@ impl Chart {
 
     pub fn set_compare_series_visible(&mut self, id: &str, visible: bool) -> bool {
         self.compare_registry.set_visible(id, visible)
+    }
+
+    pub fn set_readout_source_label(&mut self, label: String) {
+        self.readout_source_label = label;
+    }
+
+    pub fn readout_source_label(&self) -> &str {
+        &self.readout_source_label
     }
 
     pub(crate) fn compare_registry(&self) -> &CompareRegistry {

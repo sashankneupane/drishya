@@ -79,6 +79,11 @@ impl WasmChart {
         })
     }
 
+    /// Sets source label shown in the primary OHLCV readout line.
+    pub fn set_readout_source_label(&mut self, label: &str) {
+        self.chart.set_readout_source_label(label.to_string());
+    }
+
     /// Sets pane size ratio weight for layout. Use `price` for the main pane,
     /// or the named pane id such as `rsi` / `momentum`.
     pub fn set_pane_weight(&mut self, pane_id: &str, ratio: f32) {
