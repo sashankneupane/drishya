@@ -52,6 +52,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let axisZoomDrag: { axis: "x" | "y"; lastClient: number; anchor: number } | null = null;
   let paneResizeDrag: { index: number } | null = null;
   let drawingInteractionActive = false;
+  let movedWhileDragging = false;
   let chartSplitDrag: {
     path: number[];
     direction: WorkspaceChartSplitDirection;
@@ -267,10 +268,8 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
         const selectedSeries = chart.selectSeriesAt(x, y);
         if (selectedSeries) {
           drawingInteractionActive = false;
-          redraw();
           lastX = event.clientX;
           lastY = event.clientY;
-          return;
         }
       }
     }
@@ -287,6 +286,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     }
 
     dragging = true;
+    movedWhileDragging = false;
     panAnchorY = y;
     lastX = event.clientX;
     lastY = event.clientY;
@@ -355,10 +355,20 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       }
     }
 
+    if (!drawingInteractionActive && !movedWhileDragging && chart.drawingToolMode() === "select") {
+      const rect = canvas.getBoundingClientRect();
+      const localX = event.clientX - rect.left;
+      const localY = event.clientY - rect.top;
+      if (chart.selectSeriesAt(localX, localY)) {
+        redraw();
+      }
+    }
+
     axisZoomDrag = null;
     chartSplitDrag = null;
     paneResizeDrag = null;
     drawingInteractionActive = false;
+    movedWhileDragging = false;
     dragging = false;
     panAnchorY = null;
 
@@ -422,7 +432,12 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (!dragging) return;
     const rect = canvas.getBoundingClientRect();
     const anchorY = panAnchorY ?? (event.clientY - rect.top);
-    chart.pan2d(event.clientX - prevX, event.clientY - prevY, anchorY);
+    const dx = event.clientX - prevX;
+    const dy = event.clientY - prevY;
+    if (dx !== 0 || dy !== 0) {
+      movedWhileDragging = true;
+    }
+    chart.pan2d(dx, dy, anchorY);
     redraw();
     return;
   };

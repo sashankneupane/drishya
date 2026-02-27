@@ -475,6 +475,29 @@ export class WorkspaceController {
         this.notify();
     }
 
+    loadChartLayout(
+        chartPanes: Record<WorkspaceChartPaneId, WorkspaceChartPaneSpec>,
+        chartLayoutTree: WorkspaceChartSplitNode,
+        activeChartPaneId?: WorkspaceChartPaneId
+    ): void {
+        if (!chartPanes || Object.keys(chartPanes).length === 0) return;
+        this.state.chartPanes = { ...chartPanes };
+        this.state.chartLayoutTree = ensureChartSplitTreeFromChartPanes(
+            chartLayoutTree,
+            Object.keys(this.state.chartPanes)
+        );
+        const requestedActive = activeChartPaneId ? canonicalPaneId(activeChartPaneId) : this.state.activeChartPaneId;
+        this.state.activeChartPaneId = this.state.chartPanes[requestedActive]
+            ? requestedActive
+            : PRICE_PANE_ID;
+        const nextSources: Record<string, { symbol?: string; timeframe?: string }> = {};
+        for (const id of Object.keys(this.state.chartPanes)) {
+            nextSources[id] = this.state.chartPaneSources[id] ?? {};
+        }
+        this.state.chartPaneSources = nextSources;
+        this.notify();
+    }
+
     cleanupEmptyIndicatorPanes(tree: ObjectTreeState): void {
         const panesWithSeries = new Set<string>();
         panesWithSeries.add(PRICE_PANE_ID);
@@ -748,7 +771,7 @@ function ensureChartSplitTreeFromChartPanes(
     for (let i = 1; i < filtered.length; i += 1) {
         root = {
             type: "split",
-            direction: "vertical",
+            direction: "horizontal",
             ratio: DEFAULT_CHART_SPLIT_RATIO,
             first: root,
             second: { type: "leaf", chartPaneId: filtered[i] }

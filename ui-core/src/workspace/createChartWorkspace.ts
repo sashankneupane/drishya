@@ -17,6 +17,8 @@ import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
   WorkspacePaneLayoutState,
+  WorkspaceChartSplitNode,
+  WorkspaceChartPaneSpec,
 } from "./types.js";
 
 const WORKSPACE_STYLE_LINK_ID = "drishya-workspace-styles";
@@ -34,6 +36,9 @@ interface PersistedWorkspaceState {
   isLeftStripOpen?: boolean;
   priceAxisMode?: "linear" | "log" | "percent";
   paneLayout?: WorkspacePaneLayoutState;
+  chartPanes?: Record<string, WorkspaceChartPaneSpec>;
+  chartLayoutTree?: WorkspaceChartSplitNode;
+  activeChartPaneId?: string;
   chartPaneSources?: Record<string, { symbol?: string; timeframe?: string }>;
   indicators?: string[];
   indicatorsByPane?: Record<string, string[]>;
@@ -232,6 +237,15 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         if (saved.paneLayout) {
           controller.loadPaneLayout(saved.paneLayout);
         }
+        if (saved.chartPanes && saved.chartLayoutTree) {
+          controller.loadChartLayout(
+            saved.chartPanes,
+            saved.chartLayoutTree,
+            saved.activeChartPaneId ?? undefined
+          );
+        } else if (saved.activeChartPaneId) {
+          controller.setActiveChartPane(saved.activeChartPaneId);
+        }
         if (saved.chartPaneSources) {
           for (const [paneId, source] of Object.entries(saved.chartPaneSources)) {
             controller.setChartPaneSource(paneId, source ?? {});
@@ -282,6 +296,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             candleStyle: getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle(),
             appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? undefined,
             paneLayout: controller.getState().paneLayout,
+            chartPanes: controller.getState().chartPanes,
+            chartLayoutTree: controller.getState().chartLayoutTree,
+            activeChartPaneId: controller.getState().activeChartPaneId,
             chartPaneSources: controller.getState().chartPaneSources,
             paneStates,
             indicatorsByPane
