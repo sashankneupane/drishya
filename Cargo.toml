@@ -9,6 +9,7 @@ members = [
 ]
 
 [lib]
+path = "crates/chart-core/src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
