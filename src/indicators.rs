@@ -5,3 +5,5 @@
 
 pub mod api;
 pub mod builtins;
+pub mod contracts;
+pub mod error;
