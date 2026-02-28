@@ -23,6 +23,16 @@ pub enum IndicatorError {
     DuplicateLineName {
         line: String,
     },
+    UnsupportedIndicator {
+        id: String,
+    },
+    MissingParameter {
+        name: String,
+    },
+    InvalidParameter {
+        name: String,
+        reason: String,
+    },
 }
 
 impl Display for IndicatorError {
@@ -55,6 +65,15 @@ impl Display for IndicatorError {
             }
             IndicatorError::DuplicateLineName { line } => {
                 write!(f, "duplicate line name in multi-series: '{}'", line)
+            }
+            IndicatorError::UnsupportedIndicator { id } => {
+                write!(f, "unsupported indicator id '{}'", id)
+            }
+            IndicatorError::MissingParameter { name } => {
+                write!(f, "missing required parameter '{}'", name)
+            }
+            IndicatorError::InvalidParameter { name, reason } => {
+                write!(f, "invalid parameter '{}': {}", name, reason)
             }
         }
     }
