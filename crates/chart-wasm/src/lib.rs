@@ -1,1 +1,1 @@
-pub use drishya::api::wasm::*;
+pub use chart_core::api::wasm::*;

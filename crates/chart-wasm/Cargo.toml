@@ -7,4 +7,4 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-drishya = { path = "../.." }
+chart-core = { path = "../chart-core" }
