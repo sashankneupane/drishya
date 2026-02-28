@@ -31,7 +31,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   quality-ts:
     name: TypeScript Check
@@ -45,12 +45,12 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: ui-core/package-lock.json
+          cache-dependency-path: packages/chart-sdk/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: ui-core
+        working-directory: packages/chart-sdk
 
       - name: Type check
         run: npm run typecheck
-        working-directory: ui-core
+        working-directory: packages/chart-sdk

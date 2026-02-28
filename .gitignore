@@ -10,16 +10,13 @@ Cargo.lock
 # macOS
 .DS_Store
 
-# Demo site
-demo/
-
-# ui-core (TypeScript workspace package)
-ui-core/node_modules/
-ui-core/dist/
-ui-core/.cache/
-ui-core/.turbo/
-ui-core/*.tsbuildinfo
-ui-core/npm-debug.log*
-ui-core/yarn-debug.log*
-ui-core/yarn-error.log*
-ui-core/pnpm-debug.log*
+# chart-sdk (TypeScript workspace package)
+packages/chart-sdk/node_modules/
+packages/chart-sdk/dist/
+packages/chart-sdk/.cache/
+packages/chart-sdk/.turbo/
+packages/chart-sdk/*.tsbuildinfo
+packages/chart-sdk/npm-debug.log*
+packages/chart-sdk/yarn-debug.log*
+packages/chart-sdk/yarn-error.log*
+packages/chart-sdk/pnpm-debug.log*
