@@ -1,93 +1,61 @@
 //! Optional convenience API for attaching built-in indicators to a chart.
 
-#[cfg(feature = "external-ta")]
+use crate::chart::Chart;
 use crate::indicators::provider::ta_plot_provider::{
-    TaBbandsPlotProvider, TaEmaPlotProvider, TaMacdPlotProvider, TaRsiPlotProvider,
-    TaSmaPlotProvider,
+    TaAdxPlotProvider, TaAoHistogramPlotProvider, TaAtrPlotProvider, TaBbandsPlotProvider,
+    TaEmaPlotProvider, TaMacdPlotProvider, TaObvPlotProvider, TaRsiPlotProvider, TaSmaPlotProvider,
+    TaStochasticPlotProvider, TaVwapPlotProvider,
 };
-use crate::{chart::Chart, indicators::builtins::*};
 
-#[cfg(feature = "external-ta")]
 pub fn add_sma(chart: &mut Chart, period: usize) {
     chart.add_plot_provider(Box::new(TaSmaPlotProvider::new(period)));
 }
 
-#[cfg(not(feature = "external-ta"))]
-pub fn add_sma(chart: &mut Chart, period: usize) {
-    chart.add_plot_provider(Box::new(SmaProvider::new(period)));
-}
-
-#[cfg(feature = "external-ta")]
 pub fn add_ema(chart: &mut Chart, period: usize) {
     chart.add_plot_provider(Box::new(TaEmaPlotProvider::new(period)));
 }
 
-#[cfg(not(feature = "external-ta"))]
-pub fn add_ema(chart: &mut Chart, period: usize) {
-    chart.add_plot_provider(Box::new(EmaProvider::new(period)));
-}
-
-#[cfg(feature = "external-ta")]
 pub fn add_bbands(chart: &mut Chart, period: usize, std_mult: f64) {
     chart.add_plot_provider(Box::new(TaBbandsPlotProvider::new(period, std_mult)));
 }
 
-#[cfg(not(feature = "external-ta"))]
-pub fn add_bbands(chart: &mut Chart, period: usize, std_mult: f64) {
-    chart.add_plot_provider(Box::new(BbandsProvider::new(period, std_mult)));
-}
-
-#[cfg(feature = "external-ta")]
 pub fn add_macd(chart: &mut Chart, fast: usize, slow: usize, signal: usize) {
     chart.register_named_pane("macd");
     chart.add_plot_provider(Box::new(TaMacdPlotProvider::new(fast, slow, signal)));
 }
 
-#[cfg(not(feature = "external-ta"))]
-pub fn add_macd(chart: &mut Chart, fast: usize, slow: usize, signal: usize) {
-    chart.register_named_pane("macd");
-    chart.add_plot_provider(Box::new(MacdProvider::new(fast, slow, signal)));
-}
-
 pub fn add_momentum_histogram(chart: &mut Chart) {
     chart.register_named_pane("momentum");
-    chart.add_plot_provider(Box::new(MomentumHistogramProvider::new()));
+    chart.add_plot_provider(Box::new(TaAoHistogramPlotProvider::new()));
 }
 
-#[cfg(feature = "external-ta")]
 pub fn add_rsi(chart: &mut Chart, period: usize) {
     chart.register_named_pane("rsi");
     chart.add_plot_provider(Box::new(TaRsiPlotProvider::new(period)));
 }
 
-#[cfg(not(feature = "external-ta"))]
-pub fn add_rsi(chart: &mut Chart, period: usize) {
-    chart.register_named_pane("rsi");
-    chart.add_plot_provider(Box::new(RsiProvider::new(period)));
-}
-
 pub fn add_atr(chart: &mut Chart, period: usize) {
     chart.register_named_pane("atr");
-    chart.add_plot_provider(Box::new(AtrProvider::new(period)));
+    chart.add_plot_provider(Box::new(TaAtrPlotProvider::new(period)));
 }
 
 pub fn add_stochastic(chart: &mut Chart, k: usize, d: usize, smooth: usize) {
     chart.register_named_pane("stoch");
-    chart.add_plot_provider(Box::new(StochasticProvider::new(k, d, smooth)));
+    chart.add_plot_provider(Box::new(TaStochasticPlotProvider::new(k, d, smooth)));
 }
 
 pub fn add_obv(chart: &mut Chart) {
     chart.register_named_pane("obv");
-    chart.add_plot_provider(Box::new(ObvProvider::new()));
+    chart.add_plot_provider(Box::new(TaObvPlotProvider::new()));
 }
 
 pub fn add_vwap(chart: &mut Chart) {
-    chart.add_plot_provider(Box::new(VwapProvider::new()));
+    chart.add_plot_provider(Box::new(TaVwapPlotProvider::new()));
 }
 
 pub fn add_adx(chart: &mut Chart, period: usize) {
     chart.register_named_pane("adx");
-    chart.add_plot_provider(Box::new(AdxProvider::new(period)));
+    chart.add_plot_provider(Box::new(TaAdxPlotProvider::new(period)));
 }
 
 pub fn clear_builtins(chart: &mut Chart) {

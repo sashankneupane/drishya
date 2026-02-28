@@ -179,19 +179,39 @@ impl PlotDataProvider for TaRsiPlotProvider {
             .and_then(|v| v.lines.first())
             .map(|l| l.values.clone())
             .unwrap_or_else(|| vec![None; candles.len()]);
+        let upper = vec![Some(70.0); candles.len()];
+        let lower = vec![Some(30.0); candles.len()];
         vec![PlotSeries {
             id: format!("rsi:{}", self.period),
             name: format!("RSI({})", self.period),
             pane: PaneId::Named("rsi".to_string()),
             visible: true,
-            primitives: vec![PlotPrimitive::Line {
-                values,
-                style: LineStyle {
-                    color: "#34d399".to_string(),
-                    width: 1.3,
-                    pattern: LinePattern::Solid,
+            primitives: vec![
+                PlotPrimitive::Line {
+                    values: upper,
+                    style: LineStyle {
+                        color: "rgba(148,163,184,0.75)".to_string(),
+                        width: 1.0,
+                        pattern: LinePattern::Dashed,
+                    },
                 },
-            }],
+                PlotPrimitive::Line {
+                    values: lower,
+                    style: LineStyle {
+                        color: "rgba(148,163,184,0.75)".to_string(),
+                        width: 1.0,
+                        pattern: LinePattern::Dashed,
+                    },
+                },
+                PlotPrimitive::Line {
+                    values,
+                    style: LineStyle {
+                        color: "#34d399".to_string(),
+                        width: 1.3,
+                        pattern: LinePattern::Solid,
+                    },
+                },
+            ],
         }]
     }
 }
@@ -354,5 +374,516 @@ impl PlotDataProvider for TaBbandsPlotProvider {
                 },
             ],
         }]
+    }
+}
+
+pub struct TaAtrPlotProvider {
+    period: usize,
+}
+
+impl TaAtrPlotProvider {
+    pub fn new(period: usize) -> Self {
+        Self { period }
+    }
+}
+
+impl PlotDataProvider for TaAtrPlotProvider {
+    fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        let provider = TaEngineProvider::new();
+        let req = make_request(
+            "atr",
+            vec![(
+                "period".to_string(),
+                IndicatorParamValue::Int(self.period as i64),
+            )],
+            candles,
+        );
+        let out = provider.compute(&req).ok();
+        let values = out
+            .as_ref()
+            .and_then(|v| v.lines.first())
+            .map(|l| l.values.clone())
+            .unwrap_or_else(|| vec![None; candles.len()]);
+
+        vec![PlotSeries {
+            id: format!("atr:{}", self.period),
+            name: format!("ATR({})", self.period),
+            pane: PaneId::Named("atr".to_string()),
+            visible: true,
+            primitives: vec![PlotPrimitive::Line {
+                values,
+                style: LineStyle {
+                    color: "#fda4af".to_string(),
+                    width: 1.3,
+                    pattern: LinePattern::Solid,
+                },
+            }],
+        }]
+    }
+}
+
+pub struct TaStochasticPlotProvider {
+    k: usize,
+    d: usize,
+    smooth: usize,
+}
+
+impl TaStochasticPlotProvider {
+    pub fn new(k: usize, d: usize, smooth: usize) -> Self {
+        Self { k, d, smooth }
+    }
+}
+
+impl PlotDataProvider for TaStochasticPlotProvider {
+    fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        let provider = TaEngineProvider::new();
+        let req = make_request(
+            "stochastic",
+            vec![
+                (
+                    "k_period".to_string(),
+                    IndicatorParamValue::Int(self.k as i64),
+                ),
+                (
+                    "d_period".to_string(),
+                    IndicatorParamValue::Int(self.d as i64),
+                ),
+                (
+                    "smooth".to_string(),
+                    IndicatorParamValue::Int(self.smooth as i64),
+                ),
+            ],
+            candles,
+        );
+        let out = provider.compute(&req).ok();
+        let len = candles.len();
+        let k_values = values_or_none(out.as_ref().and_then(|s| s.lines.first()), len);
+        let d_values = values_or_none(out.as_ref().and_then(|s| s.lines.get(1)), len);
+
+        vec![
+            PlotSeries {
+                id: format!("stoch-k:{}:{}:{}", self.k, self.d, self.smooth),
+                name: format!("Stoch %K({},{},{})", self.k, self.d, self.smooth),
+                pane: PaneId::Named("stoch".to_string()),
+                visible: true,
+                primitives: vec![PlotPrimitive::Line {
+                    values: k_values,
+                    style: LineStyle {
+                        color: "#60a5fa".to_string(),
+                        width: 1.2,
+                        pattern: LinePattern::Solid,
+                    },
+                }],
+            },
+            PlotSeries {
+                id: format!("stoch-d:{}:{}:{}", self.k, self.d, self.smooth),
+                name: "Stoch %D".to_string(),
+                pane: PaneId::Named("stoch".to_string()),
+                visible: true,
+                primitives: vec![PlotPrimitive::Line {
+                    values: d_values,
+                    style: LineStyle {
+                        color: "#f59e0b".to_string(),
+                        width: 1.2,
+                        pattern: LinePattern::Dashed,
+                    },
+                }],
+            },
+        ]
+    }
+}
+
+pub struct TaObvPlotProvider;
+
+impl TaObvPlotProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for TaObvPlotProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PlotDataProvider for TaObvPlotProvider {
+    fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        let provider = TaEngineProvider::new();
+        let req = make_request("obv", Vec::new(), candles);
+        let out = provider.compute(&req).ok();
+        let values = out
+            .as_ref()
+            .and_then(|v| v.lines.first())
+            .map(|l| l.values.clone())
+            .unwrap_or_else(|| vec![None; candles.len()]);
+
+        vec![PlotSeries {
+            id: "obv".to_string(),
+            name: "OBV".to_string(),
+            pane: PaneId::Named("obv".to_string()),
+            visible: true,
+            primitives: vec![PlotPrimitive::Line {
+                values,
+                style: LineStyle {
+                    color: "#c084fc".to_string(),
+                    width: 1.2,
+                    pattern: LinePattern::Solid,
+                },
+            }],
+        }]
+    }
+}
+
+pub struct TaVwapPlotProvider;
+
+impl TaVwapPlotProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for TaVwapPlotProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PlotDataProvider for TaVwapPlotProvider {
+    fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        let provider = TaEngineProvider::new();
+        let req = make_request("vwap", Vec::new(), candles);
+        let out = provider.compute(&req).ok();
+        let values = out
+            .as_ref()
+            .and_then(|v| v.lines.first())
+            .map(|l| l.values.clone())
+            .unwrap_or_else(|| vec![None; candles.len()]);
+
+        vec![PlotSeries {
+            id: "vwap".to_string(),
+            name: "VWAP".to_string(),
+            pane: PaneId::Price,
+            visible: true,
+            primitives: vec![PlotPrimitive::Line {
+                values,
+                style: LineStyle {
+                    color: "#34d399".to_string(),
+                    width: 1.3,
+                    pattern: LinePattern::Solid,
+                },
+            }],
+        }]
+    }
+}
+
+pub struct TaAdxPlotProvider {
+    period: usize,
+}
+
+impl TaAdxPlotProvider {
+    pub fn new(period: usize) -> Self {
+        Self { period }
+    }
+}
+
+impl PlotDataProvider for TaAdxPlotProvider {
+    fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        let provider = TaEngineProvider::new();
+        let req = make_request(
+            "adx",
+            vec![(
+                "period".to_string(),
+                IndicatorParamValue::Int(self.period as i64),
+            )],
+            candles,
+        );
+        let out = provider.compute(&req).ok();
+        let len = candles.len();
+        let adx = values_or_none(out.as_ref().and_then(|s| s.lines.first()), len);
+        let plus = values_or_none(out.as_ref().and_then(|s| s.lines.get(1)), len);
+        let minus = values_or_none(out.as_ref().and_then(|s| s.lines.get(2)), len);
+
+        vec![
+            PlotSeries {
+                id: format!("adx:{}", self.period),
+                name: format!("ADX({})", self.period),
+                pane: PaneId::Named("adx".to_string()),
+                visible: true,
+                primitives: vec![PlotPrimitive::Line {
+                    values: adx,
+                    style: LineStyle {
+                        color: "#e2e8f0".to_string(),
+                        width: 1.3,
+                        pattern: LinePattern::Solid,
+                    },
+                }],
+            },
+            PlotSeries {
+                id: format!("plus-di:{}", self.period),
+                name: format!("+DI({})", self.period),
+                pane: PaneId::Named("adx".to_string()),
+                visible: true,
+                primitives: vec![PlotPrimitive::Line {
+                    values: plus,
+                    style: LineStyle {
+                        color: "#22c55e".to_string(),
+                        width: 1.1,
+                        pattern: LinePattern::Solid,
+                    },
+                }],
+            },
+            PlotSeries {
+                id: format!("minus-di:{}", self.period),
+                name: format!("-DI({})", self.period),
+                pane: PaneId::Named("adx".to_string()),
+                visible: true,
+                primitives: vec![PlotPrimitive::Line {
+                    values: minus,
+                    style: LineStyle {
+                        color: "#ef4444".to_string(),
+                        width: 1.1,
+                        pattern: LinePattern::Solid,
+                    },
+                }],
+            },
+        ]
+    }
+}
+
+pub struct TaAoHistogramPlotProvider {
+    fast: usize,
+    slow: usize,
+}
+
+impl TaAoHistogramPlotProvider {
+    pub fn new() -> Self {
+        Self { fast: 5, slow: 34 }
+    }
+}
+
+impl Default for TaAoHistogramPlotProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PlotDataProvider for TaAoHistogramPlotProvider {
+    fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        let provider = TaEngineProvider::new();
+        let req = make_request(
+            "ao",
+            vec![
+                (
+                    "fast_period".to_string(),
+                    IndicatorParamValue::Int(self.fast as i64),
+                ),
+                (
+                    "slow_period".to_string(),
+                    IndicatorParamValue::Int(self.slow as i64),
+                ),
+            ],
+            candles,
+        );
+        let out = provider.compute(&req).ok();
+        let values = out
+            .as_ref()
+            .and_then(|v| v.lines.first())
+            .map(|l| l.values.clone())
+            .unwrap_or_else(|| vec![None; candles.len()]);
+
+        vec![PlotSeries {
+            id: format!("ao-hist:{}:{}", self.fast, self.slow),
+            name: format!("AO({},{})", self.fast, self.slow),
+            pane: PaneId::Named("momentum".to_string()),
+            visible: true,
+            primitives: vec![PlotPrimitive::Histogram {
+                values,
+                base: 0.0,
+                style: HistogramStyle {
+                    positive_color: "rgba(34,197,94,0.40)".to_string(),
+                    negative_color: "rgba(239,68,68,0.40)".to_string(),
+                    width_factor: 0.7,
+                },
+            }],
+        }]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indicators::contracts::{IndicatorId, IndicatorParamValue, IndicatorSpec};
+    use crate::indicators::engine::types::{IndicatorComputeContext, IndicatorComputeRequest};
+    use crate::indicators::engine::IndicatorComputeProvider;
+    use crate::indicators::provider::ta_engine_provider::TaEngineProvider;
+
+    fn compute_ta_lines(
+        id: &str,
+        params: Vec<(String, IndicatorParamValue)>,
+        candles: &[Candle],
+    ) -> Vec<NormalizedSeries> {
+        let provider = TaEngineProvider::new();
+        let req = IndicatorComputeRequest {
+            context: IndicatorComputeContext {
+                symbol: "BTCUSD".to_string(),
+                timeframe: "1m".to_string(),
+            },
+            spec: IndicatorSpec {
+                id: IndicatorId(id.to_string()),
+                params,
+            },
+            ohlcv: ohlcv_from_candles(candles),
+        };
+        provider.compute(&req).unwrap().lines
+    }
+
+    fn sample_candles(n: usize) -> Vec<Candle> {
+        (0..n)
+            .map(|i| {
+                let base = 100.0 + (i as f64) * 0.8;
+                let wave = ((i as f64) / 5.0).sin() * 2.5;
+                let close = base + wave;
+                let open = close - 0.6;
+                let high = close + 1.1;
+                let low = close - 1.2;
+                let volume = 1_000.0 + ((i * 17) as f64);
+                Candle {
+                    ts: 1_700_000_000 + (i as i64) * 60,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                }
+            })
+            .collect()
+    }
+
+    fn assert_option_vec_close(lhs: &[Option<f64>], rhs: &[Option<f64>], tol: f64) {
+        assert_eq!(lhs.len(), rhs.len(), "series length mismatch");
+        for (idx, (l, r)) in lhs.iter().zip(rhs.iter()).enumerate() {
+            match (l, r) {
+                (None, None) => {}
+                (Some(a), Some(b)) => {
+                    let delta = (a - b).abs();
+                    assert!(
+                        delta <= tol,
+                        "value mismatch at index {idx}: {a} vs {b}, delta={delta}, tol={tol}"
+                    );
+                }
+                _ => panic!("mask mismatch at index {idx}: {l:?} vs {r:?}"),
+            }
+        }
+    }
+
+    fn line_values_at(series: &PlotSeries, primitive_index: usize) -> &[Option<f64>] {
+        match series.primitives.get(primitive_index) {
+            Some(PlotPrimitive::Line { values, .. }) => values,
+            other => panic!("expected line primitive, got {other:?}"),
+        }
+    }
+
+    fn histogram_values(series: &PlotSeries) -> &[Option<f64>] {
+        match series.primitives.first() {
+            Some(PlotPrimitive::Histogram { values, .. }) => values,
+            other => panic!("expected first primitive to be histogram, got {other:?}"),
+        }
+    }
+
+    fn bbands_values(series: &PlotSeries) -> (&[Option<f64>], &[Option<f64>], &[Option<f64>]) {
+        assert_eq!(series.primitives.len(), 4);
+        let (upper, lower) = match &series.primitives[0] {
+            PlotPrimitive::Band { upper, lower, .. } => (upper.as_slice(), lower.as_slice()),
+            other => panic!("expected first primitive to be band, got {other:?}"),
+        };
+        let middle = match &series.primitives[2] {
+            PlotPrimitive::Line { values, .. } => values.as_slice(),
+            other => panic!("expected middle primitive to be line, got {other:?}"),
+        };
+        (upper, middle, lower)
+    }
+
+    #[test]
+    fn sma_plot_provider_matches_ta_engine_output() {
+        let candles = sample_candles(180);
+        let lines = compute_ta_lines(
+            "sma",
+            vec![("period".to_string(), IndicatorParamValue::Int(14))],
+            &candles,
+        );
+        let native = TaSmaPlotProvider::new(14).build_series(&candles);
+        assert_eq!(native.len(), 1);
+        assert_eq!(lines.len(), 1);
+        assert_option_vec_close(&lines[0].values, line_values_at(&native[0], 0), 1e-8);
+    }
+
+    #[test]
+    fn ema_plot_provider_matches_ta_engine_output() {
+        let candles = sample_candles(180);
+        let lines = compute_ta_lines(
+            "ema",
+            vec![("period".to_string(), IndicatorParamValue::Int(21))],
+            &candles,
+        );
+        let native = TaEmaPlotProvider::new(21).build_series(&candles);
+        assert_eq!(native.len(), 1);
+        assert_eq!(lines.len(), 1);
+        assert_option_vec_close(&lines[0].values, line_values_at(&native[0], 0), 1e-8);
+    }
+
+    #[test]
+    fn rsi_plot_provider_matches_ta_engine_output() {
+        let candles = sample_candles(220);
+        let lines = compute_ta_lines(
+            "rsi",
+            vec![("period".to_string(), IndicatorParamValue::Int(14))],
+            &candles,
+        );
+        let native = TaRsiPlotProvider::new(14).build_series(&candles);
+        assert_eq!(native.len(), 1);
+        assert_eq!(lines.len(), 1);
+        assert_option_vec_close(&lines[0].values, line_values_at(&native[0], 2), 1e-8);
+    }
+
+    #[test]
+    fn macd_plot_provider_matches_ta_engine_output() {
+        let candles = sample_candles(220);
+        let lines = compute_ta_lines(
+            "macd",
+            vec![
+                ("fast_period".to_string(), IndicatorParamValue::Int(12)),
+                ("slow_period".to_string(), IndicatorParamValue::Int(26)),
+                ("signal_period".to_string(), IndicatorParamValue::Int(9)),
+            ],
+            &candles,
+        );
+        let native = TaMacdPlotProvider::new(12, 26, 9).build_series(&candles);
+        assert_eq!(native.len(), 3);
+        assert_eq!(lines.len(), 3);
+        assert_option_vec_close(&lines[0].values, line_values_at(&native[0], 0), 1e-8);
+        assert_option_vec_close(&lines[1].values, line_values_at(&native[1], 0), 1e-8);
+        assert_option_vec_close(&lines[2].values, histogram_values(&native[2]), 1e-8);
+    }
+
+    #[test]
+    fn bbands_plot_provider_matches_ta_engine_output() {
+        let candles = sample_candles(220);
+        let lines = compute_ta_lines(
+            "bbands",
+            vec![
+                ("period".to_string(), IndicatorParamValue::Int(20)),
+                ("std_dev".to_string(), IndicatorParamValue::Float(2.0)),
+            ],
+            &candles,
+        );
+        let native = TaBbandsPlotProvider::new(20, 2.0).build_series(&candles);
+        assert_eq!(native.len(), 1);
+        assert_eq!(lines.len(), 3);
+
+        let (upper, middle, lower) = bbands_values(&native[0]);
+        assert_option_vec_close(&lines[0].values, upper, 1e-8);
+        assert_option_vec_close(&lines[1].values, middle, 1e-8);
+        assert_option_vec_close(&lines[2].values, lower, 1e-8);
     }
 }

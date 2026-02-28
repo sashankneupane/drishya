@@ -29,6 +29,8 @@ impl IndicatorComputeProvider for TaEngineProvider {
         request.validate()?;
         let id = request.spec.id.0.as_str();
         let close = &request.ohlcv.close;
+        let high = &request.ohlcv.high;
+        let low = &request.ohlcv.low;
         let timestamps = request.ohlcv.timestamps.clone();
 
         let lines = match id {
@@ -66,7 +68,8 @@ impl IndicatorComputeProvider for TaEngineProvider {
                         reason: "fast_period must be less than slow_period".to_string(),
                     });
                 }
-                let (macd, signal_line, histogram) = ta_engine::trend::macd(close, fast, slow, signal);
+                let (macd, signal_line, histogram) =
+                    ta_engine::trend::macd(close, fast, slow, signal);
                 vec![
                     make_line("macd", timestamps.clone(), macd),
                     make_line("signal", timestamps.clone(), signal_line),
@@ -83,10 +86,68 @@ impl IndicatorComputeProvider for TaEngineProvider {
                     make_line("lower", timestamps, lower),
                 ]
             }
+            "atr" => {
+                let period = get_usize_param(&request.spec, "period", Some(14))?;
+                vec![make_line(
+                    "atr",
+                    timestamps,
+                    ta_engine::volatility::atr(high, low, close, period),
+                )]
+            }
+            "stochastic" => {
+                let k_period = get_usize_param(&request.spec, "k_period", Some(14))?;
+                let d_period = get_usize_param(&request.spec, "d_period", Some(3))?;
+                let smooth = get_usize_param(&request.spec, "smooth", Some(1))?;
+                let (k, d) = ta_engine::momentum::stochastic_kd(
+                    high, low, close, k_period, d_period, smooth,
+                );
+                vec![
+                    make_line("k", timestamps.clone(), k),
+                    make_line("d", timestamps, d),
+                ]
+            }
+            "obv" => {
+                let volume = required_volume(&request.spec, request.ohlcv.volume.as_deref())?;
+                vec![make_line(
+                    "obv",
+                    timestamps,
+                    ta_engine::volume::obv(close, volume),
+                )]
+            }
+            "vwap" => {
+                let volume = required_volume(&request.spec, request.ohlcv.volume.as_deref())?;
+                vec![make_line(
+                    "vwap",
+                    timestamps,
+                    ta_engine::volume::vwap(high, low, close, volume),
+                )]
+            }
+            "adx" => {
+                let period = get_usize_param(&request.spec, "period", Some(14))?;
+                let (adx, plus_di, minus_di) = ta_engine::trend::adx(high, low, close, period);
+                vec![
+                    make_line("adx", timestamps.clone(), adx),
+                    make_line("plus_di", timestamps.clone(), plus_di),
+                    make_line("minus_di", timestamps, minus_di),
+                ]
+            }
+            "ao" => {
+                let fast = get_usize_param(&request.spec, "fast_period", Some(5))?;
+                let slow = get_usize_param(&request.spec, "slow_period", Some(34))?;
+                if fast >= slow {
+                    return Err(IndicatorError::InvalidParameter {
+                        name: "fast_period/slow_period".to_string(),
+                        reason: "fast_period must be less than slow_period".to_string(),
+                    });
+                }
+                vec![make_line(
+                    "ao",
+                    timestamps,
+                    ta_engine::momentum::ao(high, low, fast, slow),
+                )]
+            }
             _ => {
-                return Err(IndicatorError::UnsupportedIndicator {
-                    id: id.to_string(),
-                });
+                return Err(IndicatorError::UnsupportedIndicator { id: id.to_string() });
             }
         };
 
@@ -153,13 +214,26 @@ fn make_line(name: &str, timestamps: Vec<i64>, raw: Vec<f64>) -> NormalizedSerie
     }
 }
 
+fn required_volume<'a>(
+    spec: &IndicatorSpec,
+    volume: Option<&'a [f64]>,
+) -> Result<&'a [f64], IndicatorError> {
+    volume.ok_or_else(|| IndicatorError::InvalidParameter {
+        name: spec.id.0.clone(),
+        reason: "volume input is required".to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::indicators::contracts::IndicatorId;
     use crate::indicators::engine::types::{IndicatorComputeContext, OhlcvBatch};
 
-    fn sample_request(id: &str, params: Vec<(String, IndicatorParamValue)>) -> IndicatorComputeRequest {
+    fn sample_request(
+        id: &str,
+        params: Vec<(String, IndicatorParamValue)>,
+    ) -> IndicatorComputeRequest {
         IndicatorComputeRequest {
             context: IndicatorComputeContext {
                 symbol: "BTCUSD".to_string(),
@@ -183,7 +257,10 @@ mod tests {
     #[test]
     fn provider_computes_sma_with_expected_shape() {
         let provider = TaEngineProvider::new();
-        let req = sample_request("sma", vec![("period".to_string(), IndicatorParamValue::Int(5))]);
+        let req = sample_request(
+            "sma",
+            vec![("period".to_string(), IndicatorParamValue::Int(5))],
+        );
         let out = provider.compute(&req).unwrap();
         assert_eq!(out.lines.len(), 1);
         assert_eq!(out.lines[0].name, "sma");
