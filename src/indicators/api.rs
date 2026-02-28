@@ -1,19 +1,49 @@
 //! Optional convenience API for attaching built-in indicators to a chart.
 
+#[cfg(feature = "external-ta")]
+use crate::indicators::provider::ta_plot_provider::{
+    TaBbandsPlotProvider, TaEmaPlotProvider, TaMacdPlotProvider, TaRsiPlotProvider,
+    TaSmaPlotProvider,
+};
 use crate::{chart::Chart, indicators::builtins::*};
 
+#[cfg(feature = "external-ta")]
+pub fn add_sma(chart: &mut Chart, period: usize) {
+    chart.add_plot_provider(Box::new(TaSmaPlotProvider::new(period)));
+}
+
+#[cfg(not(feature = "external-ta"))]
 pub fn add_sma(chart: &mut Chart, period: usize) {
     chart.add_plot_provider(Box::new(SmaProvider::new(period)));
 }
 
+#[cfg(feature = "external-ta")]
+pub fn add_ema(chart: &mut Chart, period: usize) {
+    chart.add_plot_provider(Box::new(TaEmaPlotProvider::new(period)));
+}
+
+#[cfg(not(feature = "external-ta"))]
 pub fn add_ema(chart: &mut Chart, period: usize) {
     chart.add_plot_provider(Box::new(EmaProvider::new(period)));
 }
 
+#[cfg(feature = "external-ta")]
+pub fn add_bbands(chart: &mut Chart, period: usize, std_mult: f64) {
+    chart.add_plot_provider(Box::new(TaBbandsPlotProvider::new(period, std_mult)));
+}
+
+#[cfg(not(feature = "external-ta"))]
 pub fn add_bbands(chart: &mut Chart, period: usize, std_mult: f64) {
     chart.add_plot_provider(Box::new(BbandsProvider::new(period, std_mult)));
 }
 
+#[cfg(feature = "external-ta")]
+pub fn add_macd(chart: &mut Chart, fast: usize, slow: usize, signal: usize) {
+    chart.register_named_pane("macd");
+    chart.add_plot_provider(Box::new(TaMacdPlotProvider::new(fast, slow, signal)));
+}
+
+#[cfg(not(feature = "external-ta"))]
 pub fn add_macd(chart: &mut Chart, fast: usize, slow: usize, signal: usize) {
     chart.register_named_pane("macd");
     chart.add_plot_provider(Box::new(MacdProvider::new(fast, slow, signal)));
@@ -24,6 +54,13 @@ pub fn add_momentum_histogram(chart: &mut Chart) {
     chart.add_plot_provider(Box::new(MomentumHistogramProvider::new()));
 }
 
+#[cfg(feature = "external-ta")]
+pub fn add_rsi(chart: &mut Chart, period: usize) {
+    chart.register_named_pane("rsi");
+    chart.add_plot_provider(Box::new(TaRsiPlotProvider::new(period)));
+}
+
+#[cfg(not(feature = "external-ta"))]
 pub fn add_rsi(chart: &mut Chart, period: usize) {
     chart.register_named_pane("rsi");
     chart.add_plot_provider(Box::new(RsiProvider::new(period)));
