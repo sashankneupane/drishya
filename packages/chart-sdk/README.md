@@ -1,4 +1,4 @@
-# ui-core
+# chart-sdk
 
 TypeScript + Tailwind workspace UI library for Drishya.
 

@@ -38,10 +38,10 @@ rust-test:
 ts: ts-typecheck ts-build
 
 ts-typecheck:
-	npm --prefix ui-core run typecheck
+	npm --prefix packages/chart-sdk run typecheck
 
 ts-build:
-	npm --prefix ui-core run build
+	npm --prefix packages/chart-sdk run build
 
 wasm:
 	wasm-pack build --dev --target web --out-dir pkg
