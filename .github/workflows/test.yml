@@ -28,4 +28,4 @@ jobs:
           cargo --version
 
       - name: Run tests
-        run: cargo test -q
+        run: cargo test -q --workspace

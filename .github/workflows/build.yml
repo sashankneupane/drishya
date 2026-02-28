@@ -26,10 +26,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Native check
-        run: cargo check --all-targets --all-features
+        run: cargo check --workspace --all-targets --all-features
 
       - name: Check docs build
-        run: cargo doc --no-deps
+        run: cargo doc --workspace --no-deps
 
   build-wasm:
     name: WASM build checks
@@ -49,7 +49,7 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
 
       - name: WASM target check
-        run: cargo check --target wasm32-unknown-unknown
+        run: cargo check --workspace --target wasm32-unknown-unknown
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
