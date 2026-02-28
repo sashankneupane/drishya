@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod builtins;
+pub mod catalog;
 pub mod contracts;
 pub mod engine;
 pub mod error;
