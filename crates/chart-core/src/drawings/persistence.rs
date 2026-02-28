@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    api::wasm::dto::persistence::DrawingSnapshotDto,
+    api::dto::persistence::DrawingSnapshotDto,
     drawings::{
         store::DrawingStore,
         types::{

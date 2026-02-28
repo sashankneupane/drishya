@@ -1,1 +1,1 @@
-pub mod wasm;
+pub mod dto;

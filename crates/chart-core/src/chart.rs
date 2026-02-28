@@ -238,7 +238,7 @@ impl Chart {
         x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
     }
 
-    pub(crate) fn compare_registry(&self) -> &CompareRegistry {
+    pub fn compare_registry(&self) -> &CompareRegistry {
         &self.compare_registry
     }
 }

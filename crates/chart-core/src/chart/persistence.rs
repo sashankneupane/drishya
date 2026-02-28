@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    api::wasm::dto::persistence::{
+    api::dto::persistence::{
         AppearanceSnapshotDto, DrawingSnapshotDto, PaneSnapshotDto, PanesSnapshotDto,
         SelectionSnapshotDto, ViewportSnapshotDto,
     },

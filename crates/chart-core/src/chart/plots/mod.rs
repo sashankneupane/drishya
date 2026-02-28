@@ -293,7 +293,7 @@ impl Chart {
         panes
     }
 
-    pub(crate) fn current_layout(&self) -> ChartLayout {
+    pub fn current_layout(&self) -> ChartLayout {
         let pane_specs = self.pane_descriptors();
         compute_layout(
             Size {

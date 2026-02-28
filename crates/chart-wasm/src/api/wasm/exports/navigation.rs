@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::WasmChart;
-use crate::api::wasm::dto::persistence::ViewportSnapshotDto;
+use crate::api::dto::persistence::ViewportSnapshotDto;
 use crate::api::wasm::parse::json::parse_json;
 
 #[wasm_bindgen]

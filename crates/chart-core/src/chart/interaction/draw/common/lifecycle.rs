@@ -4,7 +4,7 @@ use crate::drawings::types::{DrawingStyle, StrokeType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct DrawingState {
+pub struct DrawingState {
     pub id: u64,
     pub kind: String,
     pub layer_id: String,
@@ -300,7 +300,7 @@ impl Chart {
         let _ = execute_command(&mut self.drawings, DrawingCommand::DeleteDrawings { ids });
     }
 
-    pub(crate) fn drawing_state(&self) -> Vec<DrawingState> {
+    pub fn drawing_state(&self) -> Vec<DrawingState> {
         self.drawings
             .items()
             .iter()

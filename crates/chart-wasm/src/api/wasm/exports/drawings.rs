@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::{parse_drawing_tool_mode, parse_interaction_mode, WasmChart};
-use crate::api::wasm::dto::drawings::DrawingConfigJson;
+use crate::api::dto::drawings::DrawingConfigJson;
 use crate::drawings::hit_test::HitToleranceProfile;
 use crate::drawings::types::StrokeType;
 

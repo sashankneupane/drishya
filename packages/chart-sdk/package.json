@@ -29,7 +29,7 @@
     "watch:styles": "tailwindcss -i ./src/styles/tailwind.css -o ./dist/styles.css --config ./tailwind.config.cjs --watch",
     "build:watch": "tsdown src/index.ts src/workspace/index.ts --format esm,cjs --dts --sourcemap --platform browser --out-dir dist --watch",
     "dev": "concurrently \"npm run build:watch\" \"npm run watch:styles\" \"npm run watch:wasm\"",
-    "watch:wasm": "cargo watch -C ../.. -w crates/chart-core/src -w crates/chart-wasm/src -s \"wasm-pack build --dev --target web --out-dir packages/chart-sdk/pkg --manifest-path crates/chart-wasm/Cargo.toml\"",
+    "watch:wasm": "cargo watch -C ../.. -w crates/chart-core/src -w crates/chart-wasm/src -s \"cd crates/chart-wasm && wasm-pack build --dev --target web --out-dir ../../packages/chart-sdk/pkg\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

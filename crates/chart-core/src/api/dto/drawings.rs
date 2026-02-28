@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct DrawingConfigJson {
+pub struct DrawingConfigJson {
     pub stroke_color: Option<String>,
     pub fill_color: Option<String>,
     pub fill_opacity: Option<f32>,
@@ -17,13 +17,13 @@ pub(crate) struct DrawingConfigJson {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct PaneTreeState {
+pub struct PaneTreeState {
     pub id: String,
     pub visible: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct SeriesTreeState {
+pub struct SeriesTreeState {
     pub id: String,
     pub name: String,
     pub pane_id: String,
@@ -32,7 +32,7 @@ pub(crate) struct SeriesTreeState {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct DrawingTreeState {
+pub struct DrawingTreeState {
     pub id: u64,
     pub kind: String,
     pub layer_id: String,
@@ -42,7 +42,7 @@ pub(crate) struct DrawingTreeState {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct LayerTreeState {
+pub struct LayerTreeState {
     pub id: String,
     pub name: String,
     pub visible: bool,
@@ -51,7 +51,7 @@ pub(crate) struct LayerTreeState {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct GroupTreeState {
+pub struct GroupTreeState {
     pub id: String,
     pub name: String,
     pub layer_id: String,
@@ -62,7 +62,7 @@ pub(crate) struct GroupTreeState {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct ObjectTreeState {
+pub struct ObjectTreeState {
     pub panes: Vec<PaneTreeState>,
     pub series: Vec<SeriesTreeState>,
     pub layers: Vec<LayerTreeState>,

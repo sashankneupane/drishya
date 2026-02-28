@@ -1,10 +1,10 @@
 use crate::{
-    api::wasm::{
+    api::{
         dto::persistence::{
             AppearanceSnapshotDto, ChartStateDto, ChartStateSnapshotDto, DrawingSnapshotDto,
             PanesSnapshotDto, RestoreChartStateOptionsDto, ViewportSnapshotDto,
         },
-        exports::persistence::validate_snapshot,
+        wasm::exports::persistence::validate_snapshot,
     },
     chart::Chart,
     types::Candle,
@@ -53,7 +53,7 @@ fn validate_snapshot_rejects_invalid_pane_and_drawing_shape() {
         chart_state: ChartStateDto {
             panes: PanesSnapshotDto {
                 order: vec!["x".to_string()],
-                panes: vec![crate::api::wasm::dto::persistence::PaneSnapshotDto {
+                panes: vec![crate::api::dto::persistence::PaneSnapshotDto {
                     id: "x".to_string(),
                     visible: true,
                     weight: 0.0,

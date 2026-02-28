@@ -1,18 +1,12 @@
 use wasm_bindgen::prelude::*;
 
-use crate::api::wasm::{
-    chart_handle::WasmChart,
-    dto::{
-        persistence::{
-            ChartStateDto, ChartStateSnapshotDto, ObjectTreeSnapshotDto,
-            RestoreChartStateOptionsDto,
-        },
-        persistence::{
-            DrawingTreeSnapshotDto, GroupTreeSnapshotDto, LayerTreeSnapshotDto,
-            PaneTreeSnapshotDto, SeriesTreeSnapshotDto,
-        },
+use crate::api::{
+    dto::persistence::{
+        ChartStateDto, ChartStateSnapshotDto, DrawingTreeSnapshotDto, GroupTreeSnapshotDto,
+        LayerTreeSnapshotDto, ObjectTreeSnapshotDto, PaneTreeSnapshotDto,
+        RestoreChartStateOptionsDto, SeriesTreeSnapshotDto,
     },
-    parse::json::parse_json,
+    wasm::{chart_handle::WasmChart, parse::json::parse_json},
 };
 
 #[wasm_bindgen]

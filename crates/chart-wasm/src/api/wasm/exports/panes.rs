@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::{pane_id_label, WasmChart};
-use crate::api::wasm::dto::persistence::PanesSnapshotDto;
+use crate::api::dto::persistence::PanesSnapshotDto;
 use crate::api::wasm::parse::json::parse_json;
 use crate::chart::plots::PaneLayoutState;
 

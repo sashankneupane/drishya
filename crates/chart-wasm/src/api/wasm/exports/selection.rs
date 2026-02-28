@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::WasmChart;
-use crate::api::wasm::dto::drawings::{
+use crate::api::dto::drawings::{
     DrawingTreeState, GroupTreeState, LayerTreeState, ObjectTreeState, PaneTreeState,
     SeriesTreeState,
 };
