@@ -1,34 +1,45 @@
 # Drishya
 
-A lightweight charting engine built in Rust and compiled to WebAssembly.
+Drishya is a Rust charting engine with a TypeScript SDK and a playground app.
 
-This project is currently a focused MVP foundation: modular rendering pipeline, command-based drawing mutations, and a thin web adapter.
+## Repository Topology
+
+```text
+crates/
+  chart-core/      Rust chart domain/core implementation
+  chart-wasm/      Thin wasm-facing crate boundary
+packages/
+  chart-sdk/       TypeScript SDK/workspace layer
+apps/
+  playground/      Demo/playground app wiring
+```
+
+## Common Commands
+
+```bash
+# Rust quality checks
+make rust
+
+# TypeScript SDK checks
+make ts
+
+# Build wasm package into SDK output path
+make wasm
+
+# Full local quality gate
+make quality
+```
 
 ## Streaming OHLCV API
 
-Use `set_ohlcv_json` for initial history, then push live updates incrementally:
-
 ```js
 chart.set_ohlcv_json(JSON.stringify(history));
-
-// one live candle update
-chart.append_ohlcv_json(
-	JSON.stringify({
-		ts: 1700000120,
-		open: 101.2,
-		high: 101.6,
-		low: 100.9,
-		close: 101.4,
-		volume: 920.0,
-	})
-);
-
-// or many updates at once
+chart.append_ohlcv_json(JSON.stringify(nextCandle));
 chart.append_ohlcv_batch_json(JSON.stringify(batch));
 chart.draw();
 ```
 
 Upsert semantics:
-- same `ts` as last candle: replaces last candle (in-progress bar update)
-- newer `ts`: appends a new candle
-- older `ts` that exists: replaces matching candle
+- same `ts` as last candle: replace last candle
+- newer `ts`: append candle
+- older `ts` that exists: replace matching candle
