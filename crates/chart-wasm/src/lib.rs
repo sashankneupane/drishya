@@ -1,1 +1,1 @@
-pub use drishya::*;
+pub use drishya::api::wasm::*;
