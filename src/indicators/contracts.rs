@@ -58,6 +58,10 @@ impl NormalizedSeries {
     pub fn len(&self) -> usize {
         self.timestamps.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.timestamps.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

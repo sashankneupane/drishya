@@ -717,6 +717,7 @@ mod tests {
     use crate::indicators::engine::types::{IndicatorComputeContext, IndicatorComputeRequest};
     use crate::indicators::engine::IndicatorComputeProvider;
     use crate::indicators::provider::ta_engine_provider::TaEngineProvider;
+    type TripleSeriesRef<'a> = (&'a [Option<f64>], &'a [Option<f64>], &'a [Option<f64>]);
 
     fn compute_ta_lines(
         id: &str,
@@ -791,7 +792,7 @@ mod tests {
         }
     }
 
-    fn bbands_values(series: &PlotSeries) -> (&[Option<f64>], &[Option<f64>], &[Option<f64>]) {
+    fn bbands_values(series: &PlotSeries) -> TripleSeriesRef<'_> {
         assert_eq!(series.primitives.len(), 4);
         let (upper, lower) = match &series.primitives[0] {
             PlotPrimitive::Band { upper, lower, .. } => (upper.as_slice(), lower.as_slice()),

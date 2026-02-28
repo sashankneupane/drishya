@@ -24,6 +24,10 @@ impl OhlcvBatch {
         self.timestamps.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.timestamps.is_empty()
+    }
+
     pub fn validate(&self) -> Result<(), IndicatorError> {
         let expected = self.timestamps.len();
         if expected == 0 {

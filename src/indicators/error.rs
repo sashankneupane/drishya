@@ -40,7 +40,9 @@ impl Display for IndicatorError {
         match self {
             IndicatorError::EmptySeries => write!(f, "series must not be empty"),
             IndicatorError::EmptyLineName => write!(f, "series line name must not be empty"),
-            IndicatorError::EmptyMultiSeries => write!(f, "multi-series must include at least one line"),
+            IndicatorError::EmptyMultiSeries => {
+                write!(f, "multi-series must include at least one line")
+            }
             IndicatorError::TimestampValueLengthMismatch { timestamps, values } => {
                 write!(
                     f,
@@ -61,7 +63,11 @@ impl Display for IndicatorError {
                 )
             }
             IndicatorError::LineTimestampMismatch { line } => {
-                write!(f, "line '{}' timestamps do not align with primary line", line)
+                write!(
+                    f,
+                    "line '{}' timestamps do not align with primary line",
+                    line
+                )
             }
             IndicatorError::DuplicateLineName { line } => {
                 write!(f, "duplicate line name in multi-series: '{}'", line)
