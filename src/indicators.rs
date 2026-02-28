@@ -6,4 +6,5 @@
 pub mod api;
 pub mod builtins;
 pub mod contracts;
+pub mod engine;
 pub mod error;
