@@ -10,3 +10,4 @@ pub mod contracts;
 pub mod engine;
 pub mod error;
 pub mod provider;
+pub mod registry;
