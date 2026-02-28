@@ -55,7 +55,7 @@ jobs:
         run: cargo install wasm-pack --locked
 
       - name: wasm-pack smoke build
-        run: wasm-pack build --dev --target web
+        run: wasm-pack build --dev --target web --manifest-path crates/chart-wasm/Cargo.toml
 
   build-ts:
     name: TypeScript UI Core build

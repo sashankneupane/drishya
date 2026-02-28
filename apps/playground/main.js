@@ -43,7 +43,7 @@ async function main() {
   // Initialize the workspace with the new controller-based API
   const workspace = await createChartWorkspaceFromModule({
     host,
-    loadWasmModule: () => import(`/packages/chart-sdk/pkg/drishya.js?v=${version}`),
+    loadWasmModule: () => import(`/packages/chart-sdk/pkg/chart_wasm.js?v=${version}`),
     initialTheme: "dark",
     initialTool: "select",
     injectStyles: true,

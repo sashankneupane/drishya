@@ -44,4 +44,4 @@ ts-build:
 	npm --prefix packages/chart-sdk run build
 
 wasm:
-	wasm-pack build --dev --target web --out-dir packages/chart-sdk/pkg
+	wasm-pack build --dev --target web --out-dir packages/chart-sdk/pkg --manifest-path crates/chart-wasm/Cargo.toml
