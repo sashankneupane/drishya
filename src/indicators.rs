@@ -4,4 +4,9 @@
 //! indicator-agnostic and consumes neutral plot contracts from `plots::*`.
 
 pub mod api;
-pub mod builtins;
+pub mod catalog;
+pub mod contracts;
+pub mod engine;
+pub mod error;
+pub mod provider;
+pub mod registry;
