@@ -78,6 +78,9 @@ export interface ChartWorkspaceHandle {
 export type WorkspacePaneId = string;
 export type WorkspaceChartPaneId = string;
 export type WorkspaceChartSplitDirection = "horizontal" | "vertical";
+export type WorkspaceTileId = string;
+export type WorkspaceChartTileId = string;
+export type WorkspaceChartTabId = string;
 
 export type WorkspaceChartSplitNode =
   | {
@@ -115,6 +118,28 @@ export interface WorkspaceChartPaneSpec {
   id: WorkspaceChartPaneId;
   title: string;
   visible: boolean;
+}
+
+export type WorkspaceTileKind = "chart" | "objects";
+
+export interface WorkspaceTileSpec {
+  id: WorkspaceTileId;
+  kind: WorkspaceTileKind;
+  title: string;
+  widthRatio: number;
+  chartTileId?: WorkspaceChartTileId;
+}
+
+export interface WorkspaceChartTabSpec {
+  id: WorkspaceChartTabId;
+  title: string;
+  chartPaneId: WorkspaceChartPaneId;
+}
+
+export interface WorkspaceChartTileSpec {
+  id: WorkspaceChartTileId;
+  tabs: WorkspaceChartTabSpec[];
+  activeTabId: WorkspaceChartTabId;
 }
 
 export interface WorkspaceCrosshairReadout {

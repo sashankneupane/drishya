@@ -38,6 +38,7 @@ export type WorkspaceIconName =
   | "brush"
   | "highlighter"
   | "plus"
+  | "tree"
   | "play"
   | "pause"
   | "stop"
@@ -99,6 +100,7 @@ export function makeSvgIcon(name: WorkspaceIconName | string, className = "drish
     "brush": ["M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"],
     "highlighter": ["M15.5 3.5a2.121 2.121 0 0 1 3 3L11 14l-4 1.5L8.5 11l7-7.5z", "M2 22l5-5"],
     "plus": ["M12 5v14", "M5 12h14"],
+    "tree": ["M12 22V13", "M5 10h14", "M7 10V4h10v6", "M9 6h6"],
     "play": ["M8 5v14l11-7-11-7z"],
     "pause": ["M8 5h3v14H8z", "M13 5h3v14h-3z"],
     "stop": ["M7 7h10v10H7z"],

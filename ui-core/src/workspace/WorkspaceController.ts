@@ -8,7 +8,13 @@ import type {
     WorkspaceChartPaneSpec,
     WorkspaceChartPaneId,
     WorkspaceChartSplitNode,
-    WorkspaceChartSplitDirection
+    WorkspaceChartSplitDirection,
+    WorkspaceTileSpec,
+    WorkspaceTileId,
+    WorkspaceChartTileSpec,
+    WorkspaceChartTileId,
+    WorkspaceChartTabSpec,
+    WorkspaceChartTabId
 } from "./types.js";
 import type { CursorMode, ReplayState, ObjectTreeState } from "../wasm/contracts.js";
 import type { ReplayController } from "./replay/ReplayController.js";
@@ -26,6 +32,10 @@ export interface WorkspaceState {
     chartLayoutTree: WorkspaceChartSplitNode;
     activeChartPaneId: WorkspaceChartPaneId;
     chartPaneSources: Record<WorkspaceChartPaneId, { symbol?: string; timeframe?: string }>;
+    workspaceTiles: Record<WorkspaceTileId, WorkspaceTileSpec>;
+    workspaceTileOrder: WorkspaceTileId[];
+    chartTiles: Record<WorkspaceChartTileId, WorkspaceChartTileSpec>;
+    activeChartTileId: WorkspaceChartTileId;
     paneLayout: WorkspacePaneLayoutState;
     crosshair: WorkspaceCrosshairState | null;
 }
@@ -115,9 +125,40 @@ export class WorkspaceController {
             },
             activeChartPaneId: initial.activeChartPaneId ?? PRICE_PANE_ID,
             chartPaneSources: initial.chartPaneSources ?? {},
+            workspaceTiles: initial.workspaceTiles ?? {
+                "tile-chart-1": {
+                    id: "tile-chart-1",
+                    kind: "chart",
+                    title: "Chart",
+                    widthRatio: 0.72,
+                    chartTileId: "chart-tile-1"
+                },
+                "tile-objects": {
+                    id: "tile-objects",
+                    kind: "objects",
+                    title: "Objects",
+                    widthRatio: 0.28
+                }
+            },
+            workspaceTileOrder: initial.workspaceTileOrder ?? ["tile-chart-1", "tile-objects"],
+            chartTiles: initial.chartTiles ?? {
+                "chart-tile-1": {
+                    id: "chart-tile-1",
+                    tabs: [
+                        {
+                            id: "tab-price",
+                            title: "Main",
+                            chartPaneId: PRICE_PANE_ID
+                        }
+                    ],
+                    activeTabId: "tab-price"
+                }
+            },
+            activeChartTileId: initial.activeChartTileId ?? "chart-tile-1",
             paneLayout: initial.paneLayout ?? defaultPaneLayout,
             crosshair: null
         };
+        this.repairWorkspaceState();
     }
 
     getState(): WorkspaceState {
@@ -427,6 +468,30 @@ export class WorkspaceController {
         this.state.chartPaneSources = {
             [PRICE_PANE_ID]: this.state.chartPaneSources[PRICE_PANE_ID] ?? {}
         };
+        this.state.chartTiles = {
+            "chart-tile-1": {
+                id: "chart-tile-1",
+                tabs: [{ id: "tab-price", title: "Main", chartPaneId: PRICE_PANE_ID }],
+                activeTabId: "tab-price"
+            }
+        };
+        this.state.workspaceTiles = {
+            "tile-chart-1": {
+                id: "tile-chart-1",
+                kind: "chart",
+                title: "Chart",
+                widthRatio: 0.72,
+                chartTileId: "chart-tile-1"
+            },
+            "tile-objects": {
+                id: "tile-objects",
+                kind: "objects",
+                title: "Objects",
+                widthRatio: 0.28
+            }
+        };
+        this.state.workspaceTileOrder = ["tile-chart-1", "tile-objects"];
+        this.state.activeChartTileId = "chart-tile-1";
         this.notify();
     }
 
@@ -495,6 +560,23 @@ export class WorkspaceController {
             nextSources[id] = this.state.chartPaneSources[id] ?? {};
         }
         this.state.chartPaneSources = nextSources;
+        this.repairWorkspaceState();
+        this.notify();
+    }
+
+    loadWorkspaceTiles(
+        workspaceTiles: Record<WorkspaceTileId, WorkspaceTileSpec>,
+        workspaceTileOrder: WorkspaceTileId[],
+        chartTiles: Record<WorkspaceChartTileId, WorkspaceChartTileSpec>,
+        activeChartTileId?: WorkspaceChartTileId
+    ): void {
+        this.state.workspaceTiles = { ...workspaceTiles };
+        this.state.workspaceTileOrder = [...workspaceTileOrder];
+        this.state.chartTiles = { ...chartTiles };
+        if (activeChartTileId) {
+            this.state.activeChartTileId = activeChartTileId;
+        }
+        this.repairWorkspaceState();
         this.notify();
     }
 
@@ -601,6 +683,16 @@ export class WorkspaceController {
         delete nextSources[paneId];
         this.state.chartPaneSources = nextSources;
         this.state.chartLayoutTree = nextTree;
+        const nextChartTiles: Record<string, WorkspaceChartTileSpec> = {};
+        for (const [tileId, tile] of Object.entries(this.state.chartTiles)) {
+            const tabs = tile.tabs.filter((tab) => tab.chartPaneId !== paneId);
+            if (tabs.length === 0) {
+                continue;
+            }
+            const activeTabId = tabs.some((tab) => tab.id === tile.activeTabId) ? tile.activeTabId : tabs[0].id;
+            nextChartTiles[tileId] = { ...tile, tabs, activeTabId };
+        }
+        this.state.chartTiles = nextChartTiles;
         if (!this.state.chartPanes[this.state.activeChartPaneId]) {
             this.state.activeChartPaneId = PRICE_PANE_ID;
         }
@@ -618,6 +710,7 @@ export class WorkspaceController {
                 }
             };
         }
+        this.repairWorkspaceState();
         this.unregisterPane(paneId);
     }
 
@@ -648,6 +741,253 @@ export class WorkspaceController {
         this.notify();
     }
 
+    setActiveChartTile(tileId: WorkspaceChartTileId): void {
+        const tile = this.state.chartTiles[tileId];
+        if (!tile) return;
+        this.state.activeChartTileId = tileId;
+        const activeTab = tile.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile.tabs[0];
+        if (activeTab) {
+            this.state.activeChartPaneId = activeTab.chartPaneId;
+        }
+        this.notify();
+    }
+
+    setActiveChartTab(chartTileId: WorkspaceChartTileId, tabId: WorkspaceChartTabId): void {
+        const tile = this.state.chartTiles[chartTileId];
+        if (!tile) return;
+        const tab = tile.tabs.find((candidate) => candidate.id === tabId);
+        if (!tab) return;
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [chartTileId]: { ...tile, activeTabId: tabId }
+        };
+        this.state.activeChartTileId = chartTileId;
+        this.state.activeChartPaneId = tab.chartPaneId;
+        this.notify();
+    }
+
+    addChartTab(chartTileId: WorkspaceChartTileId): WorkspaceChartTabId | null {
+        const tile = this.state.chartTiles[chartTileId];
+        if (!tile) return null;
+        const paneId = this.addChartPane();
+        const tabId = this.nextChartTabId();
+        const title = `Chart ${tile.tabs.length + 1}`;
+        const nextTab: WorkspaceChartTabSpec = { id: tabId, title, chartPaneId: paneId };
+        const latestTile = this.state.chartTiles[chartTileId] ?? tile;
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [chartTileId]: {
+                ...latestTile,
+                tabs: [...latestTile.tabs, nextTab],
+                activeTabId: tabId
+            }
+        };
+        this.state.activeChartTileId = chartTileId;
+        this.state.activeChartPaneId = paneId;
+        this.notify();
+        return tabId;
+    }
+
+    removeChartTab(chartTileId: WorkspaceChartTileId, tabId: WorkspaceChartTabId): void {
+        const tile = this.state.chartTiles[chartTileId];
+        if (!tile) return;
+        const tab = tile.tabs.find((candidate) => candidate.id === tabId);
+        if (!tab) return;
+        if (tile.tabs.length === 1) return;
+        const remainingTabs = tile.tabs.filter((candidate) => candidate.id !== tabId);
+        const activeTabId = remainingTabs.some((candidate) => candidate.id === tile.activeTabId)
+            ? tile.activeTabId
+            : remainingTabs[0].id;
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [chartTileId]: {
+                ...tile,
+                tabs: remainingTabs,
+                activeTabId
+            }
+        };
+        if (this.state.activeChartTileId === chartTileId) {
+            const activeTab = remainingTabs.find((candidate) => candidate.id === activeTabId) ?? remainingTabs[0];
+            if (activeTab) {
+                this.state.activeChartPaneId = activeTab.chartPaneId;
+            }
+        }
+        this.removeChartPane(tab.chartPaneId);
+        this.notify();
+    }
+
+    setChartTabTitle(chartTileId: WorkspaceChartTileId, tabId: WorkspaceChartTabId, title: string): void {
+        const tile = this.state.chartTiles[chartTileId];
+        if (!tile) return;
+        const trimmed = String(title || "").trim();
+        if (!trimmed) return;
+        const idx = tile.tabs.findIndex((candidate) => candidate.id === tabId);
+        if (idx < 0) return;
+        const current = tile.tabs[idx];
+        if (current.title === trimmed) return;
+        const nextTabs = [...tile.tabs];
+        nextTabs[idx] = { ...current, title: trimmed };
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [chartTileId]: {
+                ...tile,
+                tabs: nextTabs
+            }
+        };
+        this.notify();
+    }
+
+    moveChartTab(
+        sourceChartTileId: WorkspaceChartTileId,
+        tabId: WorkspaceChartTabId,
+        targetChartTileId: WorkspaceChartTileId,
+        targetIndex: number
+    ): void {
+        const sourceTile = this.state.chartTiles[sourceChartTileId];
+        const targetTile = this.state.chartTiles[targetChartTileId];
+        if (!sourceTile || !targetTile) return;
+        const movingTab = sourceTile.tabs.find((tab) => tab.id === tabId);
+        if (!movingTab) return;
+
+        // Keep at least one tab per tile for predictable workspace behavior.
+        if (sourceChartTileId !== targetChartTileId && sourceTile.tabs.length <= 1) return;
+
+        if (sourceChartTileId === targetChartTileId) {
+            const currentIndex = sourceTile.tabs.findIndex((tab) => tab.id === tabId);
+            if (currentIndex < 0) return;
+            const clamped = Math.max(0, Math.min(sourceTile.tabs.length - 1, targetIndex));
+            if (clamped === currentIndex) return;
+            const nextTabs = [...sourceTile.tabs];
+            nextTabs.splice(currentIndex, 1);
+            nextTabs.splice(clamped, 0, movingTab);
+            this.state.chartTiles = {
+                ...this.state.chartTiles,
+                [sourceChartTileId]: {
+                    ...sourceTile,
+                    tabs: nextTabs
+                }
+            };
+            this.notify();
+            return;
+        }
+
+        const sourceTabs = sourceTile.tabs.filter((tab) => tab.id !== tabId);
+        const sourceActiveTabId =
+            sourceTile.activeTabId === tabId
+                ? sourceTabs[0]?.id ?? sourceTile.activeTabId
+                : sourceTile.activeTabId;
+
+        const targetTabs = [...targetTile.tabs];
+        const clampedTargetIndex = Math.max(0, Math.min(targetTabs.length, targetIndex));
+        targetTabs.splice(clampedTargetIndex, 0, movingTab);
+
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [sourceChartTileId]: {
+                ...sourceTile,
+                tabs: sourceTabs,
+                activeTabId: sourceActiveTabId
+            },
+            [targetChartTileId]: {
+                ...targetTile,
+                tabs: targetTabs,
+                activeTabId: movingTab.id
+            }
+        };
+        this.state.activeChartTileId = targetChartTileId;
+        this.state.activeChartPaneId = movingTab.chartPaneId;
+        this.notify();
+    }
+
+    addChartTile(): WorkspaceChartTileId {
+        const paneId = this.addChartPane();
+        const chartTileId = this.nextChartTileId();
+        const tabId = this.nextChartTabId();
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [chartTileId]: {
+                id: chartTileId,
+                tabs: [{ id: tabId, title: "Main", chartPaneId: paneId }],
+                activeTabId: tabId
+            }
+        };
+        const tileId = this.nextWorkspaceTileId();
+        this.state.workspaceTiles = {
+            ...this.state.workspaceTiles,
+            [tileId]: {
+                id: tileId,
+                kind: "chart",
+                title: `Chart ${Object.values(this.state.workspaceTiles).filter((tile) => tile.kind === "chart").length + 1}`,
+                widthRatio: 0.5,
+                chartTileId
+            }
+        };
+        this.state.workspaceTileOrder = [...this.state.workspaceTileOrder, tileId];
+        this.state.activeChartTileId = chartTileId;
+        this.notify();
+        return chartTileId;
+    }
+
+    removeWorkspaceTile(tileId: WorkspaceTileId): void {
+        const tile = this.state.workspaceTiles[tileId];
+        if (!tile) return;
+        if (tile.kind === "objects") return;
+        const chartTileId = tile.chartTileId;
+        if (chartTileId) {
+            const chartTile = this.state.chartTiles[chartTileId];
+            if (chartTile) {
+                for (const tab of chartTile.tabs) {
+                    this.removeChartPane(tab.chartPaneId);
+                }
+            }
+            const nextChartTiles = { ...this.state.chartTiles };
+            delete nextChartTiles[chartTileId];
+            this.state.chartTiles = nextChartTiles;
+        }
+        const nextTiles = { ...this.state.workspaceTiles };
+        delete nextTiles[tileId];
+        this.state.workspaceTiles = nextTiles;
+        this.state.workspaceTileOrder = this.state.workspaceTileOrder.filter((id) => id !== tileId);
+        this.repairWorkspaceState();
+        this.notify();
+    }
+
+    moveWorkspaceTile(tileId: WorkspaceTileId, nextIndex: number): void {
+        const currentIndex = this.state.workspaceTileOrder.indexOf(tileId);
+        if (currentIndex < 0) return;
+        const clamped = Math.max(0, Math.min(this.state.workspaceTileOrder.length - 1, nextIndex));
+        if (clamped === currentIndex) return;
+        const nextOrder = [...this.state.workspaceTileOrder];
+        nextOrder.splice(currentIndex, 1);
+        nextOrder.splice(clamped, 0, tileId);
+        this.state.workspaceTileOrder = nextOrder;
+        this.notify();
+    }
+
+    setWorkspaceTileWidthRatio(tileId: WorkspaceTileId, ratio: number): void {
+        const tile = this.state.workspaceTiles[tileId];
+        if (!tile) return;
+        const clamped = Math.max(0.12, Math.min(0.88, ratio));
+        this.state.workspaceTiles = {
+            ...this.state.workspaceTiles,
+            [tileId]: { ...tile, widthRatio: clamped }
+        };
+        this.normalizeWorkspaceTileRatios();
+        this.notify();
+    }
+
+    updateWorkspaceTileRatios(updates: Record<WorkspaceTileId, number>): void {
+        const nextTiles = { ...this.state.workspaceTiles };
+        for (const [tileId, ratio] of Object.entries(updates)) {
+            const tile = nextTiles[tileId];
+            if (!tile) continue;
+            nextTiles[tileId] = { ...tile, widthRatio: Math.max(0.08, ratio) };
+        }
+        this.state.workspaceTiles = nextTiles;
+        this.normalizeWorkspaceTileRatios();
+        this.notify();
+    }
+
     setChartSplitRatio(path: readonly number[], ratio: number): void {
         const clamped = Math.max(0.1, Math.min(0.9, ratio));
         this.state.chartLayoutTree = updateSplitRatioAtPath(this.state.chartLayoutTree, path, clamped);
@@ -664,6 +1004,119 @@ export class WorkspaceController {
             if (Number.isFinite(n) && n > maxN) maxN = n;
         }
         return `chart-${maxN + 1}`;
+    }
+
+    private nextChartTileId(): string {
+        let maxN = 1;
+        for (const id of Object.keys(this.state.chartTiles)) {
+            const m = /^chart-tile-(\d+)$/.exec(id);
+            if (!m) continue;
+            const n = Number(m[1]);
+            if (Number.isFinite(n) && n > maxN) maxN = n;
+        }
+        return `chart-tile-${maxN + 1}`;
+    }
+
+    private nextChartTabId(): string {
+        let maxN = 1;
+        for (const tile of Object.values(this.state.chartTiles)) {
+            for (const tab of tile.tabs) {
+                const m = /^tab-(\d+)$/.exec(tab.id);
+                if (!m) continue;
+                const n = Number(m[1]);
+                if (Number.isFinite(n) && n > maxN) maxN = n;
+            }
+        }
+        return `tab-${maxN + 1}`;
+    }
+
+    private nextWorkspaceTileId(): string {
+        let maxN = 1;
+        for (const id of Object.keys(this.state.workspaceTiles)) {
+            const m = /^tile-chart-(\d+)$/.exec(id);
+            if (!m) continue;
+            const n = Number(m[1]);
+            if (Number.isFinite(n) && n > maxN) maxN = n;
+        }
+        return `tile-chart-${maxN + 1}`;
+    }
+
+    private normalizeWorkspaceTileRatios(): void {
+        const order = this.state.workspaceTileOrder.filter((id) => this.state.workspaceTiles[id]);
+        const chartOrder = order.filter((id) => this.state.workspaceTiles[id]?.kind === "chart");
+        const ratioSum = chartOrder.reduce((sum, id) => sum + Math.max(0, this.state.workspaceTiles[id]?.widthRatio ?? 0), 0);
+        if (ratioSum <= 0) {
+            const each = 1 / Math.max(1, chartOrder.length);
+            const next = { ...this.state.workspaceTiles };
+            for (const id of chartOrder) {
+                next[id] = { ...next[id], widthRatio: each };
+            }
+            this.state.workspaceTiles = next;
+            return;
+        }
+        const next = { ...this.state.workspaceTiles };
+        for (const id of chartOrder) {
+            const raw = Math.max(0, next[id]?.widthRatio ?? 0);
+            next[id] = { ...next[id], widthRatio: raw / ratioSum };
+        }
+        this.state.workspaceTiles = next;
+    }
+
+    private repairWorkspaceState(): void {
+        for (const [tileId, tile] of Object.entries(this.state.chartTiles)) {
+            const tabs = tile.tabs.filter((tab) => this.state.chartPanes[tab.chartPaneId]);
+            if (tabs.length === 0) {
+                tabs.push({ id: this.nextChartTabId(), title: "Main", chartPaneId: PRICE_PANE_ID });
+            }
+            const activeTabId = tabs.some((tab) => tab.id === tile.activeTabId) ? tile.activeTabId : tabs[0].id;
+            this.state.chartTiles[tileId] = { ...tile, tabs, activeTabId };
+        }
+
+        const nextTiles: Record<string, WorkspaceTileSpec> = {};
+        for (const tileId of this.state.workspaceTileOrder) {
+            const tile = this.state.workspaceTiles[tileId];
+            if (!tile) continue;
+            if (tile.kind === "chart" && (!tile.chartTileId || !this.state.chartTiles[tile.chartTileId])) {
+                continue;
+            }
+            nextTiles[tileId] = tile;
+        }
+        for (const [tileId, tile] of Object.entries(this.state.workspaceTiles)) {
+            if (nextTiles[tileId]) continue;
+            if (tile.kind === "chart" && (!tile.chartTileId || !this.state.chartTiles[tile.chartTileId])) {
+                continue;
+            }
+            nextTiles[tileId] = tile;
+        }
+        this.state.workspaceTiles = nextTiles;
+        this.state.workspaceTileOrder = this.state.workspaceTileOrder.filter((id) => this.state.workspaceTiles[id]);
+
+        if (!this.state.workspaceTileOrder.some((id) => this.state.workspaceTiles[id]?.kind === "objects")) {
+            this.state.workspaceTiles["tile-objects"] = {
+                id: "tile-objects",
+                kind: "objects",
+                title: "Objects",
+                widthRatio: 0.28
+            };
+            this.state.workspaceTileOrder.push("tile-objects");
+        }
+
+        const chartTileIds = Object.keys(this.state.chartTiles);
+        if (chartTileIds.length > 0) {
+            const hasActiveChartTile = this.state.chartTiles[this.state.activeChartTileId];
+            if (!hasActiveChartTile) {
+                this.state.activeChartTileId = chartTileIds[0];
+            }
+            const activeTile = this.state.chartTiles[this.state.activeChartTileId];
+            const activeTab = activeTile?.tabs.find((tab) => tab.id === activeTile.activeTabId) ?? activeTile?.tabs[0];
+            if (activeTab) {
+                this.state.activeChartPaneId = activeTab.chartPaneId;
+            }
+        } else {
+            this.state.activeChartTileId = "";
+            this.state.activeChartPaneId = PRICE_PANE_ID;
+        }
+        this.normalizeWorkspaceTileRatios();
     }
 
     private findLastChartPaneId(): string {

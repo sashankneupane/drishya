@@ -109,6 +109,51 @@ function testWorkspaceController() {
     controller.removeChartPane(splitB);
     controller.removeChartPane(splitA);
 
+    // Workspace tile and chart-tab state
+    state = controller.getState();
+    const chartTileId = state.activeChartTileId;
+    if (!state.chartTiles[chartTileId]) throw new Error("Active chart tile should exist");
+    const createdTab = controller.addChartTab(chartTileId);
+    if (!createdTab) throw new Error("addChartTab should return tab id");
+    state = controller.getState();
+    if (!state.chartTiles[chartTileId].tabs.some((tab) => tab.id === createdTab)) {
+        throw new Error("New tab should be attached to chart tile");
+    }
+    controller.setActiveChartTab(chartTileId, createdTab);
+    state = controller.getState();
+    if (state.chartTiles[chartTileId].activeTabId !== createdTab) {
+        throw new Error("setActiveChartTab should switch active tab");
+    }
+    controller.moveWorkspaceTile("tile-objects", 0);
+    state = controller.getState();
+    if (state.workspaceTileOrder[0] !== "tile-objects") {
+        throw new Error("moveWorkspaceTile should reorder tiles");
+    }
+    controller.updateWorkspaceTileRatios({ "tile-chart-1": 0.8, "tile-objects": 0.2 });
+    state = controller.getState();
+    const ratioSum = (state.workspaceTiles["tile-chart-1"]?.widthRatio ?? 0) + (state.workspaceTiles["tile-objects"]?.widthRatio ?? 0);
+    if (Math.abs(ratioSum - 1.0) > 0.001) throw new Error("Workspace tile ratios should normalize to 1");
+
+    // Load workspace tiles payload should preserve active chart tile/tab linkage
+    controller.loadWorkspaceTiles(
+        {
+            "tile-chart-9": { id: "tile-chart-9", kind: "chart", title: "Chart", widthRatio: 0.7, chartTileId: "chart-tile-9" },
+            "tile-objects": { id: "tile-objects", kind: "objects", title: "Objects", widthRatio: 0.3 }
+        },
+        ["tile-chart-9", "tile-objects"],
+        {
+            "chart-tile-9": {
+                id: "chart-tile-9",
+                tabs: [{ id: "tab-9", title: "Main", chartPaneId: PRICE_PANE_ID }],
+                activeTabId: "tab-9"
+            }
+        },
+        "chart-tile-9"
+    );
+    state = controller.getState();
+    if (state.activeChartTileId !== "chart-tile-9") throw new Error("loadWorkspaceTiles should restore active chart tile");
+    if (state.workspaceTileOrder[0] !== "tile-chart-9") throw new Error("loadWorkspaceTiles should restore tile order");
+
     // Test cleanupEmptyIndicatorPanes
     controller.registerPane({ id: "ind-to-clean", kind: "indicator", title: "CleanMe" });
     const rsiPaneId = "ind-to-clean";

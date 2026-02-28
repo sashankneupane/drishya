@@ -3,6 +3,9 @@ import type { WasmChartLike } from "../wasm/contracts.js";
 import type { LayoutRect } from "../layout/splitTree.js";
 
 export interface ChartPaneRuntime {
+  runtimeKey?: string;
+  chartTileId?: string;
+  chartTabId?: string;
   paneId: string;
   container: HTMLDivElement;
   canvas: HTMLCanvasElement;

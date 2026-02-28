@@ -29,6 +29,30 @@ When a drawing is selected (select tool active, click on a drawing), a floating 
 
 Use the WASM client `getDrawingConfig`, `setDrawingConfig`, `getSelectedDrawingConfig`, and `deleteSelectedDrawing` for programmatic access.
 
+## Multi-Pane Layout
+
+The workspace supports multiple vertically stacked panes (e.g., Price, RSI, MACD).
+
+- **Layout Engine**: TS-driven (`WorkspaceController`). Owns pane order, ratios, and visibility.
+- **Synchronization**: Rust-driven authoritative crosshair and time-mapping.
+- **Persistence**: Pane arrangements are saved to `localStorage` via the `persistKey` option.
+
+### Pane API
+
+Use `WorkspaceController` for layout management:
+- `registerPane(spec)`: Add a new pane (price, indicator, or custom).
+- `unregisterPane(paneId)`: Remove a pane.
+- `setPaneVisible(paneId, visible)`: Toggle visibility.
+- `setPaneRatio(paneId, ratio)`: Explicitly set height ratio (0.0 to 1.0).
+
+### Crosshair Sync Contract
+
+WASM exports `crosshair_sync_snapshot_json()` which returns:
+- `x`: Pointer x-coordinate.
+- `index`: Global candle index.
+- `timestamp`: Synced timestamp across all panes.
+- `readouts`: Array of `{ pane_id, value }` for each synchronized pane.
+
 ## Build output
 
 Source is TypeScript-only under `src/`. JavaScript should come from `dist/` via `npm run build`.
