@@ -54,6 +54,7 @@ import { initializeChartTileSourceState } from "./chartTileSourceInit.js";
 import { syncChartTileShellWidths } from "./tileWidthSync.js";
 import { buildPersistedChartTiles } from "./workspacePersistenceSnapshot.js";
 import { applyPersistedTileConfigs } from "./persistedTileConfigApply.js";
+import { closeChartTabOrTile } from "./chartTabActions.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -743,19 +744,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const chartTile = controller.getState().chartTiles[chartTileId];
     if (!chartTile) return;
     const closeTabOrTile = (tabId: string) => {
-      const currentTile = controller.getState().chartTiles[chartTileId];
-      if (!currentTile) return;
-      if (currentTile.tabs.length > 1) {
-        controller.removeChartTab(chartTileId, tabId);
-      } else {
-        const workspaceTileId = controller
-          .getState()
-          .workspaceTileOrder
-          .find((id) => controller.getState().workspaceTiles[id]?.chartTileId === chartTileId);
-        if (workspaceTileId) {
-          controller.removeWorkspaceTile(workspaceTileId);
-        }
-      }
+      if (!closeChartTabOrTile(controller, chartTileId, tabId)) return;
       draw();
     };
     for (const tab of chartTile.tabs) {
