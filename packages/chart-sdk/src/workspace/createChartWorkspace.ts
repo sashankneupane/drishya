@@ -53,6 +53,7 @@ import { createChartFacade } from "./chartFacade.js";
 import { createPersistenceScheduler } from "./persistenceScheduler.js";
 import { addChartTabForSymbol, addChartTabWithInheritedSource } from "./chartTabCreation.js";
 import { removeWorkspaceTileByChartTileId } from "./chartTileRemoval.js";
+import { toggleChartTileObjectTree } from "./objectTreeToggle.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -875,8 +876,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     treeBtn.title = "Object Tree";
     treeBtn.appendChild(makeSvgIcon("panels", "h-3.5 w-3.5"));
     treeBtn.onclick = () => {
-      const open = chartTileTreeOpen.get(chartTileId) === true;
-      chartTileTreeOpen.set(chartTileId, !open);
+      toggleChartTileObjectTree(chartTileTreeOpen, chartTileId);
       renderWorkspaceTiles();
       setupCanvasBackingStore();
       draw();
