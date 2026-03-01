@@ -51,6 +51,7 @@ import { createTileObjectTreeHandle } from "./objectTreeHandleFactory.js";
 import { getActiveTab } from "./chartTileSelection.js";
 import { getActiveChartForTileFromState, getChartsForTileFromState } from "./runtimeSelection.js";
 import { applyIndicatorsToTileCharts } from "./indicatorTileSync.js";
+import { initializeChartTileSourceState } from "./chartTileSourceInit.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -461,21 +462,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }) as DrishyaChartClient;
 
   const initializeChartTileSource = async (chartTileId: string) => {
-    const tile = controller.getState().chartTiles[chartTileId];
-    const activeTab = getActiveTab(tile);
-    const paneId = activeTab?.chartPaneId;
-    const symbol =
-      options.marketControls?.selectedSymbol ??
-      options.marketControls?.symbols?.[0];
-    const timeframe =
-      options.marketControls?.selectedTimeframe ??
-      options.marketControls?.timeframes?.[0];
-    if (activeTab && symbol) {
-      controller.setChartTabTitle(chartTileId, activeTab.id, symbol);
-    }
-    if (paneId && (symbol || timeframe)) {
-      controller.setChartPaneSource(paneId, { symbol, timeframe });
-    }
+    const { paneId, symbol, timeframe } = initializeChartTileSourceState({
+      chartTileId,
+      controller,
+      marketControls: options.marketControls,
+    });
     if (paneId && symbol) {
       await options.marketControls?.onChartPaneSourceChange?.(paneId, { symbol, timeframe });
       await options.marketControls?.onSymbolChange?.(symbol);
