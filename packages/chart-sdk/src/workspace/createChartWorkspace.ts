@@ -47,6 +47,7 @@ import { WorkspaceController } from "./WorkspaceController.js";
 import { syncChartPaneContracts } from "./paneContracts.js";
 import { reconcilePaneSpecsForRuntime } from "./paneSpecReconcile.js";
 import { createTileObjectTreeHandle } from "./objectTreeHandleFactory.js";
+import { getActiveTab } from "./chartTileSelection.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -249,7 +250,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const getActiveChartForTile = (chartTileId: string): DrishyaChartClient | null => {
     const tile = controller.getState().chartTiles[chartTileId];
-    const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+    const activeTab = getActiveTab(tile);
     if (!activeTab) return null;
     return getRuntime(activeTab.chartPaneId)?.chart ?? null;
   };
@@ -313,7 +314,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             const activeTileId = saved.activeChartTileId;
             if (activeTileId && persistedChartTiles[activeTileId]) {
               const tile = persistedChartTiles[activeTileId];
-              const activeTab = tile.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile.tabs[0];
+              const activeTab = getActiveTab(tile);
               if (activeTab?.chartPaneId) return activeTab.chartPaneId;
             }
             const firstTile = Object.values(persistedChartTiles)[0];
@@ -473,7 +474,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const initializeChartTileSource = async (chartTileId: string) => {
     const tile = controller.getState().chartTiles[chartTileId];
-    const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+    const activeTab = getActiveTab(tile);
     const paneId = activeTab?.chartPaneId;
     const symbol =
       options.marketControls?.selectedSymbol ??
@@ -900,7 +901,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const actions = document.createElement("div");
     actions.className = "ml-auto h-7 flex items-center gap-0.5";
     actions.dataset.noTileDrag = "1";
-    const activeTab = chartTile.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? chartTile.tabs[0];
+    const activeTab = getActiveTab(chartTile);
     const activePaneId = activeTab?.chartPaneId ?? null;
     const activeSource = activePaneId ? (controller.getState().chartPaneSources[activePaneId] ?? {}) : {};
     const activeRuntime = activePaneId ? getRuntime(activePaneId) : null;
@@ -1258,7 +1259,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         }
         tileBody.appendChild(contentRow);
         const chartTile = state.chartTiles[tile.chartTileId];
-        const activeTab = chartTile?.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? chartTile?.tabs[0];
+        const activeTab = getActiveTab(chartTile);
         if (activeTab) {
           paneHostByPaneId.set(activeTab.chartPaneId, stageHost);
           const runtime = getRuntime(activeTab.chartPaneId);
