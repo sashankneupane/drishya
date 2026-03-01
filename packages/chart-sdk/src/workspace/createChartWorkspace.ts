@@ -1,9 +1,11 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { ChartAppearanceConfig } from "../wasm/contracts.js";
+import type { ChartAppearanceConfig, SeriesStyleOverride } from "../wasm/contracts.js";
+import type { Candle } from "../wasm/contracts.js";
 import type { LayoutRect } from "../layout/splitTree.js";
 import { DrishyaChartClient } from "../wasm/client.js";
 import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "./constants.js";
 import { createDrawingConfigPanel } from "./components/DrawingConfigPanel.js";
+import { createConfigModal } from "./ConfigModal.js";
 import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { computeIndicatorRectsForChartPane } from "./layout/index.js";
@@ -11,9 +13,36 @@ import { createObjectTreePanel } from "./objectTreePanel.js";
 import { makeSvgIcon } from "./icons.js";
 import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import { createIndicatorModal } from "./IndicatorModal.js";
+import { createIndicatorConfigModal } from "./IndicatorConfigModal.js";
+import {
+  applyIndicatorParams,
+  applyIndicatorSetToChart,
+  defaultIndicatorParams,
+  defaultIndicatorToken,
+  findTokenParamsForSeriesId,
+} from "./indicatorRuntime.js";
+import { canonicalRuntimePaneId } from "./paneSpec.js";
 import { createTopStrip } from "./topStrip.js";
+import {
+  canonicalIndicatorId,
+  decodeIndicatorToken,
+  encodeIndicatorToken,
+  isSameIndicatorInstance,
+  isSeriesInIndicatorFamily,
+  normalizeIndicatorIds,
+  parseIndicatorParamsFromSeriesId,
+} from "./indicatorIdentity.js";
+import {
+  buildChartLayoutTree,
+  deriveChartPanesFromPersistedTiles,
+  normalizePersistedChartTileConfig,
+  normalizePersistedChartTiles,
+  type PersistedChartTileConfig,
+  type PersistedChartTileStoredShape,
+} from "./persistenceHelpers.js";
 import { ReplayController } from "./replay/ReplayController.js";
 import type { ChartPaneRuntime } from "./runtimeTypes.js";
+import { createWorkspaceIntentController } from "./workspaceIntentController.js";
 import { WorkspaceController } from "./WorkspaceController.js";
 import type {
   ChartWorkspaceHandle,
@@ -28,29 +57,17 @@ const WORKSPACE_STYLE_LINK_ID = "drishya-workspace-styles";
 interface PersistedWorkspaceState {
   theme?: "dark" | "light";
   appearance?: ChartAppearanceConfig;
-  paneState?: string | null;
-  paneStates?: Record<string, string | null>;
   candleStyle?: string;
-  activeTool?: string;
   cursorMode?: string;
   isObjectTreeOpen?: boolean;
   objectTreeWidth?: number;
   isLeftStripOpen?: boolean;
   priceAxisMode?: "linear" | "log" | "percent";
-  paneLayout?: WorkspacePaneLayoutState;
-  chartPanes?: Record<string, WorkspaceChartPaneSpec>;
-  chartLayoutTree?: WorkspaceChartSplitNode;
-  activeChartPaneId?: string;
-  chartPaneSources?: Record<string, { symbol?: string; timeframe?: string }>;
   workspaceTiles?: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
   workspaceTileOrder?: string[];
-  chartTiles?: Record<string, { id: string; tabs: Array<{ id: string; title: string; chartPaneId: string }>; activeTabId: string }>;
+  chartTiles?: Record<string, PersistedChartTileStoredShape>;
   activeChartTileId?: string;
-  chartTileTreeOpen?: Record<string, boolean>;
-  paneStateByChartTile?: Record<string, string | null>;
-  indicators?: string[];
-  indicatorsByPane?: Record<string, string[]>;
-  indicatorsByChartTile?: Record<string, string[]>;
+  paneLayout?: WorkspacePaneLayoutState;
 }
 
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
@@ -75,10 +92,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
   let restoredObjectTreeWidth: number | null = null;
   let restoredPaneStatesByPane: Record<string, string | null> = {};
-  let restoredPaneStateByChartTile: Record<string, string | null> = {};
-  let restoredIndicatorsByPane: Record<string, string[]> = {};
-  let restoredIndicatorsByChartTile: Record<string, string[]> = {};
+  let restoredIndicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>> = {};
   const chartTileIndicatorState = new Map<string, string[]>();
+  const latestCandlesByPane = new Map<string, { latest: Candle; prevClose: number | null }>();
   const chartTileTreeOpen = new Map<string, boolean>();
 
   // root element fills host completely and hides any overflow
@@ -135,6 +151,44 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   // WASM Chart setup - NOW canvas is in DOM
   const primaryRawChart = createWasmChart(canvasId, 300, 300);
   const primaryChart = new DrishyaChartClient(primaryRawChart);
+  const primarySetCandles = primaryChart.setCandles.bind(primaryChart);
+  const primarySnapshotIndicatorIds = () => {
+    const indicators = primaryChart.readoutSnapshot()?.indicators ?? [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const item of indicators) {
+      const id = canonicalIndicatorId(item.id.split(":")[0] ?? "");
+      if (!id) continue;
+      const token = encodeIndicatorToken(id, parseIndicatorParamsFromSeriesId(id, item.id));
+      if (!seen.has(token)) {
+        seen.add(token);
+        out.push(token);
+      }
+    }
+    return out;
+  };
+  primaryChart.setCandles = (candles: Candle[]) => {
+    const beforeIndicatorIds = primarySnapshotIndicatorIds();
+    primarySetCandles(candles);
+    if (!candles.length) {
+      latestCandlesByPane.delete("price");
+      return;
+    }
+    latestCandlesByPane.set("price", {
+      latest: candles[candles.length - 1],
+      prevClose: candles.length > 1 ? candles[candles.length - 2].close : null
+    });
+    const afterIndicatorIds = primarySnapshotIndicatorIds();
+    if (beforeIndicatorIds.length && afterIndicatorIds.length === 0) {
+      applyIndicatorSetToChart(primaryChart, beforeIndicatorIds);
+    }
+  };
+  const primaryAppendCandle = primaryChart.appendCandle.bind(primaryChart);
+  primaryChart.appendCandle = (candle: Candle) => {
+    const prevClose = latestCandlesByPane.get("price")?.latest.close ?? null;
+    primaryAppendCandle(candle);
+    latestCandlesByPane.set("price", { latest: candle, prevClose });
+  };
   const chartRuntimes = new Map<string, ChartPaneRuntime>();
   const replay = new ReplayController(primaryChart);
   controller.setReplayController(replay);
@@ -179,66 +233,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
   applyAppearance(DEFAULT_APPEARANCE_CONFIG);
 
-  const applyBuiltInIndicator = (targetChart: DrishyaChartClient, id: string) => {
-    switch (id) {
-      case "sma":
-        targetChart.addSmaOverlay(20);
-        return;
-      case "ema":
-        targetChart.addEmaOverlay(20);
-        return;
-      case "bb":
-        targetChart.addBbandsOverlay(20, 2.0);
-        return;
-      case "rsi":
-        targetChart.addRsiPaneIndicator(14);
-        return;
-      case "macd":
-        targetChart.addMacdPaneIndicator(12, 26, 9);
-        return;
-      case "atr":
-        targetChart.addAtrPaneIndicator(14);
-        return;
-      case "stoch":
-        targetChart.addStochasticPaneIndicator(14, 3, 3);
-        return;
-      case "obv":
-        targetChart.addObvPaneIndicator();
-        return;
-      case "vwap":
-        targetChart.addVwapOverlay();
-        return;
-      case "adx":
-        targetChart.addAdxPaneIndicator(14);
-        return;
-      case "mom":
-        targetChart.addMomentumHistogramOverlay();
-        return;
-      default:
-        return;
-    }
-  };
-
-  const normalizeIndicatorIds = (ids: readonly string[]): string[] => {
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const id of ids) {
-      if (typeof id !== "string") continue;
-      const trimmed = id.trim();
-      if (!trimmed || seen.has(trimmed)) continue;
-      seen.add(trimmed);
-      out.push(trimmed);
-    }
-    return out;
-  };
-
-  const applyIndicatorSetToChart = (targetChart: DrishyaChartClient, indicatorIds: readonly string[]) => {
-    targetChart.clearIndicatorOverlays();
-    for (const id of indicatorIds) {
-      applyBuiltInIndicator(targetChart, id);
-    }
-  };
-
   const applyIndicatorSetToTile = (chartTileId: string) => {
     const ids = chartTileIndicatorState.get(chartTileId) ?? [];
     const chartTile = controller.getState().chartTiles[chartTileId];
@@ -248,6 +242,33 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       applyIndicatorSetToChart(runtime.chart, ids);
     }
   };
+
+  const getActiveChartForTile = (chartTileId: string): DrishyaChartClient | null => {
+    const tile = controller.getState().chartTiles[chartTileId];
+    const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+    if (!activeTab) return null;
+    return getRuntime(activeTab.chartPaneId)?.chart ?? null;
+  };
+
+  const getChartsForTile = (chartTileId: string): DrishyaChartClient[] => {
+    const tile = controller.getState().chartTiles[chartTileId];
+    if (!tile) return [];
+    const out: DrishyaChartClient[] = [];
+    for (const tab of tile.tabs) {
+      const runtime = getRuntime(tab.chartPaneId);
+      if (runtime) out.push(runtime.chart);
+    }
+    return out;
+  };
+
+  const workspaceIntents = createWorkspaceIntentController({
+    controller,
+    chartTileIndicatorState,
+    getChartForTile: getActiveChartForTile,
+    getChartsForTile,
+    applyIndicatorSetToTile,
+    savePersistedState: () => savePersistedStateImmediate(),
+  });
 
   // Restore persisted state before building UI
   if (persistKey && typeof localStorage !== "undefined") {
@@ -277,46 +298,77 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         if (saved.paneLayout) {
           controller.loadPaneLayout(saved.paneLayout);
         }
-        if (saved.chartPanes && saved.chartLayoutTree) {
+        const persistedChartTiles = normalizePersistedChartTiles(saved.chartTiles);
+        if (
+          saved.workspaceTiles &&
+          saved.workspaceTileOrder &&
+          Object.keys(persistedChartTiles).length > 0
+        ) {
+          const derivedChartPanes = deriveChartPanesFromPersistedTiles(persistedChartTiles);
+          const derivedActivePaneId = (() => {
+            const activeTileId = saved.activeChartTileId;
+            if (activeTileId && persistedChartTiles[activeTileId]) {
+              const tile = persistedChartTiles[activeTileId];
+              const activeTab = tile.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile.tabs[0];
+              if (activeTab?.chartPaneId) return activeTab.chartPaneId;
+            }
+            const firstTile = Object.values(persistedChartTiles)[0];
+            const firstTab = firstTile?.tabs?.[0];
+            return firstTab?.chartPaneId ?? "price";
+          })();
           controller.loadChartLayout(
-            saved.chartPanes,
-            saved.chartLayoutTree,
-            saved.activeChartPaneId ?? undefined
+            derivedChartPanes,
+            buildChartLayoutTree(Object.keys(derivedChartPanes)),
+            derivedActivePaneId
           );
-        } else if (saved.activeChartPaneId) {
-          controller.setActiveChartPane(saved.activeChartPaneId);
-        }
-        if (saved.chartPaneSources) {
-          for (const [paneId, source] of Object.entries(saved.chartPaneSources)) {
-            controller.setChartPaneSource(paneId, source ?? {});
-          }
-        }
-        if (saved.workspaceTiles && saved.workspaceTileOrder && saved.chartTiles) {
+          const runtimeChartTiles = Object.fromEntries(
+            Object.entries(persistedChartTiles).map(([id, tile]) => [
+              id,
+              {
+                id: tile.id,
+                tabs: tile.tabs,
+                activeTabId: tile.activeTabId,
+              },
+            ])
+          );
           controller.loadWorkspaceTiles?.(
             saved.workspaceTiles as any,
             saved.workspaceTileOrder,
-            saved.chartTiles as any,
+            runtimeChartTiles as any,
             saved.activeChartTileId
           );
         }
-        if (saved.chartTileTreeOpen) {
-          for (const [tileId, open] of Object.entries(saved.chartTileTreeOpen)) {
-            chartTileTreeOpen.set(tileId, !!open);
+        for (const [chartTileId, tile] of Object.entries(persistedChartTiles)) {
+          const tileCfg = normalizePersistedChartTileConfig(tile.config);
+          chartTileTreeOpen.set(chartTileId, tileCfg.treeOpen === true);
+          chartTileIndicatorState.set(chartTileId, tileCfg.indicators ?? []);
+          for (const [paneId, source] of Object.entries(tileCfg.paneSourcesByPane ?? {})) {
+            controller.setChartPaneSource(paneId, {
+              symbol: source?.symbol,
+              timeframe:
+                source?.timeframe ??
+                options.marketControls?.selectedTimeframe ??
+                options.marketControls?.timeframes?.[0],
+            });
+          }
+          for (const [paneId, paneState] of Object.entries(tileCfg.paneStateByPane ?? {})) {
+            restoredPaneStatesByPane[paneId] = paneState ?? null;
+          }
+          for (const [paneId, styleMap] of Object.entries(tileCfg.indicatorStyleOverridesByPane ?? {})) {
+            restoredIndicatorStyleOverridesByPane[paneId] = styleMap ?? {};
+            const runtime = chartRuntimes.get(paneId);
+            if (runtime) {
+              for (const [seriesId, style] of Object.entries(styleMap ?? {})) {
+                runtime.chart.setSeriesStyleOverride(seriesId, style);
+              }
+            }
           }
         }
+
         if (saved.appearance) applyAppearance(saved.appearance);
         const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
         if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
           getPrimaryRuntime()?.chart.setCandleStyle(validStyle);
-        }
-        restoredPaneStatesByPane = saved.paneStates ?? {};
-        restoredPaneStateByChartTile = saved.paneStateByChartTile ?? {};
-        restoredIndicatorsByChartTile = saved.indicatorsByChartTile ?? {};
-        for (const [chartTileId, ids] of Object.entries(restoredIndicatorsByChartTile)) {
-          chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds(Array.isArray(ids) ? ids : []));
-        }
-        if (!Object.keys(restoredPaneStatesByPane).length && saved.paneState !== undefined) {
-          restoredPaneStatesByPane.price = saved.paneState;
         }
       }
     } catch {
@@ -324,64 +376,82 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   }
 
-  const savePersistedState = (() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const DEBOUNCE_MS = 400;
-    return () => {
-      if (!persistKey || typeof localStorage === "undefined") return;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = null;
-        try {
-          const paneStates: Record<string, string | null> = {};
-          const paneStateByChartTile: Record<string, string | null> = {};
-          const indicatorsByPane: Record<string, string[]> = {};
-          const indicatorsByChartTile: Record<string, string[]> = {};
-          for (const [paneId, runtime] of chartRuntimes) {
-            paneStates[paneId] = runtime.chart.getPaneStateJson();
-            indicatorsByPane[paneId] = [];
-          }
-          for (const [chartTileId, chartTile] of Object.entries(controller.getState().chartTiles)) {
-            const activeTab = chartTile.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? null;
-            const orderedTabs = activeTab ? [activeTab, ...chartTile.tabs.filter((tab) => tab.id !== activeTab.id)] : chartTile.tabs;
-            const runtime = orderedTabs.map((tab) => chartRuntimes.get(tab.chartPaneId)).find((value): value is ChartPaneRuntime => !!value) ?? null;
-            if (runtime) {
-              paneStateByChartTile[chartTileId] = runtime.chart.getPaneStateJson();
-            }
-            indicatorsByChartTile[chartTileId] = normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? []);
-          }
-          const state: PersistedWorkspaceState = {
-            theme: controller.getState().theme,
-            // Do not persist activeTool for the demo app; always restore as "select"
-            cursorMode: controller.getState().cursorMode,
-            isObjectTreeOpen: controller.getState().isObjectTreeOpen,
-            objectTreeWidth,
-            isLeftStripOpen: controller.getState().isLeftStripOpen,
-            priceAxisMode: controller.getState().priceAxisMode,
-            candleStyle: getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle(),
-            appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? undefined,
-            paneLayout: controller.getState().paneLayout,
-            chartPanes: controller.getState().chartPanes,
-            chartLayoutTree: controller.getState().chartLayoutTree,
-            activeChartPaneId: controller.getState().activeChartPaneId,
-            chartPaneSources: controller.getState().chartPaneSources,
-            workspaceTiles: controller.getState().workspaceTiles,
-            workspaceTileOrder: controller.getState().workspaceTileOrder,
-            chartTiles: controller.getState().chartTiles,
-            activeChartTileId: controller.getState().activeChartTileId,
-            chartTileTreeOpen: Object.fromEntries(chartTileTreeOpen.entries()),
-            paneStateByChartTile,
-            paneStates,
-            indicatorsByPane,
-            indicatorsByChartTile
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  const DEBOUNCE_PERSIST_MS = 400;
+  const persistNow = () => {
+    if (!persistKey || typeof localStorage === "undefined") return;
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    try {
+      const persistedChartTiles: Record<string, PersistedChartTileStoredShape> = {};
+      for (const [chartTileId, chartTile] of Object.entries(controller.getState().chartTiles)) {
+        const activeTab = chartTile.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? null;
+        const orderedTabs = activeTab ? [activeTab, ...chartTile.tabs.filter((tab) => tab.id !== activeTab.id)] : chartTile.tabs;
+        const runtime = orderedTabs.map((tab) => chartRuntimes.get(tab.chartPaneId)).find((value): value is ChartPaneRuntime => !!value) ?? null;
+        const tilePaneState = runtime?.chart.getPaneStateJson() ?? null;
+        const tileIndicators = normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? []);
+        const paneSourcesByPane: Record<string, { symbol?: string; timeframe?: string }> = {};
+        const paneStateByPane: Record<string, string | null> = {};
+        const indicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>> = {};
+        for (const tab of chartTile.tabs) {
+          const src = controller.getState().chartPaneSources[tab.chartPaneId] ?? {};
+          paneSourcesByPane[tab.chartPaneId] = {
+            symbol: src.symbol ?? tab.title,
+            timeframe:
+              src.timeframe ??
+              options.marketControls?.selectedTimeframe ??
+              options.marketControls?.timeframes?.[0],
           };
-          localStorage.setItem(persistKey, JSON.stringify(state));
-        } catch {
-          // ignore quota or parse errors
+          paneStateByPane[tab.chartPaneId] = chartRuntimes.get(tab.chartPaneId)?.chart.getPaneStateJson() ?? tilePaneState;
+          indicatorStyleOverridesByPane[tab.chartPaneId] =
+            chartRuntimes.get(tab.chartPaneId)?.chart.allSeriesStyleOverrides() ?? {};
         }
-      }, DEBOUNCE_MS);
-    };
-  })();
+        persistedChartTiles[chartTileId] = {
+          id: chartTile.id,
+          tabs: chartTile.tabs.map((tab) => ({ id: tab.id, title: tab.title, chartPaneId: tab.chartPaneId })),
+          activeTabId: chartTile.activeTabId,
+          config: {
+            paneSourcesByPane,
+            paneStateByPane,
+            indicators: tileIndicators,
+            indicatorStyleOverridesByPane,
+            treeOpen: chartTileTreeOpen.get(chartTileId) === true
+          }
+        };
+      }
+      const state: PersistedWorkspaceState = {
+        theme: controller.getState().theme,
+        cursorMode: controller.getState().cursorMode,
+        isObjectTreeOpen: controller.getState().isObjectTreeOpen,
+        objectTreeWidth,
+        isLeftStripOpen: controller.getState().isLeftStripOpen,
+        priceAxisMode: controller.getState().priceAxisMode,
+        candleStyle: getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle(),
+        appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? undefined,
+        workspaceTiles: controller.getState().workspaceTiles,
+        workspaceTileOrder: controller.getState().workspaceTileOrder,
+        chartTiles: persistedChartTiles,
+        activeChartTileId: controller.getState().activeChartTileId,
+        paneLayout: controller.getState().paneLayout,
+      };
+      localStorage.setItem(persistKey, JSON.stringify(state));
+    } catch {
+      // ignore quota or parse errors
+    }
+  };
+  const savePersistedState = () => {
+    if (!persistKey || typeof localStorage === "undefined") return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      persistNow();
+    }, DEBOUNCE_PERSIST_MS);
+  };
+  const savePersistedStateImmediate = () => {
+    persistNow();
+  };
 
   // top control strip
   const chartFacade = new Proxy({} as DrishyaChartClient, {
@@ -476,6 +546,28 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     tools: WORKSPACE_DRAW_TOOLS,
     controller,
     drawingToolsEnabled: typeof getPrimaryRuntime()?.rawChart.set_drawing_tool_mode === "function",
+    onAddChartTile: async () => {
+      const chartTileId = controller.addChartTile();
+      await initializeChartTileSource(chartTileId);
+      draw();
+    },
+    onOpenSettings: () => {
+      const current = getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? {
+        background: "#030712",
+        candle_up: "#22c55e",
+        candle_down: "#ef4444"
+      };
+      createConfigModal({
+        initialConfig: current,
+        initialCandleStyle: (getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle() ?? "solid") as "solid" | "hollow" | "bars" | "volume",
+        onApply: (cfg, candleStyle) => {
+          applyAppearanceConfig(cfg);
+          getActiveRuntime()?.chart.setCandleStyle(candleStyle);
+          draw();
+        },
+        onClose: () => { }
+      });
+    },
     onClear: () => {
       clearDrawings();
       draw();
@@ -483,6 +575,145 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   });
 
   const treeHandleByChartTileId = new Map<string, ReturnType<typeof createObjectTreePanel>>();
+  const openIndicatorConfig = (target: { paneId?: string; seriesId?: string; indicatorId?: string }, chartHint?: DrishyaChartClient | null) => {
+    const chart = chartHint ?? getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart ?? null;
+    if (!chart) return;
+    const runtime = [...chartRuntimes.values()].find((entry) => entry.chart === chart) ?? null;
+    const snapshot = chart.readoutSnapshot();
+    const rawIndicatorId =
+      target.indicatorId ??
+      (target.seriesId ? target.seriesId.split(":")[0] : undefined) ??
+      snapshot?.indicators.find((item) => item.pane_id === target.paneId)?.id.split(":")[0];
+    const indicatorId = canonicalIndicatorId(rawIndicatorId ?? "");
+    if (!indicatorId) return;
+    const catalog = chart.indicatorCatalog();
+    const catalogEntry =
+      catalog.find((item) => canonicalIndicatorId(item.id) === indicatorId) ??
+      catalog.find((item) => item.id === indicatorId) ??
+      null;
+    const indicatorName =
+      snapshot?.indicators.find((item) => canonicalIndicatorId(item.id.split(":")[0]) === indicatorId)?.name ??
+      catalogEntry?.display_name ??
+      indicatorId.toUpperCase();
+    const initialTokenParams = findTokenParamsForSeriesId(
+      chartTileIndicatorState,
+      runtime?.chartTileId,
+      indicatorId,
+      target.seriesId
+    );
+    createIndicatorConfigModal({
+      indicatorId,
+      indicatorName,
+      indicatorCatalogEntry: catalogEntry,
+      initialParams: {
+        ...(defaultIndicatorParams(chart, indicatorId) as Record<string, unknown>),
+        ...(initialTokenParams as Record<string, unknown>),
+      } as Record<string, string | number | boolean>,
+      onApplyParams: (params) => {
+        const targetInstanceParams =
+          (initialTokenParams as Record<string, unknown>)?.__instance != null
+            ? { __instance: (initialTokenParams as Record<string, unknown>).__instance }
+            : parseIndicatorParamsFromSeriesId(indicatorId, target.seriesId);
+        const nextWithInstance = {
+          ...params,
+          ...(typeof targetInstanceParams.__instance === "string" ? { __instance: targetInstanceParams.__instance } : {}),
+        };
+        const applyTargets = new Set<DrishyaChartClient>();
+        if (runtime?.chartTileId) {
+          const tile = controller.getState().chartTiles[runtime.chartTileId];
+          for (const tab of tile?.tabs ?? []) {
+            const tabRuntime = getRuntime(tab.chartPaneId);
+            if (tabRuntime?.chart) applyTargets.add(tabRuntime.chart);
+          }
+        }
+        if (!applyTargets.size) applyTargets.add(chart);
+        let anyApplied = false;
+        for (const targetChart of applyTargets) {
+          anyApplied = applyIndicatorParams(targetChart, indicatorId, nextWithInstance, target.seriesId) || anyApplied;
+        }
+        if (anyApplied) {
+          if (runtime?.chartTileId) {
+            const current = chartTileIndicatorState.get(runtime.chartTileId) ?? [];
+            const targetParams = parseIndicatorParamsFromSeriesId(indicatorId, target.seriesId);
+            let replaced = false;
+            const next = current.map((token) => {
+              if (replaced) return token;
+              const decoded = decodeIndicatorToken(token);
+              if (decoded.indicatorId !== canonicalIndicatorId(indicatorId)) return token;
+              if (
+                typeof targetInstanceParams.__instance === "string" &&
+                typeof decoded.params?.__instance === "string"
+              ) {
+                if (decoded.params.__instance !== targetInstanceParams.__instance) return token;
+                replaced = true;
+                return encodeIndicatorToken(indicatorId, nextWithInstance as Record<string, unknown>);
+              }
+              if (JSON.stringify(decoded.params ?? {}) !== JSON.stringify(targetParams ?? {})) return token;
+              replaced = true;
+              return encodeIndicatorToken(indicatorId, nextWithInstance as Record<string, unknown>);
+            });
+            if (!replaced) {
+              next.push(encodeIndicatorToken(indicatorId, nextWithInstance as Record<string, unknown>));
+            }
+            chartTileIndicatorState.set(runtime.chartTileId, normalizeIndicatorIds(next));
+          }
+          savePersistedStateImmediate();
+          draw();
+        }
+      },
+      styleSeries: chart
+        .seriesStyleSnapshot()
+        .filter((item) => {
+          if (!target.seriesId) return isSeriesInIndicatorFamily(indicatorId, item.series_id);
+          return isSameIndicatorInstance(indicatorId, target.seriesId, item.series_id);
+        }),
+      onApplySeriesStyle: (seriesId, style) => {
+        const applyTargets = new Set<DrishyaChartClient>();
+        if (runtime?.chartTileId) {
+          const tile = controller.getState().chartTiles[runtime.chartTileId];
+          for (const tab of tile?.tabs ?? []) {
+            const tabRuntime = getRuntime(tab.chartPaneId);
+            if (tabRuntime?.chart) applyTargets.add(tabRuntime.chart);
+          }
+        }
+        if (!applyTargets.size) applyTargets.add(chart);
+        for (const targetChart of applyTargets) {
+          targetChart.setSeriesStyleOverride(seriesId, style);
+        }
+        savePersistedStateImmediate();
+        draw();
+      },
+      onResetSeriesStyle: (seriesId) => {
+        const applyTargets = new Set<DrishyaChartClient>();
+        if (runtime?.chartTileId) {
+          const tile = controller.getState().chartTiles[runtime.chartTileId];
+          for (const tab of tile?.tabs ?? []) {
+            const tabRuntime = getRuntime(tab.chartPaneId);
+            if (tabRuntime?.chart) applyTargets.add(tabRuntime.chart);
+          }
+        }
+        if (!applyTargets.size) applyTargets.add(chart);
+        for (const targetChart of applyTargets) {
+          targetChart.clearSeriesStyleOverride(seriesId);
+        }
+        savePersistedStateImmediate();
+        draw();
+      },
+      onClose: () => draw()
+    });
+  };
+
+  const openDrawingConfig = (drawingId: number, chartHint?: DrishyaChartClient | null) => {
+    const chart = chartHint ?? getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart ?? null;
+    if (!chart) return;
+    if (!chart.selectDrawingById(drawingId)) return;
+    const runtime = [...chartRuntimes.values()].find((entry) => entry.chart === chart) ?? null;
+    if (runtime && controller.getState().activeChartPaneId !== runtime.paneId) {
+      controller.setActiveChartPane(runtime.paneId);
+    }
+    draw();
+  };
+
   const ensureTreeHandleForTile = (chartTileId: string) => {
     const existing = treeHandleByChartTileId.get(chartTileId);
     if (existing) return existing;
@@ -510,6 +741,42 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         });
         await options.marketControls?.onSymbolChange?.(symbol);
         draw();
+      },
+      onIndicatorConfig: (target) => {
+        const tile = controller.getState().chartTiles[chartTileId];
+        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
+        openIndicatorConfig(target, chart);
+      },
+      onDrawingConfig: ({ drawingId }) => {
+        const tile = controller.getState().chartTiles[chartTileId];
+        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
+        openDrawingConfig(drawingId, chart);
+      },
+      onToggleVisibility: ({ kind, id, visible }) => {
+        const tile = controller.getState().chartTiles[chartTileId];
+        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
+        if (!chart) return;
+        workspaceIntents.toggleVisibility(chart, kind, id, visible);
+      },
+      onToggleLock: ({ kind, id, locked }) => {
+        const tile = controller.getState().chartTiles[chartTileId];
+        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
+        if (!chart) return;
+        workspaceIntents.toggleLock(chart, kind, id, locked);
+      },
+      onDelete: ({ kind, id, paneKind }) => {
+        const tile = controller.getState().chartTiles[chartTileId];
+        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
+        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
+        if (!chart) return;
+        workspaceIntents.deleteNodeInTile(chartTileId, chart, kind, id, paneKind);
+      },
+      onMovePane: ({ paneId, direction }) => {
+        workspaceIntents.movePaneInTile(chartTileId, paneId, direction);
       },
       onMutate: () => draw()
     });
@@ -577,6 +844,22 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     };
     const chartTile = controller.getState().chartTiles[chartTileId];
     if (!chartTile) return;
+    const closeTabOrTile = (tabId: string) => {
+      const currentTile = controller.getState().chartTiles[chartTileId];
+      if (!currentTile) return;
+      if (currentTile.tabs.length > 1) {
+        controller.removeChartTab(chartTileId, tabId);
+      } else {
+        const workspaceTileId = controller
+          .getState()
+          .workspaceTileOrder
+          .find((id) => controller.getState().workspaceTiles[id]?.chartTileId === chartTileId);
+        if (workspaceTileId) {
+          controller.removeWorkspaceTile(workspaceTileId);
+        }
+      }
+      draw();
+    };
     for (const tab of chartTile.tabs) {
       const tabBtn = document.createElement("button");
       const active = tab.id === chartTile.activeTabId;
@@ -589,19 +872,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const tabSource = controller.getState().chartPaneSources[tab.chartPaneId];
       tabLabel.textContent = tabSource?.symbol || tab.title;
       tabBtn.appendChild(tabLabel);
-      if (chartTile.tabs.length > 1) {
-        const closeInline = document.createElement("span");
-        closeInline.textContent = "x";
-        closeInline.className = "ml-2 text-zinc-600 hover:text-zinc-100 cursor-pointer";
-        closeInline.dataset.noTileDrag = "1";
-        closeInline.draggable = false;
-        closeInline.onpointerdown = (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          controller.removeChartTab(chartTileId, tab.id);
-        };
-        tabBtn.appendChild(closeInline);
-      }
+      const closeInline = document.createElement("button");
+      closeInline.type = "button";
+      closeInline.className = "ml-2 h-4 w-4 inline-flex items-center justify-center text-zinc-600 hover:text-zinc-100 border-none bg-transparent cursor-pointer";
+      closeInline.title = chartTile.tabs.length > 1 ? "Close tab" : "Close chart tile";
+      closeInline.dataset.noTileDrag = "1";
+      closeInline.draggable = false;
+      closeInline.appendChild(makeSvgIcon("close", "h-3 w-3"));
+      closeInline.onpointerdown = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      closeInline.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeTabOrTile(tab.id);
+      };
+      tabBtn.appendChild(closeInline);
       tabBtn.ondragstart = (event) => {
         event.dataTransfer?.setData(
           "application/x-drishya-tab",
@@ -630,11 +917,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           // ignore malformed payload
         }
       };
-      tabBtn.onclick = () => controller.setActiveChartTab(chartTileId, tab.id);
+      tabBtn.onclick = () => {
+        controller.setActiveChartTab(chartTileId, tab.id);
+        applyIndicatorSetToTile(chartTileId);
+      };
       tabStrip.appendChild(tabBtn);
     }
     const actions = document.createElement("div");
-    actions.className = "ml-auto flex items-center";
+    actions.className = "ml-auto h-7 flex items-center gap-0.5";
     actions.dataset.noTileDrag = "1";
     const activeTab = chartTile.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? chartTile.tabs[0];
     const activePaneId = activeTab?.chartPaneId ?? null;
@@ -644,7 +934,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const mkHeaderBtn = (label: string) => {
       const btn = document.createElement("button");
       btn.dataset.noTileDrag = "1";
-      btn.className = "h-7 px-2 rounded-none text-[11px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
+      btn.className = "h-7 px-2 rounded-none inline-flex items-center justify-center gap-1 leading-none text-[11px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
       btn.textContent = label;
       return btn;
     };
@@ -722,12 +1012,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           },
           onIndicatorSelected: (indicatorId) => {
             const current = chartTileIndicatorState.get(chartTileId) ?? [];
-            if (!current.includes(indicatorId)) {
-              chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds([...current, indicatorId]));
-              applyIndicatorSetToTile(chartTileId);
-              savePersistedState();
-              draw();
-            }
+            const base = canonicalIndicatorId(indicatorId);
+            const existingCount = current.filter((t) => decodeIndicatorToken(t).indicatorId === base).length;
+            const token = defaultIndicatorToken(activeRuntime.chart, base, existingCount);
+            chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds([...current, token]));
+            applyIndicatorSetToTile(chartTileId);
+            savePersistedStateImmediate();
+            draw();
           },
           onApply: () => draw(),
           onClose: () => { }
@@ -737,7 +1028,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
       const replayState = controller.getState().replay;
       const replayBtn = mkHeaderBtn("Replay");
-      replayBtn.prepend(makeSvgIcon("play", "h-3.5 w-3.5 mr-1"));
+      replayBtn.prepend(makeSvgIcon("play", "h-3.5 w-3.5"));
       replayBtn.onclick = () => controller.replay().play();
       actions.appendChild(replayBtn);
       if (replayState.playing) {
@@ -760,13 +1051,30 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
     const addBtn = document.createElement("button");
     addBtn.dataset.noTileDrag = "1";
-    addBtn.className = "h-7 w-7 rounded-none text-[13px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
+    addBtn.className = "h-7 w-7 rounded-none inline-flex items-center justify-center leading-none text-[13px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
     addBtn.textContent = "+";
     addBtn.title = "Add tab";
     addBtn.onclick = () => {
       const symbols = options.marketControls?.symbols ?? [];
       if (!symbols.length) {
-        controller.addChartTab(chartTileId);
+        const tabId = controller.addChartTab(chartTileId);
+        if (!tabId) return;
+        const nextTile = controller.getState().chartTiles[chartTileId];
+        const nextTab = nextTile?.tabs.find((candidate) => candidate.id === tabId);
+        const paneId = nextTab?.chartPaneId;
+        if (paneId) {
+          const activePaneId = controller.getState().activeChartPaneId;
+          const inherited = controller.getState().chartPaneSources[activePaneId] ?? {};
+          controller.setChartPaneSource(paneId, {
+            symbol: inherited.symbol ?? options.marketControls?.selectedSymbol,
+            timeframe:
+              inherited.timeframe ??
+              options.marketControls?.selectedTimeframe ??
+              options.marketControls?.timeframes?.[0],
+          });
+        }
+        applyIndicatorSetToTile(chartTileId);
+        draw();
         return;
       }
       createSymbolSearchModal({
@@ -779,10 +1087,17 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           const paneId = nextTab?.chartPaneId;
           if (!paneId) return;
           controller.setChartTabTitle(chartTileId, tabId, symbol);
-          controller.setChartPaneSource(paneId, { symbol });
+          const activePaneId = controller.getState().activeChartPaneId;
+          const inherited = controller.getState().chartPaneSources[activePaneId] ?? {};
+          const timeframe =
+            inherited.timeframe ??
+            options.marketControls?.selectedTimeframe ??
+            options.marketControls?.timeframes?.[0];
+          controller.setChartPaneSource(paneId, { symbol, timeframe });
+          applyIndicatorSetToTile(chartTileId);
           await options.marketControls?.onChartPaneSourceChange?.(paneId, {
             symbol,
-            timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+            timeframe
           });
           await options.marketControls?.onSymbolChange?.(symbol);
           draw();
@@ -793,8 +1108,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const treeBtn = document.createElement("button");
     treeBtn.dataset.noTileDrag = "1";
     treeBtn.className = "h-7 w-7 rounded-none text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
-    treeBtn.title = "Objects";
-    treeBtn.appendChild(makeSvgIcon("tree", "h-3.5 w-3.5"));
+    treeBtn.title = "Object Tree";
+    treeBtn.appendChild(makeSvgIcon("panels", "h-3.5 w-3.5"));
     treeBtn.onclick = () => {
       const open = chartTileTreeOpen.get(chartTileId) === true;
       chartTileTreeOpen.set(chartTileId, !open);
@@ -1036,6 +1351,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       }
     }
     syncTileWidths();
+    renderIndicatorOverlays();
   };
 
   const addChartTileAtPointer = async (clientX: number) => {
@@ -1070,6 +1386,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const chartTileTabById = new Map<string, HTMLDivElement>();
   const chartTileStageByChartTileId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
   const paneHostByPaneId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
+  const indicatorOverlayByPaneId = new Map<string, HTMLDivElement>();
 
   const createTileHeader = (label: string) => {
     const header = document.createElement("div");
@@ -1101,6 +1418,436 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     tileStage.appendChild(tileChartLayer);
     chartTileStageByChartTileId.set(chartTileId, { stage: tileStage, chartLayer: tileChartLayer });
     return { stage: tileStage, chartLayer: tileChartLayer };
+  };
+
+  const indicatorLabel = (id: string) => {
+    const labels: Record<string, string> = {
+      sma: "SMA",
+      ema: "EMA",
+      bb: "BB",
+      rsi: "RSI",
+      macd: "MACD",
+      atr: "ATR",
+      stoch: "STOCH",
+      obv: "OBV",
+      vwap: "VWAP",
+      adx: "ADX",
+      mom: "MOM",
+    };
+    return labels[id] ?? id.toUpperCase();
+  };
+  const indicatorReadoutColor = (seriesId: string) => {
+    const id = seriesId.toLowerCase();
+    if (id.startsWith("ema") || id.startsWith("sma") || id.startsWith("vwap")) return "#f59e0b";
+    if (id.startsWith("bb") || id.startsWith("bbands")) return "#a3e635";
+    if (id.startsWith("rsi")) return "#22d3ee";
+    if (id.startsWith("macd")) return "#38bdf8";
+    if (id.startsWith("atr")) return "#f97316";
+    if (id.startsWith("stoch")) return "#c084fc";
+    if (id.startsWith("obv")) return "#eab308";
+    if (id.startsWith("adx")) return "#fb7185";
+    if (id.startsWith("mom")) return "#f43f5e";
+    return "#d4d4d8";
+  };
+
+  const renderIndicatorOverlays = () => {
+    const state = controller.getState();
+    const paneToTileId = new Map<string, string>();
+    for (const [chartTileId, chartTile] of Object.entries(state.chartTiles)) {
+      for (const tab of chartTile.tabs) {
+        paneToTileId.set(tab.chartPaneId, chartTileId);
+      }
+    }
+
+    for (const [paneId, hostPane] of paneHostByPaneId) {
+      const runtime = getRuntime(paneId);
+      if (!runtime) continue;
+      const chartTileId = paneToTileId.get(paneId);
+      const indicatorTokens = chartTileId ? (chartTileIndicatorState.get(chartTileId) ?? []) : [];
+      let overlay = indicatorOverlayByPaneId.get(paneId);
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.style.position = "absolute";
+        overlay.style.left = "8px";
+        overlay.style.top = "6px";
+        overlay.style.zIndex = "30";
+        overlay.style.pointerEvents = "none";
+        overlay.style.whiteSpace = "nowrap";
+        indicatorOverlayByPaneId.set(paneId, overlay);
+      }
+      if (overlay.parentElement !== hostPane.stage) {
+        overlay.parentElement?.removeChild(overlay);
+        hostPane.stage.appendChild(overlay);
+      }
+      overlay.innerHTML = "";
+
+      const snapshot = runtime.chart.readoutSnapshot();
+      const chartRootPaneIds = new Set(
+        Object.keys(controller.getState().chartPanes).map((id) => canonicalRuntimePaneId(id))
+      );
+      const source = state.chartPaneSources[paneId] ?? state.chartPaneSources.price ?? {};
+      const symbol = source.symbol ?? options.marketControls?.selectedSymbol ?? "";
+      const timeframe = source.timeframe ?? options.marketControls?.selectedTimeframe ?? "";
+      const paneLayouts = runtime.chart.paneLayouts();
+      const paneTopById = new Map<string, number>();
+      const paneWidthById = new Map<string, number>();
+      const orderedPaneIds = paneLayouts.map((pane) => canonicalRuntimePaneId(pane.id));
+      for (const pane of paneLayouts) {
+        const canonicalPaneId = canonicalRuntimePaneId(pane.id);
+        paneTopById.set(canonicalPaneId, pane.y);
+        paneWidthById.set(canonicalPaneId, pane.w);
+      }
+      const paneOffsets = new Map<string, number>();
+      const rowHeight = 24;
+      const mkOverlayIconBtn = (
+        icon: "eye" | "eye-off" | "settings" | "trash" | "chevron-up" | "chevron-down",
+        title: string,
+        onClick: () => void,
+        disabled = false
+      ) => {
+        const btn = document.createElement("button");
+        btn.style.height = "20px";
+        btn.style.width = "20px";
+        btn.style.display = "inline-flex";
+        btn.style.alignItems = "center";
+        btn.style.justifyContent = "center";
+        btn.style.color = disabled ? "#71717a" : "#e4e4e7";
+        btn.style.border = "1px solid rgba(113,113,122,0.75)";
+        btn.style.borderRadius = "4px";
+        btn.style.background = "rgba(9,9,11,0.9)";
+        btn.style.cursor = disabled ? "not-allowed" : "pointer";
+        btn.style.padding = "0";
+        btn.style.pointerEvents = disabled ? "none" : "auto";
+        btn.style.opacity = disabled ? "0.45" : "1";
+        btn.title = title;
+        const iconEl = makeSvgIcon(icon);
+        iconEl.style.width = "14px";
+        iconEl.style.height = "14px";
+        btn.appendChild(iconEl);
+        if (!disabled) {
+          btn.onmouseenter = () => {
+            btn.style.color = "#ffffff";
+            btn.style.borderColor = "rgba(161,161,170,0.95)";
+            btn.style.background = "rgba(24,24,27,0.98)";
+          };
+          btn.onmouseleave = () => {
+            btn.style.color = "#e4e4e7";
+            btn.style.borderColor = "rgba(113,113,122,0.75)";
+            btn.style.background = "rgba(9,9,11,0.9)";
+          };
+          btn.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onClick();
+            draw();
+          };
+        }
+        return btn;
+      };
+      const hasPricePane = paneTopById.has("price");
+      if (hasPricePane) {
+        const priceTop = paneTopById.get("price") ?? 0;
+        const pricePaneIndex = orderedPaneIds.indexOf("price");
+        const canMovePriceUp = pricePaneIndex > 0;
+        const canMovePriceDown =
+          pricePaneIndex >= 0 && pricePaneIndex < orderedPaneIds.length - 1;
+        const sourceRow = document.createElement("div");
+        sourceRow.style.position = "absolute";
+        sourceRow.style.left = "0";
+        sourceRow.style.top = `${Math.max(0, Math.floor(priceTop))}px`;
+        sourceRow.style.height = "22px";
+        sourceRow.style.display = "flex";
+        sourceRow.style.alignItems = "center";
+        sourceRow.style.justifyContent = "space-between";
+        sourceRow.style.gap = "12px";
+        sourceRow.style.width = `${Math.max(220, (paneWidthById.get("price") ?? 240) - 16)}px`;
+        sourceRow.style.paddingRight = "10px";
+        sourceRow.style.pointerEvents = "auto";
+        sourceRow.style.cursor = "default";
+        sourceRow.style.whiteSpace = "nowrap";
+        const sourceLeft = document.createElement("span");
+        sourceLeft.style.display = "inline-flex";
+        sourceLeft.style.alignItems = "center";
+        sourceLeft.style.gap = "8px";
+        sourceLeft.style.minWidth = "0";
+        const sourceTextWrap = document.createElement("span");
+        sourceTextWrap.style.display = "inline-flex";
+        sourceTextWrap.style.alignItems = "center";
+        sourceTextWrap.style.gap = "4px";
+        const symbolText = document.createElement("span");
+        symbolText.style.fontSize = "13px";
+        symbolText.style.color = "#d4d4d8";
+        symbolText.style.flexShrink = "0";
+        symbolText.style.cursor = "pointer";
+        symbolText.style.pointerEvents = "auto";
+        symbolText.textContent = symbol || snapshot?.source_label || "";
+        sourceTextWrap.appendChild(symbolText);
+        if (timeframe) {
+          const timeframeText = document.createElement("span");
+          timeframeText.style.fontSize = "13px";
+          timeframeText.style.color = "#a1a1aa";
+          timeframeText.style.flexShrink = "0";
+          timeframeText.textContent = `· ${timeframe}`;
+          sourceTextWrap.appendChild(timeframeText);
+        }
+        sourceLeft.appendChild(sourceTextWrap);
+
+        const ohlc = snapshot?.ohlcv ?? null;
+        if (ohlc) {
+          const fmt = (n: number) => Number.isFinite(n) ? n.toFixed(2) : "--";
+          const delta = ohlc.close - ohlc.open;
+          const appearance = runtime.chart.getAppearanceConfig() ?? DEFAULT_APPEARANCE_CONFIG;
+          const values = document.createElement("span");
+          values.style.fontSize = "13px";
+          values.style.fontWeight = "600";
+          values.style.whiteSpace = "nowrap";
+          const dim = "#a1a1aa";
+          const valueColor = delta >= 0 ? appearance.candle_up : appearance.candle_down;
+          const seg = (label: string, value: string) => {
+            const wrap = document.createElement("span");
+            wrap.style.marginRight = "8px";
+            const l = document.createElement("span");
+            l.style.color = dim;
+            l.textContent = `${label} `;
+            const v = document.createElement("span");
+            v.style.color = valueColor;
+            v.textContent = value;
+            wrap.append(l, v);
+            return wrap;
+          };
+          values.append(
+            seg("O", fmt(ohlc.open)),
+            seg("H", fmt(ohlc.high)),
+            seg("L", fmt(ohlc.low)),
+            seg("C", fmt(ohlc.close)),
+            seg("V", fmt(ohlc.volume))
+          );
+          const deltaEl = document.createElement("span");
+          deltaEl.style.color = valueColor;
+          deltaEl.textContent = `${delta >= 0 ? "+" : ""}${fmt(delta)}`;
+          values.appendChild(deltaEl);
+          sourceLeft.appendChild(values);
+        }
+        sourceRow.appendChild(sourceLeft);
+
+        const pricePaneControls = document.createElement("div");
+        pricePaneControls.style.display = "inline-flex";
+        pricePaneControls.style.alignItems = "center";
+        pricePaneControls.style.gap = "6px";
+        pricePaneControls.style.flexShrink = "0";
+        if (chartTileId && canMovePriceUp) {
+          pricePaneControls.append(
+            mkOverlayIconBtn("chevron-up", "Move pane up", () => {
+              workspaceIntents.movePaneInTile(chartTileId, "price", "up");
+            })
+          );
+        }
+        if (chartTileId && canMovePriceDown) {
+          pricePaneControls.append(
+            mkOverlayIconBtn("chevron-down", "Move pane down", () => {
+              workspaceIntents.movePaneInTile(chartTileId, "price", "down");
+            })
+          );
+        }
+        if (pricePaneControls.childElementCount > 0) {
+          sourceRow.appendChild(pricePaneControls);
+        }
+
+        symbolText.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const symbols = options.marketControls?.symbols ?? [];
+          if (!symbols.length) return;
+          createSymbolSearchModal({
+            symbols,
+            onSelect: async (nextSymbol) => {
+              controller.setChartPaneSource(paneId, { symbol: nextSymbol });
+              await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+                symbol: nextSymbol,
+                timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+              });
+              await options.marketControls?.onSymbolChange?.(nextSymbol);
+            },
+            onClose: () => { }
+          });
+        };
+        overlay.appendChild(sourceRow);
+        paneOffsets.set("price", rowHeight + 6);
+      }
+
+      const paneOwnership = runtime.chart.paneChartPaneMap();
+      const indicatorsInRuntime = (snapshot?.indicators ?? []).filter((item) => {
+        const owner = paneOwnership[item.pane_id];
+        if (owner) return owner === paneId;
+        return true;
+      });
+      const indicatorsByPane = new Map<string, typeof indicatorsInRuntime>();
+      for (const item of indicatorsInRuntime) {
+        const paneId = canonicalRuntimePaneId(item.pane_id);
+        const arr = indicatorsByPane.get(paneId) ?? [];
+        arr.push(item);
+        indicatorsByPane.set(paneId, arr);
+      }
+      const indicatorOrder = new Map<string, number>();
+      indicatorTokens.forEach((token, i) => {
+        const id = decodeIndicatorToken(token).indicatorId;
+        if (!indicatorOrder.has(id)) indicatorOrder.set(id, i);
+      });
+
+      for (const [indicatorPaneId, paneItems] of indicatorsByPane) {
+        let rowIndex = 0;
+        const baseTop = paneTopById.get(indicatorPaneId);
+        if (baseTop === undefined) continue;
+        const startOffset = paneOffsets.get(indicatorPaneId) ?? 2;
+        const canonicalPaneId = canonicalRuntimePaneId(indicatorPaneId);
+        const isDedicatedIndicatorPane = !chartRootPaneIds.has(canonicalPaneId);
+
+        const sortedPaneItems = [...paneItems].sort((a, b) => {
+          const abase = a.id.split(":")[0];
+          const bbase = b.id.split(":")[0];
+          return (indicatorOrder.get(abase) ?? 999) - (indicatorOrder.get(bbase) ?? 999);
+        });
+        for (const snapshotItem of sortedPaneItems) {
+          const indicatorId = snapshotItem.id.split(":")[0];
+          const isFirstIndicatorRow = rowIndex === 0;
+          const row = document.createElement("div");
+          row.style.position = "absolute";
+          row.style.left = "0";
+          row.style.top = `${Math.max(0, Math.floor(baseTop + startOffset + rowIndex * rowHeight))}px`;
+          rowIndex += 1;
+          row.style.height = `${rowHeight}px`;
+          row.style.width = `${Math.max(220, (paneWidthById.get(indicatorPaneId) ?? 240) - 16)}px`;
+          row.style.pointerEvents = "auto";
+          row.style.cursor = "pointer";
+          row.style.display = "flex";
+          row.style.justifyContent = "space-between";
+          row.style.alignItems = "center";
+          row.style.gap = "6px";
+          row.style.whiteSpace = "nowrap";
+          row.style.paddingRight = "10px";
+
+          const left = document.createElement("div");
+          left.style.display = "inline-flex";
+          left.style.alignItems = "center";
+          left.style.minWidth = "0";
+          left.style.flex = "1";
+          left.style.gap = "6px";
+
+          const label = document.createElement("span");
+          label.style.fontSize = "13px";
+          label.style.whiteSpace = "nowrap";
+          label.style.overflow = "hidden";
+          label.style.textOverflow = "ellipsis";
+          const nameEl = document.createElement("span");
+          nameEl.style.color = !snapshotItem.visible ? "#71717a" : "#d4d4d8";
+          nameEl.textContent = `${snapshotItem.name || indicatorLabel(indicatorId)} `;
+          const valueEl = document.createElement("span");
+          valueEl.style.color = !snapshotItem.visible ? "#71717a" : indicatorReadoutColor(snapshotItem.id);
+          valueEl.textContent = Number.isFinite(snapshotItem.value) ? snapshotItem.value.toFixed(2) : "--";
+          label.append(nameEl, valueEl);
+          left.appendChild(label);
+
+          const indicatorControls = document.createElement("div");
+          indicatorControls.style.display = "inline-flex";
+          indicatorControls.style.position = "static";
+          indicatorControls.style.gap = "6px";
+          indicatorControls.style.alignItems = "center";
+          indicatorControls.style.marginLeft = "2px";
+          indicatorControls.style.opacity = "0";
+          indicatorControls.style.pointerEvents = "none";
+          indicatorControls.style.transition = "opacity 120ms ease";
+
+          const getMainSeriesId = () => runtime.chart.objectTreeState().series.find((s) => s.id.startsWith(`${indicatorId}:`) || s.id === indicatorId)?.id ?? null;
+          const isVisible = () => {
+            const id = getMainSeriesId();
+            if (!id) return true;
+            return runtime.chart.objectTreeState().series.find((s) => s.id === id)?.visible ?? true;
+          };
+
+          const paneControls = document.createElement("div");
+          paneControls.style.display = "inline-flex";
+          paneControls.style.gap = "6px";
+          paneControls.style.alignItems = "center";
+          paneControls.style.flexShrink = "0";
+          const paneOrderIndex = orderedPaneIds.indexOf(canonicalRuntimePaneId(indicatorPaneId));
+          const canMoveUp = paneOrderIndex > 0;
+          const canMoveDown = paneOrderIndex >= 0 && paneOrderIndex < orderedPaneIds.length - 1;
+
+          if (isFirstIndicatorRow && isDedicatedIndicatorPane) {
+            if (canMoveUp) {
+              paneControls.append(
+                mkOverlayIconBtn("chevron-up", "Move pane up", () => {
+                  if (!chartTileId) return;
+                  workspaceIntents.movePaneInTile(chartTileId, indicatorPaneId, "up");
+                })
+              );
+            }
+            if (canMoveDown) {
+              paneControls.append(
+                mkOverlayIconBtn("chevron-down", "Move pane down", () => {
+                  if (!chartTileId) return;
+                  workspaceIntents.movePaneInTile(chartTileId, indicatorPaneId, "down");
+                })
+              );
+            }
+            paneControls.append(
+              mkOverlayIconBtn("trash", "Delete pane", () => {
+                if (!chartTileId) return;
+                workspaceIntents.deletePaneInTile(
+                  chartTileId,
+                  indicatorPaneId,
+                  "indicator",
+                  runtime.chart
+                );
+              })
+            );
+          }
+
+          indicatorControls.append(
+            mkOverlayIconBtn(isVisible() ? "eye" : "eye-off", "Hide/show", () => {
+              workspaceIntents.toggleVisibility(
+                runtime.chart,
+                "series",
+                snapshotItem.id,
+                !snapshotItem.visible
+              );
+            }),
+            mkOverlayIconBtn("settings", "Configure", () => {
+              openIndicatorConfig(
+                {
+                  paneId: indicatorPaneId,
+                  seriesId: snapshotItem.id,
+                  indicatorId
+                },
+                runtime.chart
+              );
+            }),
+            mkOverlayIconBtn("trash", "Delete", () => {
+              if (!chartTileId) return;
+              workspaceIntents.deleteSeriesInTile(chartTileId, snapshotItem.id, runtime.chart);
+            })
+          );
+          left.appendChild(indicatorControls);
+          row.appendChild(left);
+          if (isFirstIndicatorRow && isDedicatedIndicatorPane) row.appendChild(paneControls);
+          row.onmouseenter = () => {
+            indicatorControls.style.opacity = "1";
+            indicatorControls.style.pointerEvents = "auto";
+          };
+          row.onmouseleave = () => {
+            indicatorControls.style.opacity = "0";
+            indicatorControls.style.pointerEvents = "none";
+          };
+          overlay.appendChild(row);
+        }
+      }
+    }
+
+    for (const [paneId, overlay] of indicatorOverlayByPaneId) {
+      if (paneHostByPaneId.has(paneId)) continue;
+      overlay.remove();
+      indicatorOverlayByPaneId.delete(paneId);
+    }
   };
 
   // Final assembly of UI pieces
@@ -1148,20 +1895,48 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
     const paneRaw = createWasmChart(paneCanvasId, 300, 300);
     const paneChart = new DrishyaChartClient(paneRaw);
+    const restoredStyleMap = restoredIndicatorStyleOverridesByPane[paneId] ?? {};
+    for (const [seriesId, style] of Object.entries(restoredStyleMap)) {
+      paneChart.setSeriesStyleOverride(seriesId, style);
+    }
+    const snapshotIndicatorIds = () =>
+      chartTileId ? normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? []) : [];
+    paneChart.setCandles = ((orig) => (candles: Candle[]) => {
+      const beforeIndicatorIds = snapshotIndicatorIds();
+      orig(candles);
+      if (!candles.length) {
+        latestCandlesByPane.delete(paneId);
+      } else {
+        latestCandlesByPane.set(paneId, {
+          latest: candles[candles.length - 1],
+          prevClose: candles.length > 1 ? candles[candles.length - 2].close : null
+        });
+      }
+      const afterIndicatorIds = snapshotIndicatorIds();
+      if (beforeIndicatorIds.length && afterIndicatorIds.length === 0) {
+        applyIndicatorSetToChart(paneChart, beforeIndicatorIds);
+        if (chartTileId) {
+          chartTileIndicatorState.set(chartTileId, beforeIndicatorIds);
+        }
+      }
+    })(paneChart.setCandles.bind(paneChart));
+    paneChart.appendCandle = ((orig) => (candle: Candle) => {
+      const prevClose = latestCandlesByPane.get(paneId)?.latest.close ?? null;
+      orig(candle);
+      latestCandlesByPane.set(paneId, { latest: candle, prevClose });
+    })(paneChart.appendCandle.bind(paneChart));
     paneChart.setTheme(controller.getState().theme);
     try {
       paneChart.setAppearanceConfig(DEFAULT_APPEARANCE_CONFIG);
     } catch {
       // ignore unsupported appearance config in older wasm
     }
-    const restoredPaneState = chartTileId
-      ? (restoredPaneStateByChartTile[chartTileId] ?? null)
-      : (restoredPaneStatesByPane[paneId] ?? null);
+    const restoredPaneState = restoredPaneStatesByPane[paneId] ?? null;
     if (restoredPaneState) {
       paneChart.restorePaneStateJson(restoredPaneState);
     }
     const restoredIndicators = chartTileId
-      ? normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? restoredIndicatorsByChartTile[chartTileId] ?? [])
+      ? normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? [])
       : [];
     applyIndicatorSetToChart(paneChart, restoredIndicators);
 
@@ -1191,6 +1966,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const runtime = chartRuntimes.get(paneId);
       runtime?.draw();
     }
+    renderIndicatorOverlays();
     fastDrawTargets.clear();
   };
   const scheduleFastDrawPane = (paneId: string) => {
@@ -1304,8 +2080,21 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   let configPanelEl: HTMLElement | null = null;
   let configPanelDrawingId: number | null = null;
+  const ensureFloatingOverlaysMounted = () => {
+    const activePaneId = controller.getState().activeChartPaneId;
+    const hostStage = paneHostByPaneId.get(activePaneId)?.stage ?? stage;
+    if (configPanelOverlay.parentElement !== hostStage) {
+      configPanelOverlay.parentElement?.removeChild(configPanelOverlay);
+      hostStage.appendChild(configPanelOverlay);
+    }
+    if (caretOverlay.parentElement !== hostStage) {
+      caretOverlay.parentElement?.removeChild(caretOverlay);
+      hostStage.appendChild(caretOverlay);
+    }
+  };
 
   const refreshConfigPanel = () => {
+    ensureFloatingOverlaysMounted();
     const activeChart = getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart;
     if (!activeChart) return;
     const id = activeChart.selectedDrawingId();
@@ -1343,6 +2132,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const updateTextCaret = () => {
+    ensureFloatingOverlaysMounted();
     const bounds = getActiveRuntime()?.chart.selectedTextCaretBounds?.() ?? null;
     caretOverlay.innerHTML = "";
     if (bounds) {
@@ -1373,6 +2163,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
     refreshConfigPanel();
     updateTextCaret();
+    renderIndicatorOverlays();
     savePersistedState();
   };
 
@@ -1420,6 +2211,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (chartPane && chartPane.visible === false) continue;
       const host = paneHostByPaneId.get(paneId);
       if (!host) continue;
+      const scopedPaneIds = state.paneLayout.order.filter((id) => {
+        const spec = state.paneLayout.panes[id];
+        if (!spec) return false;
+        if (id === paneId && (spec.kind === "price" || spec.kind === "chart")) return true;
+        return spec.kind === "indicator" && spec.parentChartPaneId === paneId;
+      });
       const hostRect = host.stage.getBoundingClientRect();
       const chartPaneViewports: Record<string, { x: number; y: number; w: number; h: number }> = {
         [paneId]: {
@@ -1430,8 +2227,41 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         }
       };
       const paneChartPaneMap: Record<string, string> = {};
-      for (const pane of runtime.chart.paneLayouts()) {
+      const runtimePanes = runtime.chart.paneLayouts();
+      const rawByCanonical = new Map<string, string>();
+      for (const pane of runtimePanes) {
+        const canonical = canonicalRuntimePaneId(pane.id);
+        if (!rawByCanonical.has(canonical)) rawByCanonical.set(canonical, pane.id);
         paneChartPaneMap[pane.id] = paneId;
+      }
+      const rootRawPaneId =
+        rawByCanonical.get("price") ??
+        rawByCanonical.get(canonicalRuntimePaneId(paneId)) ??
+        runtimePanes[0]?.id ??
+        null;
+      const rawIdForScopedPane = (scopedId: string): string | null => {
+        if (scopedId === paneId) return rootRawPaneId;
+        return rawByCanonical.get(canonicalRuntimePaneId(scopedId)) ?? null;
+      };
+      const scopedRawOrder: string[] = [];
+      for (const scopedId of scopedPaneIds) {
+        const rawId = rawIdForScopedPane(scopedId);
+        if (!rawId) continue;
+        if (!scopedRawOrder.includes(rawId)) scopedRawOrder.push(rawId);
+      }
+      if (scopedRawOrder.length) {
+        runtime.chart.setPaneOrder(scopedRawOrder);
+      }
+      const scopedWeights: Record<string, number> = {};
+      for (const scopedId of scopedPaneIds) {
+        const rawId = rawIdForScopedPane(scopedId);
+        if (!rawId) continue;
+        const ratio = state.paneLayout.ratios[scopedId];
+        if (!Number.isFinite(ratio)) continue;
+        scopedWeights[rawId] = Math.max(0.0001, ratio);
+      }
+      if (Object.keys(scopedWeights).length > 0) {
+        runtime.chart.setPaneWeights(scopedWeights);
       }
       runtime.chart.setChartPaneViewports(chartPaneViewports);
       runtime.chart.setPaneChartPaneMap(paneChartPaneMap);
@@ -1590,6 +2420,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   };
   window.addEventListener("keydown", onKeyDown);
+  const onBeforeUnload = () => {
+    persistNow();
+  };
+  window.addEventListener("beforeunload", onBeforeUnload);
 
   let resizeObserver: ResizeObserver | null = null;
   if (typeof ResizeObserver === "function") {
@@ -1603,10 +2437,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
 
   renderWorkspaceTiles();
+  for (const chartTileId of Object.keys(controller.getState().chartTiles)) {
+    applyIndicatorSetToTile(chartTileId);
+  }
   setupCanvasBackingStore();
   syncReadoutSourceLabel(controller.getState());
   getActiveRuntime()?.chart.setDrawingTool(controller.getState().activeTool);
   draw();
+  persistNow();
 
   const applyAppearanceConfig = (config: { background: string; candle_up: string; candle_down: string }) => {
     try {
@@ -1660,11 +2498,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       treeHandleByChartTileId.clear();
       unbindInteractions();
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("beforeunload", onBeforeUnload);
       if (resizeObserver) {
         resizeObserver.disconnect();
       } else {
         window.removeEventListener("resize", setupCanvasBackingStore);
       }
+      persistNow();
       if (fastDrawRafId !== null) {
         cancelAnimationFrame(fastDrawRafId);
         fastDrawRafId = null;

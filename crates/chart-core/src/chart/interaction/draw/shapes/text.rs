@@ -1,6 +1,8 @@
 use crate::chart::Chart;
 use crate::{
-    drawings::commands::execute_command, drawings::shape::text as text_shape, scale::PriceScale,
+    drawings::commands::{execute_command, DrawingCommandResult},
+    drawings::shape::text as text_shape,
+    scale::PriceScale,
 };
 
 impl Chart {
@@ -37,9 +39,13 @@ impl Chart {
                 vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
             });
 
-        let _ = execute_command(
+        if let DrawingCommandResult::Added { id } = execute_command(
             &mut self.drawings,
             text_shape::add_text_command(index, price, "Text".to_string()),
-        );
+        ) {
+            self.selected_drawing_id = Some(id);
+            self.selected_series_id = None;
+            self.selected_event_id = None;
+        }
     }
 }

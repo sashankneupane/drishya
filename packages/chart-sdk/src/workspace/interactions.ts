@@ -1,6 +1,6 @@
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../wasm/contracts.js";
-import { buildPaneSpecForRuntime } from "./paneSpec.js";
+import { isDrawingToolId } from "../toolbar/model.js";
 import type { LayoutRect } from "../layout/splitTree.js";
 import type { WorkspaceChartSplitDirection, WorkspaceChartSplitNode } from "./types.js";
 
@@ -62,6 +62,13 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let paneResizeDrag: { index: number } | null = null;
   let drawingInteractionActive = false;
   let movedWhileDragging = false;
+  let drawingSessionMouseActive = false;
+  let drawingSessionTouchActive = false;
+  let suppressSyntheticMouseUntil = 0;
+  let drawingSessionStartCount = 0;
+  let drawingSessionStartSelectedId: number | null = null;
+  let drawingSessionStartX = 0;
+  let drawingSessionStartY = 0;
   let chartSplitDrag: {
     path: number[];
     direction: WorkspaceChartSplitDirection;
@@ -70,6 +77,70 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
 
   const applyCursor = (cursor: string) => {
     canvas.style.cursor = cursor;
+  };
+  const syncControllerToolWithChartMode = () => {
+    const mode = chart.drawingToolMode();
+    if (mode === "select") {
+      controller.setActiveTool("select", { force: true });
+      return;
+    }
+    if (isDrawingToolId(mode)) {
+      controller.setActiveTool(mode, { force: true });
+    }
+  };
+  const ONE_SHOT_TOOLS = new Set(["hline", "vline"]);
+  const captureDrawingSessionStart = () => {
+    drawingSessionStartCount = chart.objectTreeState().drawings.length;
+    drawingSessionStartSelectedId = chart.selectedDrawingId();
+  };
+  const rememberSessionStartPoint = (x: number, y: number) => {
+    drawingSessionStartX = x;
+    drawingSessionStartY = y;
+  };
+  const isRobustDrawingCompletion = (completedByEngine: boolean) => {
+    if (!completedByEngine) return false;
+    const endCount = chart.objectTreeState().drawings.length;
+    const endSelectedId = chart.selectedDrawingId();
+    const createdDrawing = endCount > drawingSessionStartCount;
+    const selectedChanged = endSelectedId !== null && endSelectedId !== drawingSessionStartSelectedId;
+    return createdDrawing || selectedChanged;
+  };
+  const maybeAutoReturnToSelect = (
+    toolModeAtRelease: string,
+    completedByEngine: boolean,
+    releaseX: number,
+    releaseY: number
+  ) => {
+    if (!completedByEngine || toolModeAtRelease === "select") return;
+    requestAnimationFrame(() => {
+      const endCount = chart.objectTreeState().drawings.length;
+      const endSelectedId = chart.selectedDrawingId();
+      const createdDrawing = endCount > drawingSessionStartCount;
+      const selectedChanged = endSelectedId !== null && endSelectedId !== drawingSessionStartSelectedId;
+      if (createdDrawing || selectedChanged || ONE_SHOT_TOOLS.has(toolModeAtRelease)) {
+        controller.setActiveTool("select", { force: true });
+        const mx = (drawingSessionStartX + releaseX) * 0.5;
+        const my = (drawingSessionStartY + releaseY) * 0.5;
+        const candidates: Array<[number, number]> = [
+          [releaseX, releaseY],
+          [drawingSessionStartX, drawingSessionStartY],
+          [mx, my],
+        ];
+        const ring = [0, -8, 8, -12, 12];
+        for (const [cx, cy] of [...candidates]) {
+          for (const dx of ring) {
+            for (const dy of ring) {
+              candidates.push([cx + dx, cy + dy]);
+            }
+          }
+        }
+        for (const [sx, sy] of candidates) {
+          chart.selectDrawingAt(sx, sy);
+          if (chart.selectedDrawingId() !== null) break;
+        }
+        redraw();
+      }
+    });
   };
 
   const pointInRect = (x: number, y: number, rect: { x: number; y: number; w: number; h: number }) =>
@@ -156,15 +227,6 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const lower = panes[dragState.index + 1];
     if (!upper || !lower) return;
 
-    const state = controller.getState();
-    const runtimeOrder = panes.map((p) => p.id);
-    for (const pane of panes) {
-      if (!state.paneLayout.panes[pane.id]) {
-        controller.registerPane(buildPaneSpecForRuntime(pane.id, controller.getState().paneLayout, runtimeOrder));
-      }
-    }
-    controller.setPaneOrder(runtimeOrder);
-
     const lowerBottom = lower.y + lower.h;
     const upperBottom = upper.y + upper.h;
     const gapPx = Math.max(0, lower.y - upperBottom);
@@ -189,8 +251,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
         updates[pane.id] = pane.h / totalAvailPx;
       }
     }
-
-    controller.updatePaneRatios(updates);
+    chart.setPaneWeights(updates);
   };
 
   const updateSelectCursorAt = (x: number, y: number) => {
@@ -211,6 +272,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   };
 
   const onMouseDown = (event: MouseEvent) => {
+    if (Date.now() < suppressSyntheticMouseUntil) return;
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
@@ -252,27 +314,40 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (hasDrawingInteraction) {
       const toolMode = chart.drawingToolMode();
       if (toolMode !== "select") {
+        captureDrawingSessionStart();
+        rememberSessionStartPoint(x, y);
         const consumed = chart.drawingPointerDown(x, y);
-        if (consumed) {
+        syncControllerToolWithChartMode();
+        drawingSessionMouseActive = true;
+        drawingInteractionActive = consumed;
+        applyCursor("crosshair");
+        redraw();
+        lastX = event.clientX;
+        lastY = event.clientY;
+        // Never fall through to pan/axis interactions while a drawing tool is active.
+        return;
+      } else {
+        // In select mode, always let drawing interaction consume first so
+        // resize/anchor handles and drag moves don't fall through to chart pan.
+        const consumeSelectedInteraction = chart.drawingPointerDown(x, y);
+        if (consumeSelectedInteraction) {
+          drawingSessionMouseActive = true;
           drawingInteractionActive = true;
-          applyCursor("crosshair");
+          applyCursor("grabbing");
           redraw();
           lastX = event.clientX;
           lastY = event.clientY;
           return;
         }
-      } else {
         const selectedDrawing = chart.selectDrawingAt(x, y);
         if (selectedDrawing !== null) {
-          const consumed = chart.drawingPointerDown(x, y);
-          if (consumed) {
-            drawingInteractionActive = true;
-            applyCursor("grabbing");
-            redraw();
-            lastX = event.clientX;
-            lastY = event.clientY;
-            return;
-          }
+          // Ensure selection click updates UI (floating drawing toolbar),
+          // even when no drag interaction starts.
+          redraw();
+          drawingInteractionActive = false;
+          lastX = event.clientX;
+          lastY = event.clientY;
+          return;
         }
         const selectedSeries = chart.selectSeriesAt(x, y);
         if (selectedSeries) {
@@ -305,6 +380,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   const onTouchStart = (event: TouchEvent) => {
     if (!hasDrawingInteraction) return;
     if (event.touches.length !== 1) return;
+    suppressSyntheticMouseUntil = Date.now() + 1000;
 
     const touch = event.touches[0];
     const rect = canvas.getBoundingClientRect();
@@ -317,7 +393,11 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
         chart.selectSeriesAt(x, y);
       }
     }
+    captureDrawingSessionStart();
+    rememberSessionStartPoint(x, y);
+    drawingSessionTouchActive = true;
     chart.drawingPointerDown(x, y);
+    syncControllerToolWithChartMode();
     redraw();
     event.preventDefault();
   };
@@ -339,30 +419,50 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
 
   const onTouchEnd = (event: TouchEvent) => {
     if (!hasDrawingInteraction) return;
+    suppressSyntheticMouseUntil = Date.now() + 1000;
     const touch = event.changedTouches[0];
     if (!touch) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = touch.clientX - rect.left;
     const y = touch.clientY - rect.top;
-    if (chart.drawingPointerUp(x, y)) {
+    const toolModeAtRelease = chart.drawingToolMode();
+    if (drawingSessionTouchActive) {
+      const completed = chart.drawingPointerUp(x, y);
+      maybeAutoReturnToSelect(toolModeAtRelease, completed, x, y);
+      syncControllerToolWithChartMode();
       redraw();
     }
+    drawingSessionTouchActive = false;
     event.preventDefault();
   };
 
   const onMouseUp = (event: MouseEvent) => {
+    if (Date.now() < suppressSyntheticMouseUntil) {
+      drawingSessionMouseActive = false;
+      drawingInteractionActive = false;
+      movedWhileDragging = false;
+      dragging = false;
+      panAnchorY = null;
+      return;
+    }
     // update last coordinates from the release event so we don't rely solely on
     // intermediate mousemove events (important for clicks without movement)
     lastX = event.clientX;
     lastY = event.clientY;
 
-    if (hasDrawingInteraction && drawingInteractionActive) {
+    const toolModeAtRelease = hasDrawingInteraction ? chart.drawingToolMode() : "select";
+    const shouldFinalizeDrawing = hasDrawingInteraction && drawingSessionMouseActive;
+    if (shouldFinalizeDrawing) {
       const rect = canvas.getBoundingClientRect();
-      if (chart.drawingPointerUp(lastX - rect.left, lastY - rect.top)) {
-        requestFastDraw();
-      }
+      const releaseX = lastX - rect.left;
+      const releaseY = lastY - rect.top;
+      const completed = chart.drawingPointerUp(releaseX, releaseY);
+      maybeAutoReturnToSelect(toolModeAtRelease, completed, releaseX, releaseY);
+      syncControllerToolWithChartMode();
+      requestFastDraw();
     }
+    drawingSessionMouseActive = false;
 
     if (!drawingInteractionActive && !movedWhileDragging && chart.drawingToolMode() === "select") {
       const rect = canvas.getBoundingClientRect();
@@ -373,6 +473,8 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
       }
     }
 
+    const hadChartSplitDrag = chartSplitDrag !== null;
+    const hadPaneResizeDrag = paneResizeDrag !== null;
     axisZoomDrag = null;
     chartSplitDrag = null;
     paneResizeDrag = null;
@@ -380,6 +482,9 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     movedWhileDragging = false;
     dragging = false;
     panAnchorY = null;
+    if (hadPaneResizeDrag || hadChartSplitDrag) {
+      redraw();
+    }
 
     if (pointerInCanvas) {
       const rect = canvas.getBoundingClientRect();
@@ -477,6 +582,13 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     if (paneSeparatorAt(x, y)) {
       chart.clearCrosshair();
       applyCursor("row-resize");
+      requestFastDraw();
+      return;
+    }
+
+    if (chart.sourceReadoutHitTest(x, y)) {
+      chart.clearCrosshair();
+      applyCursor("pointer");
       requestFastDraw();
       return;
     }

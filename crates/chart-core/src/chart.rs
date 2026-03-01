@@ -25,6 +25,7 @@ pub mod tools;
 
 use self::appearance::ChartAppearanceConfig;
 use self::compare::CompareRegistry;
+use self::plots::SeriesStyleOverride;
 use self::tools::{DrawingInteractionState, DrawingToolMode};
 use crate::{
     drawings::store::DrawingStore,
@@ -37,6 +38,7 @@ use crate::{
     types::{Candle, CursorMode, Point, Size},
     viewport::Viewport,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 pub struct Chart {
@@ -50,6 +52,7 @@ pub struct Chart {
     hidden_panes: HashSet<String>,
     hidden_series: HashSet<String>,
     deleted_series: HashSet<String>,
+    series_style_overrides: HashMap<String, SeriesStyleOverride>,
     collapsed_panes: HashSet<String>,
     pane_y_axis_visible: HashMap<String, bool>,
     pane_min_heights: HashMap<String, f32>,
@@ -81,6 +84,31 @@ pub struct Chart {
     replay: ReplayState,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OhlcvReadoutSnapshot {
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub volume: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndicatorReadoutSnapshot {
+    pub id: String,
+    pub name: String,
+    pub pane_id: String,
+    pub value: f64,
+    pub visible: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadoutSnapshot {
+    pub source_label: String,
+    pub ohlcv: Option<OhlcvReadoutSnapshot>,
+    pub indicators: Vec<IndicatorReadoutSnapshot>,
+}
+
 impl Chart {
     pub fn new(width: f32, height: f32) -> Self {
         Self {
@@ -94,6 +122,7 @@ impl Chart {
             hidden_panes: HashSet::new(),
             hidden_series: HashSet::new(),
             deleted_series: HashSet::new(),
+            series_style_overrides: HashMap::new(),
             collapsed_panes: HashSet::new(),
             pane_y_axis_visible: HashMap::new(),
             pane_min_heights: HashMap::new(),

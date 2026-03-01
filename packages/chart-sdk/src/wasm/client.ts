@@ -4,12 +4,16 @@ import type {
   ChartAppearanceConfig,
   ChartEvent,
   DrawingConfig,
+  DiscoveredIndicator,
   ObjectTreeState,
   PaneLayout,
   PaneLayoutSnapshot,
   ChartPaneViewport,
   ReplayState,
+  SeriesStyleOverride,
+  SeriesStyleSnapshot,
   RestoreChartStateOptions,
+  ReadoutSnapshot,
   WasmChartLike
 } from "./contracts";
 
@@ -216,6 +220,11 @@ export class DrishyaChartClient {
     return Number.isFinite(n) && Number.isSafeInteger(n) ? n : null;
   }
 
+  selectDrawingById(drawingId: number): boolean {
+    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    return this.wasm.select_drawing_by_id?.(id) ?? false;
+  }
+
   clearSelectedDrawing(): void {
     this.wasm.clear_selected_drawing?.();
   }
@@ -238,56 +247,62 @@ export class DrishyaChartClient {
     this.wasm.clear_selected_series?.();
   }
 
+  seriesStyleSnapshot(): SeriesStyleSnapshot[] {
+    const raw = this.wasm.series_style_snapshot_json?.();
+    if (!raw) return [];
+    const parsed = safeJsonParse<SeriesStyleSnapshot[]>(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  }
+
+  seriesStyleOverride(seriesId: string): SeriesStyleOverride | null {
+    const raw = this.wasm.series_style_override_json?.(seriesId);
+    if (!raw) return null;
+    return safeJsonParse<SeriesStyleOverride | null>(raw) ?? null;
+  }
+
+  setSeriesStyleOverride(seriesId: string, style: SeriesStyleOverride): void {
+    this.wasm.set_series_style_override_json?.(seriesId, JSON.stringify(style));
+  }
+
+  clearSeriesStyleOverride(seriesId: string): void {
+    this.wasm.clear_series_style_override?.(seriesId);
+  }
+
+  allSeriesStyleOverrides(): Record<string, SeriesStyleOverride> {
+    const raw = this.wasm.all_series_style_overrides_json?.();
+    if (!raw) return {};
+    return safeJsonParse<Record<string, SeriesStyleOverride>>(raw) ?? {};
+  }
+
+  replaceSeriesStyleOverrides(overrides: Record<string, SeriesStyleOverride>): void {
+    this.wasm.replace_series_style_overrides_json?.(JSON.stringify(overrides ?? {}));
+  }
+
+  patchSeriesStyleOverrides(overrides: Record<string, SeriesStyleOverride>): void {
+    this.wasm.patch_series_style_overrides_json?.(JSON.stringify(overrides ?? {}));
+  }
+
   deleteSelectedSeries(): boolean {
     return this.wasm.delete_selected_series?.() ?? false;
   }
 
-  addSmaOverlay(period: number): void {
-    this.wasm.add_sma_overlay?.(period);
+  deleteSeries(seriesId: string): void {
+    this.wasm.delete_series?.(seriesId);
   }
 
-  addEmaOverlay(period: number): void {
-    this.wasm.add_ema_overlay?.(period);
-  }
-
-  addBbandsOverlay(period: number, stdMult: number): void {
-    this.wasm.add_bbands_overlay?.(period, stdMult);
-  }
-
-  addMacdPaneIndicator(fast: number, slow: number, signal: number): void {
-    this.wasm.add_macd_pane_indicator?.(fast, slow, signal);
-  }
-
-  addRsiPaneIndicator(period: number): void {
-    this.wasm.add_rsi_pane_indicator?.(period);
-  }
-
-  addAtrPaneIndicator(period: number): void {
-    this.wasm.add_atr_pane_indicator?.(period);
-  }
-
-  addStochasticPaneIndicator(k: number, d: number, smooth: number): void {
-    this.wasm.add_stochastic_pane_indicator?.(k, d, smooth);
-  }
-
-  addObvPaneIndicator(): void {
-    this.wasm.add_obv_pane_indicator?.();
-  }
-
-  addVwapOverlay(): void {
-    this.wasm.add_vwap_overlay?.();
-  }
-
-  addAdxPaneIndicator(period: number): void {
-    this.wasm.add_adx_pane_indicator?.(period);
-  }
-
-  addMomentumHistogramOverlay(): void {
-    this.wasm.add_momentum_histogram_overlay?.();
+  addIndicator(indicatorId: string, params: Record<string, unknown> = {}): void {
+    this.wasm.add_indicator_json?.(indicatorId, JSON.stringify(params ?? {}));
   }
 
   clearIndicatorOverlays(): void {
     this.wasm.clear_indicator_overlays?.();
+  }
+
+  indicatorCatalog(): DiscoveredIndicator[] {
+    const raw = this.wasm.indicator_catalog_json?.();
+    if (!raw) return [];
+    const parsed = safeJsonParse<DiscoveredIndicator[]>(raw);
+    return Array.isArray(parsed) ? parsed : [];
   }
 
   setPaneWeights(weightMap: Record<string, number>): void {
@@ -308,12 +323,30 @@ export class DrishyaChartClient {
     this.wasm.set_pane_chart_pane_map_json?.(JSON.stringify(mapping));
   }
 
+  setPaneOrder(order: string[]): void {
+    this.wasm.set_pane_order_json?.(JSON.stringify(order ?? []));
+  }
+
+  movePaneUp(paneId: string): boolean {
+    return this.wasm.move_pane_up?.(paneId) ?? false;
+  }
+
+  movePaneDown(paneId: string): boolean {
+    return this.wasm.move_pane_down?.(paneId) ?? false;
+  }
+
   setReadoutSourceLabel(label: string): void {
     this.wasm.set_readout_source_label?.(label);
   }
 
   sourceReadoutHitTest(x: number, y: number): boolean {
     return this.wasm.source_readout_hit_test?.(x, y) ?? false;
+  }
+
+  readoutSnapshot(): ReadoutSnapshot | null {
+    const raw = this.wasm.readout_snapshot_json?.();
+    if (!raw) return null;
+    return safeJsonParse<ReadoutSnapshot>(raw);
   }
 
   paneChartPaneMap(): Record<string, string> {

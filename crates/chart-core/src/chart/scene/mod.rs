@@ -24,20 +24,14 @@ use crate::{
         candles::build_candle_commands,
         primitives::DrawCommand,
         styles::{ColorRef, ColorToken, FillStyle, StrokeStyle, TextAlign, TextStyle},
-        ticks::{
-            HumanTimeFormatter, PercentFormatter, PriceFormatter, TimeLabelFormatter,
-            ValueLabelFormatter,
-        },
+        ticks::{PercentFormatter, PriceFormatter, ValueLabelFormatter},
         volume::build_volume_commands,
     },
     scale::{PriceScale, TimeScale},
     types::{Candle, CursorMode, Point},
 };
 
-use self::helpers::{
-    compute_pane_value_bounds, nearest_candle_index, series_value_at_index, timestamp_for_world_x,
-    world_x_at_pixel,
-};
+use self::helpers::{compute_pane_value_bounds, nearest_candle_index, series_value_at_index};
 use super::compare_alignment::{
     align_compare_series, normalize_aligned_series, rebase_normalized_series_to_primary_price,
 };
@@ -45,6 +39,86 @@ use super::events::replay_cursor_commands;
 use super::Chart;
 
 impl Chart {
+    pub fn readout_snapshot(&self) -> crate::chart::ReadoutSnapshot {
+        let source_label = self.readout_source_label().to_string();
+        if self.candles.is_empty() {
+            return crate::chart::ReadoutSnapshot {
+                source_label,
+                ohlcv: None,
+                indicators: Vec::new(),
+            };
+        }
+
+        let (raw_visible_start, raw_visible_end) = match self.viewport {
+            Some(vp) => vp.visible_range(self.candles.len()),
+            None => (0, self.candles.len()),
+        };
+        let replay_end = self.replay_visible_end(self.candles.len());
+        let visible_end = raw_visible_end.min(replay_end);
+        let visible_start = raw_visible_start.min(visible_end);
+
+        let layout = self.current_layout();
+        let ts_price = match self.viewport {
+            Some(vp) => TimeScale {
+                pane: layout.price_pane().unwrap_or(layout.plot),
+                world_start_x: vp.world_start_x(),
+                world_end_x: vp.world_end_x(),
+            },
+            None => TimeScale {
+                pane: layout.price_pane().unwrap_or(layout.plot),
+                world_start_x: 0.0,
+                world_end_x: self.candles.len() as f64,
+            },
+        };
+
+        let crosshair_index = self
+            .crosshair
+            .and_then(|p| nearest_candle_index(p.x, ts_price, visible_end));
+        let fallback_index = visible_end
+            .checked_sub(1)
+            .or_else(|| replay_end.checked_sub(1));
+        let readout_index = crosshair_index.or(fallback_index);
+        let ohlcv = readout_index
+            .and_then(|idx| self.candles.get(idx))
+            .map(|c| crate::chart::OhlcvReadoutSnapshot {
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume,
+            });
+
+        let mut indicators = Vec::new();
+        if let Some(idx) = readout_index {
+            let mut plot_series = self.collect_plot_series();
+            let compare_series = self.collect_compare_series(visible_start);
+            plot_series.extend(compare_series);
+            for s in plot_series {
+                if s.id.starts_with("compare-") {
+                    continue;
+                }
+                if let Some(value) = series_value_at_index(&s, idx) {
+                    indicators.push(crate::chart::IndicatorReadoutSnapshot {
+                        id: s.id.clone(),
+                        name: s.name.clone(),
+                        pane_id: match &s.pane {
+                            PaneId::Price => "price".to_string(),
+                            PaneId::Named(name) => name.clone(),
+                        },
+                        value,
+                        visible: s.visible,
+                    });
+                }
+            }
+        }
+
+        crate::chart::ReadoutSnapshot {
+            source_label,
+            ohlcv,
+            indicators,
+        }
+    }
+
     pub(crate) fn compute_visible_bounds(&self, visible: &[Candle]) -> (f64, f64, f64) {
         let mut min_price = f64::INFINITY;
         let mut max_price = f64::NEG_INFINITY;
@@ -111,8 +185,7 @@ impl Chart {
         }
 
         let layout: ChartLayout = self.current_layout();
-        let source_label = self.readout_source_label().to_string();
-        self.set_readout_source_label_bounds(source_label_bounds(&layout, &source_label));
+        self.set_readout_source_label_bounds(None);
         let price_pane = layout.price_pane().unwrap_or(layout.plot);
         let (min_price, max_price, max_vol) = if visible.is_empty() {
             self.compute_visible_bounds(&self.candles)
@@ -334,7 +407,6 @@ impl Chart {
         out.extend(self.build_event_marker_commands(&layout));
         out.extend(replay_cursor_commands(self, &layout));
 
-        let mut crosshair_index: Option<usize> = None;
         if let Some(crosshair) = self.crosshair {
             out.push(DrawCommand::PushClip { rect: layout.plot });
 
@@ -373,49 +445,7 @@ impl Chart {
             }
             out.push(DrawCommand::PopClip);
 
-            if let Some(idx) = nearest_candle_index(crosshair.x, ts_price, visible_end) {
-                crosshair_index = Some(idx);
-                if let Some(readout) = build_crosshair_readout_commands(
-                    &self.candles,
-                    idx,
-                    crosshair,
-                    &layout,
-                    ps,
-                    ts_price,
-                    &source_label,
-                ) {
-                    out.extend(readout);
-                }
-            }
-        }
-
-        let fallback_index = visible_end
-            .checked_sub(1)
-            .or_else(|| replay_end.checked_sub(1));
-        let readout_index = crosshair_index.or(fallback_index);
-
-        if crosshair_index.is_none() {
-            if let Some(idx) = readout_index {
-                if let Some(close_readout) =
-                    build_last_close_readout_commands(&self.candles, idx, &layout, &source_label)
-                {
-                    out.extend(close_readout);
-                }
-            }
-        }
-
-        if let Some(idx) = readout_index {
-            out.extend(build_compare_readout_commands(
-                &plot_series,
-                &layout,
-                idx,
-                self.candles.get(visible_start).map(|c| c.close),
-            ));
-            out.extend(build_non_price_pane_readout_commands(
-                &plot_series,
-                &layout,
-                idx,
-            ));
+            let _ = nearest_candle_index(crosshair.x, ts_price, visible_end);
         }
 
         out
@@ -512,177 +542,6 @@ impl Chart {
     }
 }
 
-fn build_compare_readout_commands(
-    series: &[PlotSeries],
-    layout: &ChartLayout,
-    index: usize,
-    primary_basis: Option<f64>,
-) -> Vec<DrawCommand> {
-    let mut out = Vec::new();
-    let registry_prefix = "compare-";
-
-    let mut lines: Vec<String> = Vec::new();
-    let mut colors: Vec<String> = Vec::new();
-
-    for s in series {
-        if !s.visible || s.pane != PaneId::Price || !s.id.starts_with(registry_prefix) {
-            continue;
-        }
-
-        if let Some(value) = series_value_at_index(s, index) {
-            if let Some(basis) = primary_basis.filter(|b| b.abs() > 1e-9) {
-                let pct = ((value / basis) - 1.0) * 100.0;
-                lines.push(format!("{}: {:.2}%", s.name, pct));
-            } else {
-                lines.push(format!("{}: {:.2}", s.name, value));
-            }
-            // Extract color from first primitive
-            if let Some(PlotPrimitive::Line { style, .. }) = s.primitives.first() {
-                colors.push(style.color.clone());
-            } else {
-                colors.push("#ffffff".to_string());
-            }
-        }
-    }
-
-    for (i, (text, color)) in lines.into_iter().zip(colors).enumerate() {
-        out.push(DrawCommand::Text {
-            pos: Point {
-                x: layout.plot.x + 8.0,
-                y: layout.plot.y + 28.0 + i as f32 * 12.0,
-            },
-            text,
-            style: TextStyle::css(color, 11.0, TextAlign::Left),
-        });
-    }
-
-    out
-}
-
-fn build_last_close_readout_commands(
-    candles: &[Candle],
-    index: usize,
-    layout: &ChartLayout,
-    source_label: &str,
-) -> Option<Vec<DrawCommand>> {
-    let candle = candles.get(index)?;
-    let prefix = if source_label.is_empty() {
-        String::new()
-    } else {
-        format!("{source_label}  ")
-    };
-    Some(vec![DrawCommand::Text {
-        pos: Point {
-            x: layout.plot.x + 8.0,
-            y: layout.plot.y + 14.0,
-        },
-        text: format!(
-            "{}O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
-            prefix, candle.open, candle.high, candle.low, candle.close, candle.volume
-        ),
-        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
-    }])
-}
-
-fn build_crosshair_readout_commands(
-    candles: &[Candle],
-    index: usize,
-    crosshair: Point,
-    layout: &ChartLayout,
-    ps: PriceScale,
-    ts: TimeScale,
-    source_label: &str,
-) -> Option<Vec<DrawCommand>> {
-    if candles.is_empty() {
-        return None;
-    }
-
-    if crosshair.x < layout.plot.x
-        || crosshair.x > layout.plot.right()
-        || crosshair.y < layout.plot.y
-        || crosshair.y > layout.plot_bottom()
-    {
-        return None;
-    }
-
-    let candle = candles.get(index)?;
-
-    let mut out = Vec::new();
-
-    let ohlcv = if source_label.is_empty() {
-        format!(
-            "O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
-            candle.open, candle.high, candle.low, candle.close, candle.volume
-        )
-    } else {
-        format!(
-            "{}  O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}",
-            source_label, candle.open, candle.high, candle.low, candle.close, candle.volume
-        )
-    };
-    out.push(DrawCommand::Text {
-        pos: Point {
-            x: layout.plot.x + 8.0,
-            y: layout.plot.y + 14.0,
-        },
-        text: ohlcv,
-        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Left),
-    });
-
-    let price_at_cursor = ps.price_for_y(crosshair.y);
-    let price_label_h = 16.0f32;
-    let price_label_y = (crosshair.y - price_label_h * 0.5)
-        .clamp(layout.y_axis.y, layout.y_axis.bottom() - price_label_h);
-    out.push(DrawCommand::Rect {
-        rect: crate::types::Rect {
-            x: layout.y_axis.x + 1.0,
-            y: price_label_y,
-            w: layout.y_axis.w - 2.0,
-            h: price_label_h,
-        },
-        fill: Some(FillStyle::token(ColorToken::PaneBorder)),
-        stroke: None,
-    });
-    out.push(DrawCommand::Text {
-        pos: Point {
-            x: layout.y_axis.right() - 4.0,
-            y: price_label_y + 12.0,
-        },
-        text: format_axis_value_label(price_at_cursor, ps.mode, ps.baseline),
-        style: TextStyle::token(ColorToken::AxisText, 11.0, TextAlign::Right),
-    });
-
-    let time_formatter = HumanTimeFormatter;
-    let label_ts = world_x_at_pixel(crosshair.x, ts)
-        .and_then(|world_x| timestamp_for_world_x(world_x, candles))
-        .unwrap_or(candle.ts);
-    let ts_text = time_formatter.format_time(label_ts);
-    let x_label_w = 84.0f32;
-    let x_label_h = 16.0f32;
-    let x_label_x =
-        (crosshair.x - x_label_w * 0.5).clamp(layout.x_axis.x, layout.x_axis.right() - x_label_w);
-    out.push(DrawCommand::Rect {
-        rect: crate::types::Rect {
-            x: x_label_x,
-            y: layout.x_axis.y + 2.0,
-            w: x_label_w,
-            h: x_label_h,
-        },
-        fill: Some(FillStyle::token(ColorToken::PaneBorder)),
-        stroke: None,
-    });
-    out.push(DrawCommand::Text {
-        pos: Point {
-            x: x_label_x + x_label_w * 0.5,
-            y: layout.x_axis.y + 13.0,
-        },
-        text: ts_text,
-        style: TextStyle::token(ColorToken::AxisText, 10.0, TextAlign::Center),
-    });
-
-    Some(out)
-}
-
 fn format_axis_value_label(
     value: f64,
     mode: crate::scale::PriceAxisMode,
@@ -696,64 +555,6 @@ fn format_axis_value_label(
         }
         _ => PriceFormatter { decimals: 2 }.format_value(value),
     }
-}
-
-fn source_label_bounds(layout: &ChartLayout, source_label: &str) -> Option<crate::types::Rect> {
-    if source_label.is_empty() {
-        return None;
-    }
-    let char_w = 6.7f32;
-    let width = source_label.chars().count() as f32 * char_w + 2.0;
-    Some(crate::types::Rect {
-        x: layout.plot.x + 8.0,
-        y: layout.plot.y + 3.0,
-        w: width.max(8.0),
-        h: 14.0,
-    })
-}
-
-fn build_non_price_pane_readout_commands(
-    series: &[PlotSeries],
-    layout: &ChartLayout,
-    index: usize,
-) -> Vec<DrawCommand> {
-    let mut out = Vec::new();
-
-    for pane in &layout.panes {
-        if matches!(pane.id, PaneId::Price) {
-            continue;
-        }
-
-        let mut lines: Vec<String> = Vec::new();
-        for s in series {
-            if !s.visible || s.pane != pane.id {
-                continue;
-            }
-
-            if let Some(value) = series_value_at_index(s, index) {
-                lines.push(format!("{}: {:.2}", s.name, value));
-            }
-        }
-
-        if lines.is_empty() {
-            continue;
-        }
-
-        out.push(DrawCommand::PushClip { rect: pane.rect });
-        for (i, text) in lines.into_iter().enumerate() {
-            out.push(DrawCommand::Text {
-                pos: Point {
-                    x: pane.rect.x + 6.0,
-                    y: pane.rect.y + 14.0 + i as f32 * 12.0,
-                },
-                text,
-                style: TextStyle::token(ColorToken::AxisText, 10.0, TextAlign::Left),
-            });
-        }
-        out.push(DrawCommand::PopClip);
-    }
-
-    out
 }
 
 fn build_dotted_vertical(

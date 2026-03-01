@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     layout::{compute_layout, AxisVisibilityPolicy, ChartLayout, PaneDescriptor, PaneHeightPolicy},
     plots::{
-        model::{PaneId, PlotPrimitive},
+        model::{LinePattern, PaneId, PlotPrimitive},
         provider::PlotDataProvider,
     },
     scale::PriceScale,
@@ -47,6 +47,38 @@ pub struct PlotSeriesState {
     pub deleted: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SeriesStyleOverride {
+    pub stroke_color: Option<String>,
+    pub stroke_width: Option<f32>,
+    pub stroke_pattern: Option<String>,
+    pub fill_color: Option<String>,
+    pub fill_opacity: Option<f32>,
+    pub histogram_positive_color: Option<String>,
+    pub histogram_negative_color: Option<String>,
+    pub histogram_width_factor: Option<f32>,
+    pub marker_color: Option<String>,
+    pub marker_size: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SeriesStyleSnapshot {
+    pub series_id: String,
+    pub series_name: String,
+    pub pane_id: String,
+    pub primitive_types: Vec<String>,
+    pub stroke_color: Option<String>,
+    pub stroke_width: Option<f32>,
+    pub stroke_pattern: Option<String>,
+    pub fill_color: Option<String>,
+    pub fill_opacity: Option<f32>,
+    pub histogram_positive_color: Option<String>,
+    pub histogram_negative_color: Option<String>,
+    pub histogram_width_factor: Option<f32>,
+    pub marker_color: Option<String>,
+    pub marker_size: Option<f32>,
+}
+
 impl Chart {
     pub fn add_plot_provider(&mut self, provider: Box<dyn PlotDataProvider>) {
         self.plot_providers.push(provider);
@@ -56,6 +88,7 @@ impl Chart {
         self.plot_providers.clear();
         self.hidden_series.clear();
         self.deleted_series.clear();
+        self.series_style_overrides.clear();
         self.selected_series_id = None;
     }
 
@@ -68,7 +101,94 @@ impl Chart {
                 if self.hidden_series.contains(&series.id) {
                     series.visible = false;
                 }
+                if let Some(style_override) = self.series_style_overrides.get(&series.id) {
+                    apply_series_style_override(&mut series, style_override);
+                }
                 series
+            })
+            .collect()
+    }
+
+    pub fn set_series_style_override(&mut self, series_id: &str, style: SeriesStyleOverride) {
+        self.series_style_overrides
+            .insert(series_id.to_string(), style);
+    }
+
+    pub fn series_style_override(&self, series_id: &str) -> Option<SeriesStyleOverride> {
+        self.series_style_overrides.get(series_id).cloned()
+    }
+
+    pub fn clear_series_style_override(&mut self, series_id: &str) {
+        self.series_style_overrides.remove(series_id);
+    }
+
+    pub fn all_series_style_overrides(&self) -> BTreeMap<String, SeriesStyleOverride> {
+        self.series_style_overrides
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
+    pub fn replace_all_series_style_overrides<I>(&mut self, overrides: I)
+    where
+        I: IntoIterator<Item = (String, SeriesStyleOverride)>,
+    {
+        self.series_style_overrides = overrides.into_iter().collect();
+    }
+
+    pub fn patch_series_style_overrides<I>(&mut self, overrides: I)
+    where
+        I: IntoIterator<Item = (String, SeriesStyleOverride)>,
+    {
+        for (series_id, style) in overrides {
+            self.series_style_overrides.insert(series_id, style);
+        }
+    }
+
+    pub fn series_style_snapshot(&self) -> Vec<SeriesStyleSnapshot> {
+        self.collect_plot_series()
+            .into_iter()
+            .map(|series| {
+                let mut snapshot = SeriesStyleSnapshot {
+                    series_id: series.id.clone(),
+                    series_name: series.name.clone(),
+                    pane_id: pane_label(&series.pane),
+                    primitive_types: Vec::new(),
+                    ..SeriesStyleSnapshot::default()
+                };
+                for primitive in &series.primitives {
+                    match primitive {
+                        PlotPrimitive::Line { style, .. } => {
+                            snapshot.primitive_types.push("line".to_string());
+                            snapshot.stroke_color = Some(style.color.clone());
+                            snapshot.stroke_width = Some(style.width);
+                            snapshot.stroke_pattern = Some(
+                                match style.pattern {
+                                    LinePattern::Solid => "solid",
+                                    LinePattern::Dashed => "dashed",
+                                    LinePattern::Dotted => "dotted",
+                                }
+                                .to_string(),
+                            );
+                        }
+                        PlotPrimitive::Band { style, .. } => {
+                            snapshot.primitive_types.push("band_fill".to_string());
+                            snapshot.fill_color = Some(style.fill_color.clone());
+                        }
+                        PlotPrimitive::Histogram { style, .. } => {
+                            snapshot.primitive_types.push("histogram".to_string());
+                            snapshot.histogram_positive_color = Some(style.positive_color.clone());
+                            snapshot.histogram_negative_color = Some(style.negative_color.clone());
+                            snapshot.histogram_width_factor = Some(style.width_factor);
+                        }
+                        PlotPrimitive::Markers { style, .. } => {
+                            snapshot.primitive_types.push("markers".to_string());
+                            snapshot.marker_color = Some(style.color.clone());
+                            snapshot.marker_size = Some(style.size);
+                        }
+                    }
+                }
+                snapshot
             })
             .collect()
     }
@@ -197,44 +317,46 @@ impl Chart {
     }
 
     pub(crate) fn pane_descriptors(&self) -> Vec<PaneDescriptor> {
-        let named_panes = ordered_registered_panes(&self.pane_registry, &self.pane_order);
+        let ordered = ordered_panes_with_price(&self.pane_registry, &self.pane_order);
+        let mut panes = Vec::new();
+        for pane_key in ordered {
+            if pane_key == "price" {
+                let price_weight = self
+                    .pane_weights
+                    .get("price")
+                    .copied()
+                    .unwrap_or(DEFAULT_PRICE_WEIGHT)
+                    .max(0.1);
+                let price_axis_visible = self
+                    .pane_y_axis_visible
+                    .get("price")
+                    .copied()
+                    .unwrap_or(true);
+                let price_min_height = self
+                    .pane_min_heights
+                    .get("price")
+                    .copied()
+                    .unwrap_or(DEFAULT_PRICE_MIN_HEIGHT)
+                    .max(1.0);
+                let price_max_height = self
+                    .pane_max_heights
+                    .get("price")
+                    .copied()
+                    .filter(|v| *v >= price_min_height);
+                panes.push(PaneDescriptor {
+                    id: PaneId::Price,
+                    height: PaneHeightPolicy::Ratio(price_weight),
+                    y_axis: if price_axis_visible {
+                        AxisVisibilityPolicy::Visible
+                    } else {
+                        AxisVisibilityPolicy::Hidden
+                    },
+                    min_height_px: price_min_height,
+                    max_height_px: price_max_height,
+                });
+                continue;
+            }
 
-        let price_weight = self
-            .pane_weights
-            .get("price")
-            .copied()
-            .unwrap_or(DEFAULT_PRICE_WEIGHT)
-            .max(0.1);
-        let price_axis_visible = self
-            .pane_y_axis_visible
-            .get("price")
-            .copied()
-            .unwrap_or(true);
-        let price_min_height = self
-            .pane_min_heights
-            .get("price")
-            .copied()
-            .unwrap_or(DEFAULT_PRICE_MIN_HEIGHT)
-            .max(1.0);
-        let price_max_height = self
-            .pane_max_heights
-            .get("price")
-            .copied()
-            .filter(|v| *v >= price_min_height);
-
-        let mut panes = vec![PaneDescriptor {
-            id: PaneId::Price,
-            height: PaneHeightPolicy::Ratio(price_weight),
-            y_axis: if price_axis_visible {
-                AxisVisibilityPolicy::Visible
-            } else {
-                AxisVisibilityPolicy::Hidden
-            },
-            min_height_px: price_min_height,
-            max_height_px: price_max_height,
-        }];
-
-        for pane_key in named_panes {
             if self.hidden_panes.contains(&pane_key) {
                 continue;
             }
@@ -393,7 +515,6 @@ impl Chart {
         let ordered: Vec<String> = order
             .into_iter()
             .map(|pane_id| pane_key_from_input(&pane_id))
-            .filter(|pane_key| pane_key != "price")
             .filter(|pane_key| dedup.insert(pane_key.clone()))
             .collect();
 
@@ -542,10 +663,6 @@ impl Chart {
 
     fn move_named_pane(&mut self, pane_id: &str, delta: isize) -> bool {
         let pane_key = pane_key_from_input(pane_id);
-        if pane_key == "price" {
-            return false;
-        }
-
         self.ensure_named_pane_registered(&pane_key);
 
         if !self.pane_order.contains(&pane_key) {
@@ -602,6 +719,120 @@ impl Chart {
             .find(|series| series.id == series_id)
             .map(|series| pane_key_from_input(&series.pane_id))
             .filter(|pane_key| pane_key != "price")
+    }
+}
+
+fn pane_label(pane_id: &PaneId) -> String {
+    match pane_id {
+        PaneId::Price => "price".to_string(),
+        PaneId::Named(name) => name.clone(),
+    }
+}
+
+fn parse_line_pattern(value: &str) -> LinePattern {
+    match value.to_ascii_lowercase().as_str() {
+        "dashed" => LinePattern::Dashed,
+        "dotted" => LinePattern::Dotted,
+        _ => LinePattern::Solid,
+    }
+}
+
+fn with_opacity(color: &str, opacity: f32) -> String {
+    let t = color.trim();
+    let alpha = opacity.clamp(0.0, 1.0);
+    if let Some(rest) = t.strip_prefix("rgba(").and_then(|s| s.strip_suffix(')')) {
+        let parts: Vec<&str> = rest.split(',').map(|p| p.trim()).collect();
+        if parts.len() >= 3 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                parts[0].parse::<u8>(),
+                parts[1].parse::<u8>(),
+                parts[2].parse::<u8>(),
+            ) {
+                return format!("rgba({r}, {g}, {b}, {alpha})");
+            }
+        }
+    }
+    if let Some(rest) = t.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
+        let parts: Vec<&str> = rest.split(',').map(|p| p.trim()).collect();
+        if parts.len() >= 3 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                parts[0].parse::<u8>(),
+                parts[1].parse::<u8>(),
+                parts[2].parse::<u8>(),
+            ) {
+                return format!("rgba({r}, {g}, {b}, {alpha})");
+            }
+        }
+    }
+    if let Some(stripped) = t.strip_prefix('#') {
+        let expanded = if stripped.len() == 3 {
+            let mut out = String::with_capacity(6);
+            for ch in stripped.chars() {
+                out.push(ch);
+                out.push(ch);
+            }
+            out
+        } else if stripped.len() == 6 {
+            stripped.to_string()
+        } else {
+            return t.to_string();
+        };
+        if let (Ok(r), Ok(g), Ok(b)) = (
+            u8::from_str_radix(&expanded[0..2], 16),
+            u8::from_str_radix(&expanded[2..4], 16),
+            u8::from_str_radix(&expanded[4..6], 16),
+        ) {
+            return format!("rgba({r}, {g}, {b}, {alpha})");
+        }
+    }
+    t.to_string()
+}
+
+fn apply_series_style_override(
+    series: &mut crate::plots::model::PlotSeries,
+    style_override: &SeriesStyleOverride,
+) {
+    for primitive in &mut series.primitives {
+        match primitive {
+            PlotPrimitive::Line { style, .. } => {
+                if let Some(color) = &style_override.stroke_color {
+                    style.color = color.clone();
+                }
+                if let Some(width) = style_override.stroke_width {
+                    style.width = width.max(0.5);
+                }
+                if let Some(pattern) = &style_override.stroke_pattern {
+                    style.pattern = parse_line_pattern(pattern);
+                }
+            }
+            PlotPrimitive::Band { style, .. } => {
+                if let Some(color) = &style_override.fill_color {
+                    style.fill_color = color.clone();
+                }
+                if let Some(opacity) = style_override.fill_opacity {
+                    style.fill_color = with_opacity(&style.fill_color, opacity);
+                }
+            }
+            PlotPrimitive::Histogram { style, .. } => {
+                if let Some(color) = &style_override.histogram_positive_color {
+                    style.positive_color = color.clone();
+                }
+                if let Some(color) = &style_override.histogram_negative_color {
+                    style.negative_color = color.clone();
+                }
+                if let Some(width_factor) = style_override.histogram_width_factor {
+                    style.width_factor = width_factor.clamp(0.05, 1.0);
+                }
+            }
+            PlotPrimitive::Markers { style, .. } => {
+                if let Some(color) = &style_override.marker_color {
+                    style.color = color.clone();
+                }
+                if let Some(size) = style_override.marker_size {
+                    style.size = size.max(1.0);
+                }
+            }
+        }
     }
 }
 
@@ -748,6 +979,42 @@ fn ordered_registered_panes(registered: &[String], pane_order: &[String]) -> Vec
     ordered
 }
 
+fn ordered_panes_with_price(registered: &[String], pane_order: &[String]) -> Vec<String> {
+    let mut named_seen = HashSet::new();
+    let mut ordered_named = Vec::new();
+    for pane_key in ordered_registered_panes(registered, pane_order) {
+        if named_seen.insert(pane_key.clone()) {
+            ordered_named.push(pane_key);
+        }
+    }
+
+    let explicit_price_index = pane_order
+        .iter()
+        .position(|pane_id| pane_key_from_input(pane_id) == "price");
+
+    if let Some(index) = explicit_price_index {
+        let named_before = pane_order
+            .iter()
+            .take(index)
+            .map(|pane_id| pane_key_from_input(pane_id))
+            .filter(|pane_key| pane_key != "price")
+            .filter(|pane_key| named_seen.contains(pane_key))
+            .collect::<Vec<_>>();
+        let insert_at = named_before
+            .iter()
+            .filter_map(|pane_key| ordered_named.iter().position(|id| id == pane_key))
+            .max()
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
+        ordered_named.insert(insert_at, "price".to_string());
+        return ordered_named;
+    }
+
+    let mut out = vec!["price".to_string()];
+    out.extend(ordered_named);
+    out
+}
+
 fn pane_id_label(pane_id: &PaneId) -> String {
     match pane_id {
         PaneId::Price => "price".to_string(),
@@ -788,5 +1055,15 @@ mod tests {
 
         let ordered = chart.registered_named_panes();
         assert_eq!(ordered, vec!["macd", "rsi", "momentum"]);
+    }
+
+    #[test]
+    fn pane_order_can_place_named_above_price() {
+        let mut chart = Chart::new(1200.0, 800.0);
+        chart.register_named_pane("rsi");
+        chart.set_pane_order(vec!["rsi".to_string(), "price".to_string()]);
+        let panes = chart.pane_descriptors();
+        assert!(matches!(panes[0].id, PaneId::Named(ref name) if name == "rsi"));
+        assert!(matches!(panes[1].id, PaneId::Price));
     }
 }

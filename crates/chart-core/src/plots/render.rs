@@ -1,7 +1,7 @@
 //! Generic plot renderer.
 
 use crate::{
-    plots::model::{PaneId, PlotPrimitive, PlotSeries},
+    plots::model::{LinePattern, PaneId, PlotPrimitive, PlotSeries},
     render::primitives::DrawCommand,
     render::styles::{FillStyle, StrokeStyle},
     scale::{PriceScale, TimeScale},
@@ -42,7 +42,13 @@ pub fn build_plot_draw_commands(series: &[PlotSeries], ctx: PlotRenderContext) -
         for primitive in &s.primitives {
             match primitive {
                 PlotPrimitive::Line { values, style } => {
-                    out.extend(render_line(values, style.width, &style.color, &ctx));
+                    out.extend(render_line(
+                        values,
+                        style.width,
+                        &style.color,
+                        &style.pattern,
+                        &ctx,
+                    ));
                 }
                 PlotPrimitive::Band {
                     upper,
@@ -72,6 +78,7 @@ fn render_line(
     values: &[Option<f64>],
     width: f32,
     color: &str,
+    pattern: &LinePattern,
     ctx: &PlotRenderContext,
 ) -> Vec<DrawCommand> {
     let mut out = Vec::new();
@@ -90,7 +97,19 @@ fn render_line(
                     out.push(DrawCommand::Line {
                         from: prev_point,
                         to: current,
-                        stroke: StrokeStyle::css(color.to_string(), width),
+                        stroke: match pattern {
+                            LinePattern::Solid => StrokeStyle::css(color.to_string(), width),
+                            LinePattern::Dashed => StrokeStyle::css_with_dash(
+                                color.to_string(),
+                                width,
+                                Some(vec![6.0, 3.0]),
+                            ),
+                            LinePattern::Dotted => StrokeStyle::css_with_dash(
+                                color.to_string(),
+                                width,
+                                Some(vec![2.0, 2.0]),
+                            ),
+                        },
                     });
                 }
                 prev = Some(current);

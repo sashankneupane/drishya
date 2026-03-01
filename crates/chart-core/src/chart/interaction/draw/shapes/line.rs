@@ -1,5 +1,7 @@
 use crate::{
-    drawings::commands::execute_command, drawings::shape::line as line_shape, scale::PriceScale,
+    drawings::commands::{execute_command, DrawingCommandResult},
+    drawings::shape::line as line_shape,
+    scale::PriceScale,
 };
 
 use crate::chart::Chart;
@@ -26,10 +28,14 @@ impl Chart {
             baseline: self.derived_percent_baseline_price(),
         };
         let price = ps.price_for_y(y_pixels);
-        let _ = execute_command(
+        if let DrawingCommandResult::Added { id } = execute_command(
             &mut self.drawings,
             line_shape::add_horizontal_command(price),
-        );
+        ) {
+            self.selected_drawing_id = Some(id);
+            self.selected_series_id = None;
+            self.selected_event_id = None;
+        }
     }
 
     pub fn add_vertical_line_at_x(&mut self, x_pixels: f32) {
@@ -49,10 +55,14 @@ impl Chart {
                 .unwrap_or_else(|| {
                     vp.pixel_x_to_world_x(x_pixels, price_pane.x, price_pane.w.max(1.0))
                 });
-            let _ = execute_command(
+            if let DrawingCommandResult::Added { id } = execute_command(
                 &mut self.drawings,
                 line_shape::add_vertical_command(world_x),
-            );
+            ) {
+                self.selected_drawing_id = Some(id);
+                self.selected_series_id = None;
+                self.selected_event_id = None;
+            }
         }
     }
 }

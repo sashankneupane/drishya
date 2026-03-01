@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use crate::api::wasm::chart_handle::WasmChart;
+use crate::chart::plots::SeriesStyleOverride;
+use std::collections::HashMap;
 
 #[wasm_bindgen]
 impl WasmChart {
@@ -37,6 +39,55 @@ impl WasmChart {
     /// Restores a previously deleted series by id.
     pub fn restore_series(&mut self, series_id: &str) {
         self.chart.restore_series(series_id);
+    }
+
+    pub fn series_style_snapshot_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.series_style_snapshot()).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize series style snapshot: {e}"))
+        })
+    }
+
+    pub fn series_style_override_json(&self, series_id: &str) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.series_style_override(series_id)).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize series style override: {e}"))
+        })
+    }
+
+    pub fn set_series_style_override_json(
+        &mut self,
+        series_id: &str,
+        json: &str,
+    ) -> Result<(), JsValue> {
+        let style = serde_json::from_str::<SeriesStyleOverride>(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid series style override JSON: {e}")))?;
+        self.chart.set_series_style_override(series_id, style);
+        Ok(())
+    }
+
+    pub fn clear_series_style_override(&mut self, series_id: &str) {
+        self.chart.clear_series_style_override(series_id);
+    }
+
+    pub fn all_series_style_overrides_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.all_series_style_overrides()).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize series style overrides: {e}"))
+        })
+    }
+
+    /// Replaces all series style overrides (full rewrite).
+    pub fn replace_series_style_overrides_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let overrides: HashMap<String, SeriesStyleOverride> = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid style override map JSON: {e}")))?;
+        self.chart.replace_all_series_style_overrides(overrides);
+        Ok(())
+    }
+
+    /// Applies partial series style overrides (upsert subset).
+    pub fn patch_series_style_overrides_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let overrides: HashMap<String, SeriesStyleOverride> = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid style override patch JSON: {e}")))?;
+        self.chart.patch_series_style_overrides(overrides);
+        Ok(())
     }
 
     pub fn register_compare_series(&mut self, symbol: &str, name: &str, color: &str) -> String {

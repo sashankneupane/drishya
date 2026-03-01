@@ -13,6 +13,8 @@ use crate::plots::model::{
 };
 use crate::plots::provider::PlotDataProvider;
 use crate::types::Candle;
+use serde_json::Value as JsonValue;
+use std::collections::BTreeMap;
 
 fn ohlcv_from_candles(candles: &[Candle]) -> OhlcvBatch {
     OhlcvBatch {
@@ -47,6 +49,173 @@ fn values_or_none(series: Option<&NormalizedSeries>, len: usize) -> Vec<Option<f
     match series {
         Some(s) => s.values.clone(),
         None => vec![None; len],
+    }
+}
+
+fn param_value_to_json(value: &IndicatorParamValue) -> JsonValue {
+    match value {
+        IndicatorParamValue::Int(v) => JsonValue::from(*v),
+        IndicatorParamValue::Float(v) => JsonValue::from(*v),
+        IndicatorParamValue::Bool(v) => JsonValue::from(*v),
+        IndicatorParamValue::Text(v) => JsonValue::from(v.clone()),
+    }
+}
+
+fn series_instance_id(indicator_id: &str, params: &[(String, IndicatorParamValue)]) -> String {
+    for (key, value) in params {
+        if key == "__instance" {
+            if let IndicatorParamValue::Text(v) = value {
+                let trimmed = v.trim();
+                if !trimmed.is_empty() {
+                    return format!("{indicator_id}::{trimmed}");
+                }
+            }
+        }
+    }
+    let mut map = serde_json::Map::new();
+    for (key, value) in params {
+        map.insert(key.clone(), param_value_to_json(value));
+    }
+    let encoded = serde_json::to_string(&map)
+        .ok()
+        .map(|raw| {
+            let mut out = String::with_capacity(raw.len() * 2);
+            for b in raw.as_bytes() {
+                use std::fmt::Write as _;
+                let _ = write!(&mut out, "{:02x}", b);
+            }
+            out
+        })
+        .unwrap_or_else(|| "7b7d".to_string());
+    format!("{indicator_id}::{encoded}")
+}
+
+fn style_slot_map(
+    meta: &ta_engine::metadata::IndicatorMeta,
+) -> BTreeMap<&'static str, ta_engine::metadata::StyleSlotMeta> {
+    meta.visual
+        .style_slots
+        .iter()
+        .map(|slot| (slot.slot, *slot))
+        .collect()
+}
+
+fn map_pane_hint(id: &str, pane_hint: ta_engine::metadata::IndicatorPaneHint) -> PaneId {
+    match pane_hint {
+        ta_engine::metadata::IndicatorPaneHint::PriceOverlay => PaneId::Price,
+        ta_engine::metadata::IndicatorPaneHint::VolumeOverlay => {
+            PaneId::Named("volume".to_string())
+        }
+        ta_engine::metadata::IndicatorPaneHint::SeparatePane => PaneId::Named(id.to_string()),
+        ta_engine::metadata::IndicatorPaneHint::Auto => PaneId::Named(id.to_string()),
+    }
+}
+
+pub struct TaCatalogPlotProvider {
+    indicator_id: String,
+    params: Vec<(String, IndicatorParamValue)>,
+}
+
+impl TaCatalogPlotProvider {
+    pub fn new(indicator_id: String, params: Vec<(String, IndicatorParamValue)>) -> Self {
+        Self {
+            indicator_id,
+            params,
+        }
+    }
+}
+
+impl PlotDataProvider for TaCatalogPlotProvider {
+    fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        let provider = TaEngineProvider::new();
+        let req = make_request(&self.indicator_id, self.params.clone(), candles);
+        let out = match provider.compute(&req) {
+            Ok(v) => v,
+            Err(_) => return vec![],
+        };
+        let Some(meta) = ta_engine::metadata::find_indicator_meta(&self.indicator_id) else {
+            return vec![];
+        };
+        let slot_map = style_slot_map(meta);
+        let line_map: BTreeMap<String, Vec<Option<f64>>> = out
+            .lines
+            .into_iter()
+            .map(|line| (line.name, line.values))
+            .collect();
+
+        let mut primitives = Vec::new();
+        for visual in meta.visual.output_visuals {
+            let Some(slot) = slot_map.get(visual.style_slot) else {
+                continue;
+            };
+            match visual.primitive {
+                ta_engine::metadata::OutputVisualPrimitive::Line => {
+                    let values = line_map
+                        .get(visual.output)
+                        .cloned()
+                        .unwrap_or_else(|| vec![None; candles.len()]);
+                    primitives.push(PlotPrimitive::Line {
+                        values,
+                        style: LineStyle {
+                            color: slot.default.color.to_string(),
+                            width: slot.default.width.unwrap_or(1.5) as f32,
+                            pattern: match slot.default.pattern {
+                                Some(ta_engine::metadata::StrokePattern::Dashed) => {
+                                    LinePattern::Dashed
+                                }
+                                Some(ta_engine::metadata::StrokePattern::Dotted) => {
+                                    LinePattern::Dotted
+                                }
+                                _ => LinePattern::Solid,
+                            },
+                        },
+                    });
+                }
+                ta_engine::metadata::OutputVisualPrimitive::Histogram => {
+                    let values = line_map
+                        .get(visual.output)
+                        .cloned()
+                        .unwrap_or_else(|| vec![None; candles.len()]);
+                    let color = slot.default.color.to_string();
+                    primitives.push(PlotPrimitive::Histogram {
+                        values,
+                        base: 0.0,
+                        style: HistogramStyle {
+                            positive_color: color.clone(),
+                            negative_color: color,
+                            width_factor: slot.default.width.unwrap_or(0.7) as f32,
+                        },
+                    });
+                }
+                ta_engine::metadata::OutputVisualPrimitive::BandFill => {
+                    let (Some(upper), Some(lower)) = (line_map.get("upper"), line_map.get("lower"))
+                    else {
+                        continue;
+                    };
+                    primitives.push(PlotPrimitive::Band {
+                        upper: upper.clone(),
+                        lower: lower.clone(),
+                        style: BandStyle {
+                            fill_color: slot.default.color.to_string(),
+                        },
+                    });
+                }
+                ta_engine::metadata::OutputVisualPrimitive::Markers
+                | ta_engine::metadata::OutputVisualPrimitive::SignalFlag => {}
+            }
+        }
+
+        if primitives.is_empty() {
+            return vec![];
+        }
+
+        vec![PlotSeries {
+            id: series_instance_id(&self.indicator_id, &self.params),
+            name: meta.display_name.to_string(),
+            pane: map_pane_hint(&self.indicator_id, meta.visual.pane_hint),
+            visible: true,
+            primitives,
+        }]
     }
 }
 
