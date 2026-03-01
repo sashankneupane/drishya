@@ -49,6 +49,7 @@ import { syncChartPaneContracts } from "./paneContracts.js";
 import { reconcilePaneSpecsForRuntime } from "./paneSpecReconcile.js";
 import { createTileObjectTreeHandle } from "./objectTreeHandleFactory.js";
 import { getActiveTab } from "./chartTileSelection.js";
+import { getActiveChartForTileFromState, getChartsForTileFromState } from "./runtimeSelection.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -250,21 +251,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const getActiveChartForTile = (chartTileId: string): DrishyaChartClient | null => {
-    const tile = controller.getState().chartTiles[chartTileId];
-    const activeTab = getActiveTab(tile);
-    if (!activeTab) return null;
-    return getRuntime(activeTab.chartPaneId)?.chart ?? null;
+    return getActiveChartForTileFromState(controller.getState(), chartTileId, getRuntime);
   };
 
   const getChartsForTile = (chartTileId: string): DrishyaChartClient[] => {
-    const tile = controller.getState().chartTiles[chartTileId];
-    if (!tile) return [];
-    const out: DrishyaChartClient[] = [];
-    for (const tab of tile.tabs) {
-      const runtime = getRuntime(tab.chartPaneId);
-      if (runtime) out.push(runtime.chart);
-    }
-    return out;
+    return getChartsForTileFromState(controller.getState(), chartTileId, getRuntime);
   };
 
   const workspaceIntents = createWorkspaceIntentController({
