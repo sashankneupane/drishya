@@ -82,13 +82,7 @@ export function buildObjectTreeNodes(
       if (paneId === rootId) return true;
       const spec = paneSpecMap[paneId];
       if (spec?.kind !== "indicator") return false;
-      if (spec?.parentChartPaneId) return canonicalPaneId(spec.parentChartPaneId) === rootId;
-      const idx = orderedPaneIds.indexOf(paneId);
-      for (let i = idx - 1; i >= 0; i -= 1) {
-        const prevId = orderedPaneIds[i];
-        if (chartRoots.includes(prevId)) return prevId === rootId;
-      }
-      return rootId === "price";
+      return canonicalPaneId(spec.parentChartPaneId ?? "price") === rootId;
     });
 
     for (const scopedPaneId of scopedPaneOrder) {

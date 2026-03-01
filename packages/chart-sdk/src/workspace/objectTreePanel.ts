@@ -59,7 +59,6 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   container.className = "flex-1 overflow-y-auto no-scrollbar py-1.5";
   root.appendChild(container);
 
-  const INDICATOR_PREFIXES = ["sma", "ema", "bb", "bbands", "rsi", "macd", "atr", "stoch", "obv", "vwap", "adx", "mom"];
   const refresh = () => {
     container.innerHTML = "";
     const chart = options.getChart();
@@ -139,9 +138,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         const series = seriesById.get(node.id);
         if (!series) return false;
         if (paneKindById.get(canonicalRuntimePaneId(series.pane_id)) === "indicator") return true;
-        if (indicatorSeriesIds.has(node.id)) return true;
-        const lowerId = node.id.toLowerCase();
-        return INDICATOR_PREFIXES.some((prefix) => lowerId === prefix || lowerId.startsWith(`${prefix}:`) || lowerId.startsWith(`${prefix}_`));
+        return indicatorSeriesIds.has(node.id);
       })();
 
       if (node.kind === "pane" && (node.paneKind === "chart" || node.paneKind === "price")) {
