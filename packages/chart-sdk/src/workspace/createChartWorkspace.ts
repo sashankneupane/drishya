@@ -21,7 +21,7 @@ import {
   defaultIndicatorToken,
   findTokenParamsForSeriesId,
 } from "./indicatorRuntime.js";
-import { buildPaneSpecForRuntime, canonicalRuntimePaneId } from "./paneSpec.js";
+import { canonicalRuntimePaneId } from "./paneSpec.js";
 import { createTopStrip } from "./topStrip.js";
 import {
   canonicalIndicatorId,
@@ -45,6 +45,7 @@ import type { ChartPaneRuntime } from "./runtimeTypes.js";
 import { createWorkspaceIntentController } from "./workspaceIntentController.js";
 import { WorkspaceController } from "./WorkspaceController.js";
 import { syncChartPaneContracts } from "./paneContracts.js";
+import { reconcilePaneSpecsForRuntime } from "./paneSpecReconcile.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -222,21 +223,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return created;
   };
   const getPrimaryRuntime = () => chartRuntimes.get("price") ?? chartRuntimes.values().next().value ?? null;
-  const reconcilePaneSpecsForRuntime = (ownerChartPaneId: string, chart: DrishyaChartClient) => {
-    const runtimePanes = chart.paneLayouts();
-    if (!runtimePanes.length) return;
-    const runtimeOrder = runtimePanes.map((pane) => pane.id);
-    const state = controller.getState();
-    for (const pane of runtimePanes) {
-      const paneId = canonicalRuntimePaneId(pane.id);
-      if (state.paneLayout.panes[paneId]) continue;
-      const spec = buildPaneSpecForRuntime(pane.id, state.paneLayout, runtimeOrder);
-      if (spec.kind === "indicator" && !spec.parentChartPaneId) {
-        spec.parentChartPaneId = ownerChartPaneId;
-      }
-      controller.registerPane(spec);
-    }
-  };
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
     for (const runtime of chartRuntimes.values()) {
@@ -256,7 +242,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const runtime = getRuntime(tab.chartPaneId);
       if (!runtime) continue;
       applyIndicatorSetToChart(runtime.chart, ids);
-      reconcilePaneSpecsForRuntime(tab.chartPaneId, runtime.chart);
+      reconcilePaneSpecsForRuntime({ ownerChartPaneId: tab.chartPaneId, chart: runtime.chart, controller });
     }
   };
 
@@ -651,7 +637,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             const tile = controller.getState().chartTiles[runtime.chartTileId];
             for (const tab of tile?.tabs ?? []) {
               if (getRuntime(tab.chartPaneId)?.chart === targetChart) {
-                reconcilePaneSpecsForRuntime(tab.chartPaneId, targetChart);
+                reconcilePaneSpecsForRuntime({ ownerChartPaneId: tab.chartPaneId, chart: targetChart, controller });
               }
             }
           }
@@ -1964,7 +1950,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       ? normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? [])
       : [];
     applyIndicatorSetToChart(paneChart, restoredIndicators);
-    reconcilePaneSpecsForRuntime(paneId, paneChart);
+    reconcilePaneSpecsForRuntime({ ownerChartPaneId: paneId, chart: paneChart, controller });
 
     const runtime: ChartPaneRuntime = {
       runtimeKey,
