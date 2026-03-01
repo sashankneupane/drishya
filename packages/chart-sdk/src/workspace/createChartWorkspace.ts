@@ -1,5 +1,5 @@
 import type { DrawingToolId } from "../toolbar/model.js";
-import type { ChartAppearanceConfig, SeriesStyleOverride } from "../wasm/contracts.js";
+import type { SeriesStyleOverride } from "../wasm/contracts.js";
 import type { Candle } from "../wasm/contracts.js";
 import type { LayoutRect } from "../layout/splitTree.js";
 import { DrishyaChartClient } from "../wasm/client.js";
@@ -32,9 +32,6 @@ import {
   normalizeIndicatorIds,
   parseIndicatorParamsFromSeriesId,
 } from "./indicatorIdentity.js";
-import {
-  type PersistedChartTileStoredShape,
-} from "./persistenceHelpers.js";
 import { ReplayController } from "./replay/ReplayController.js";
 import type { ChartPaneRuntime } from "./runtimeTypes.js";
 import { createWorkspaceIntentController } from "./workspaceIntentController.js";
@@ -51,31 +48,15 @@ import { buildPersistedChartTiles } from "./workspacePersistenceSnapshot.js";
 import { closeChartTabOrTile } from "./chartTabActions.js";
 import { resolveChartTileHeaderContext } from "./chartTileHeaderContext.js";
 import { restorePersistedWorkspace } from "./restorePersistedWorkspace.js";
+import { buildPersistedWorkspaceEnvelope } from "./workspacePersistEnvelope.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
-  WorkspacePaneLayoutState,
   WorkspaceChartSplitNode,
   WorkspaceChartPaneSpec,
 } from "./types.js";
 
 const WORKSPACE_STYLE_LINK_ID = "drishya-workspace-styles";
-
-interface PersistedWorkspaceState {
-  theme?: "dark" | "light";
-  appearance?: ChartAppearanceConfig;
-  candleStyle?: string;
-  cursorMode?: string;
-  isObjectTreeOpen?: boolean;
-  objectTreeWidth?: number;
-  isLeftStripOpen?: boolean;
-  priceAxisMode?: "linear" | "log" | "percent";
-  workspaceTiles?: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
-  workspaceTileOrder?: string[];
-  chartTiles?: Record<string, PersistedChartTileStoredShape>;
-  activeChartTileId?: string;
-  paneLayout?: WorkspacePaneLayoutState;
-}
 
 export function createChartWorkspace(options: CreateChartWorkspaceOptions): ChartWorkspaceHandle {
   const { host, createWasmChart } = options;
@@ -306,21 +287,18 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         selectedTimeframe: options.marketControls?.selectedTimeframe,
         availableTimeframes: options.marketControls?.timeframes,
       });
-      const state: PersistedWorkspaceState = {
-        theme: stateNow.theme,
-        cursorMode: stateNow.cursorMode,
-        isObjectTreeOpen: stateNow.isObjectTreeOpen,
+      const state = buildPersistedWorkspaceEnvelope({
+        state: stateNow,
         objectTreeWidth,
-        isLeftStripOpen: stateNow.isLeftStripOpen,
-        priceAxisMode: stateNow.priceAxisMode,
-        candleStyle: getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle(),
-        appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? undefined,
-        workspaceTiles: stateNow.workspaceTiles,
-        workspaceTileOrder: stateNow.workspaceTileOrder,
+        candleStyle:
+          getActiveRuntime()?.chart.candleStyle() ??
+          getPrimaryRuntime()?.chart.candleStyle(),
+        appearance:
+          getActiveRuntime()?.chart.getAppearanceConfig() ??
+          getPrimaryRuntime()?.chart.getAppearanceConfig() ??
+          undefined,
         chartTiles: persistedChartTiles,
-        activeChartTileId: stateNow.activeChartTileId,
-        paneLayout: stateNow.paneLayout,
-      };
+      });
       localStorage.setItem(persistKey, JSON.stringify(state));
     } catch {
       // ignore quota or parse errors
