@@ -53,6 +53,7 @@ import { getActiveChartForTileFromState, getChartsForTileFromState } from "./run
 import { applyIndicatorsToTileCharts } from "./indicatorTileSync.js";
 import { initializeChartTileSourceState } from "./chartTileSourceInit.js";
 import { syncChartTileShellWidths } from "./tileWidthSync.js";
+import { buildPersistedChartTiles } from "./workspacePersistenceSnapshot.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -380,56 +381,29 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       persistTimer = null;
     }
     try {
-      const persistedChartTiles: Record<string, PersistedChartTileStoredShape> = {};
-      for (const [chartTileId, chartTile] of Object.entries(controller.getState().chartTiles)) {
-        const activeTab = chartTile.tabs.find((tab) => tab.id === chartTile.activeTabId) ?? null;
-        const orderedTabs = activeTab ? [activeTab, ...chartTile.tabs.filter((tab) => tab.id !== activeTab.id)] : chartTile.tabs;
-        const runtime = orderedTabs.map((tab) => chartRuntimes.get(tab.chartPaneId)).find((value): value is ChartPaneRuntime => !!value) ?? null;
-        const tilePaneState = runtime?.chart.getPaneStateJson() ?? null;
-        const tileIndicators = normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? []);
-        const paneSourcesByPane: Record<string, { symbol?: string; timeframe?: string }> = {};
-        const paneStateByPane: Record<string, string | null> = {};
-        const indicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>> = {};
-        for (const tab of chartTile.tabs) {
-          const src = controller.getState().chartPaneSources[tab.chartPaneId] ?? {};
-          paneSourcesByPane[tab.chartPaneId] = {
-            symbol: src.symbol ?? tab.title,
-            timeframe:
-              src.timeframe ??
-              options.marketControls?.selectedTimeframe ??
-              options.marketControls?.timeframes?.[0],
-          };
-          paneStateByPane[tab.chartPaneId] = chartRuntimes.get(tab.chartPaneId)?.chart.getPaneStateJson() ?? tilePaneState;
-          indicatorStyleOverridesByPane[tab.chartPaneId] =
-            chartRuntimes.get(tab.chartPaneId)?.chart.allSeriesStyleOverrides() ?? {};
-        }
-        persistedChartTiles[chartTileId] = {
-          id: chartTile.id,
-          tabs: chartTile.tabs.map((tab) => ({ id: tab.id, title: tab.title, chartPaneId: tab.chartPaneId })),
-          activeTabId: chartTile.activeTabId,
-          config: {
-            paneSourcesByPane,
-            paneStateByPane,
-            indicators: tileIndicators,
-            indicatorStyleOverridesByPane,
-            treeOpen: chartTileTreeOpen.get(chartTileId) === true
-          }
-        };
-      }
+      const stateNow = controller.getState();
+      const persistedChartTiles = buildPersistedChartTiles({
+        state: stateNow,
+        chartRuntimes,
+        chartTileIndicatorState,
+        chartTileTreeOpen,
+        selectedTimeframe: options.marketControls?.selectedTimeframe,
+        availableTimeframes: options.marketControls?.timeframes,
+      });
       const state: PersistedWorkspaceState = {
-        theme: controller.getState().theme,
-        cursorMode: controller.getState().cursorMode,
-        isObjectTreeOpen: controller.getState().isObjectTreeOpen,
+        theme: stateNow.theme,
+        cursorMode: stateNow.cursorMode,
+        isObjectTreeOpen: stateNow.isObjectTreeOpen,
         objectTreeWidth,
-        isLeftStripOpen: controller.getState().isLeftStripOpen,
-        priceAxisMode: controller.getState().priceAxisMode,
+        isLeftStripOpen: stateNow.isLeftStripOpen,
+        priceAxisMode: stateNow.priceAxisMode,
         candleStyle: getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle(),
         appearance: getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? undefined,
-        workspaceTiles: controller.getState().workspaceTiles,
-        workspaceTileOrder: controller.getState().workspaceTileOrder,
+        workspaceTiles: stateNow.workspaceTiles,
+        workspaceTileOrder: stateNow.workspaceTileOrder,
         chartTiles: persistedChartTiles,
-        activeChartTileId: controller.getState().activeChartTileId,
-        paneLayout: controller.getState().paneLayout,
+        activeChartTileId: stateNow.activeChartTileId,
+        paneLayout: stateNow.paneLayout,
       };
       localStorage.setItem(persistKey, JSON.stringify(state));
     } catch {
