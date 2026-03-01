@@ -50,6 +50,7 @@ import { reconcilePaneSpecsForRuntime } from "./paneSpecReconcile.js";
 import { createTileObjectTreeHandle } from "./objectTreeHandleFactory.js";
 import { getActiveTab } from "./chartTileSelection.js";
 import { getActiveChartForTileFromState, getChartsForTileFromState } from "./runtimeSelection.js";
+import { applyIndicatorsToTileCharts } from "./indicatorTileSync.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -242,12 +243,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const applyIndicatorSetToTile = (chartTileId: string) => {
     const ids = chartTileIndicatorState.get(chartTileId) ?? [];
     const chartTile = controller.getState().chartTiles[chartTileId];
-    for (const tab of chartTile?.tabs ?? []) {
-      const runtime = getRuntime(tab.chartPaneId);
-      if (!runtime) continue;
-      applyIndicatorSetToChart(runtime.chart, ids);
-      reconcilePaneSpecsForRuntime({ ownerChartPaneId: tab.chartPaneId, chart: runtime.chart, controller });
-    }
+    applyIndicatorsToTileCharts({
+      chartTile,
+      indicatorIds: ids,
+      controller,
+      getRuntime,
+      applyIndicatorSetToChart,
+      reconcilePaneSpecsForRuntime,
+    });
   };
 
   const getActiveChartForTile = (chartTileId: string): DrishyaChartClient | null => {
