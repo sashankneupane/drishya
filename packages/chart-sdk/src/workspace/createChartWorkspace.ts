@@ -50,6 +50,7 @@ import { resolveChartTileHeaderContext } from "./chartTileHeaderContext.js";
 import { restorePersistedWorkspace } from "./restorePersistedWorkspace.js";
 import { buildPersistedWorkspaceEnvelope } from "./workspacePersistEnvelope.js";
 import { createChartFacade } from "./chartFacade.js";
+import { createPersistenceScheduler } from "./persistenceScheduler.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -270,14 +271,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     restoredObjectTreeWidth = restoreResult.restoredObjectTreeWidth;
   }
 
-  let persistTimer: ReturnType<typeof setTimeout> | null = null;
   const DEBOUNCE_PERSIST_MS = 400;
   const persistNow = () => {
     if (!persistKey || typeof localStorage === "undefined") return;
-    if (persistTimer) {
-      clearTimeout(persistTimer);
-      persistTimer = null;
-    }
     try {
       const stateNow = controller.getState();
       const persistedChartTiles = buildPersistedChartTiles({
@@ -305,16 +301,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       // ignore quota or parse errors
     }
   };
+  const persistenceScheduler = createPersistenceScheduler(persistNow, DEBOUNCE_PERSIST_MS);
   const savePersistedState = () => {
     if (!persistKey || typeof localStorage === "undefined") return;
-    if (persistTimer) clearTimeout(persistTimer);
-    persistTimer = setTimeout(() => {
-      persistTimer = null;
-      persistNow();
-    }, DEBOUNCE_PERSIST_MS);
+    persistenceScheduler.schedule();
   };
   const savePersistedStateImmediate = () => {
-    persistNow();
+    persistenceScheduler.flush();
   };
 
   // top control strip
@@ -2228,7 +2221,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       } else {
         window.removeEventListener("resize", setupCanvasBackingStore);
       }
-      persistNow();
+      savePersistedStateImmediate();
+      persistenceScheduler.cancel();
       if (fastDrawRafId !== null) {
         cancelAnimationFrame(fastDrawRafId);
         fastDrawRafId = null;
