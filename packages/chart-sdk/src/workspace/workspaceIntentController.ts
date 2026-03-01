@@ -21,14 +21,6 @@ interface WorkspaceIntentControllerOptions {
   savePersistedState: () => void;
 }
 
-const resolvePaneId = (rawPaneIds: readonly string[], paneId: string): string | null => {
-  const target = canonicalRuntimePaneId(paneId);
-  for (const rawId of rawPaneIds) {
-    if (canonicalRuntimePaneId(rawId) === target) return rawId;
-  }
-  return null;
-};
-
 const tokenMatchesVisibleRuntimeSeries = (
   token: string,
   runtimeSeriesIds: readonly string[]
@@ -189,34 +181,28 @@ export const createWorkspaceIntentController = (
   const movePaneInTile = (chartTileId: string, paneId: string, direction: PaneDirection): boolean => {
     const chart = options.getChartForTile(chartTileId);
     if (!chart) return false;
-    const runtimeOrder = chart.paneLayouts().map((pane) => pane.id);
+    const runtimeOrder = chart.paneLayouts().map((pane) => canonicalRuntimePaneId(pane.id));
     if (!runtimeOrder.length) return false;
-    const resolvedPaneId = resolvePaneId(runtimeOrder, paneId);
-    if (!resolvedPaneId) return false;
+    const runtimeSet = new Set(runtimeOrder);
+    const currentScopedOrder = options.controller
+      .getState()
+      .paneLayout.order
+      .map((id) => canonicalRuntimePaneId(id))
+      .filter((id, idx, arr) => runtimeSet.has(id) && arr.indexOf(id) === idx);
+    if (!currentScopedOrder.length) return false;
 
-    const movedNative =
-      direction === "up"
-        ? chart.movePaneUp(resolvedPaneId)
-        : chart.movePaneDown(resolvedPaneId);
-    if (movedNative) {
-      const nextRuntimeOrder = chart.paneLayouts().map((pane) => pane.id);
-      if (nextRuntimeOrder.length) {
-        mergeTilePaneOrderIntoController(chartTileId, nextRuntimeOrder);
-        options.savePersistedState();
-        return true;
-      }
-    }
-
-    const idx = runtimeOrder.indexOf(resolvedPaneId);
+    const targetPaneId = canonicalRuntimePaneId(paneId);
+    if (!runtimeSet.has(targetPaneId)) return false;
+    const idx = currentScopedOrder.indexOf(targetPaneId);
     if (idx < 0) return false;
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= runtimeOrder.length) return false;
-    const nextRuntimeOrder = [...runtimeOrder];
-    [nextRuntimeOrder[idx], nextRuntimeOrder[swapIdx]] = [
-      nextRuntimeOrder[swapIdx]!,
-      nextRuntimeOrder[idx]!,
+    if (swapIdx < 0 || swapIdx >= currentScopedOrder.length) return false;
+    const nextScopedOrder = [...currentScopedOrder];
+    [nextScopedOrder[idx], nextScopedOrder[swapIdx]] = [
+      nextScopedOrder[swapIdx]!,
+      nextScopedOrder[idx]!,
     ];
-    mergeTilePaneOrderIntoController(chartTileId, nextRuntimeOrder);
+    mergeTilePaneOrderIntoController(chartTileId, nextScopedOrder);
     options.savePersistedState();
     return true;
   };

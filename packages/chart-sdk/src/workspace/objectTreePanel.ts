@@ -4,7 +4,6 @@ import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import { buildObjectTreeNodes } from "../chrome/objectTree.js";
 import { canonicalRuntimePaneId } from "./paneSpec.js";
-import type { WorkspacePaneLayoutState, WorkspacePaneSpec } from "./types.js";
 
 interface ObjectTreePanelOptions {
   getChart: () => DrishyaChartClient | null;
@@ -70,60 +69,23 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
     const runtimePaneOrder = chart.paneLayouts().map((pane) => canonicalRuntimePaneId(pane.id));
     const state = chart.objectTreeState();
     const paneLayout = controller.getState().paneLayout;
-    const runtimePaneIds = state.panes.map((pane) => canonicalRuntimePaneId(pane.id));
-    const runtimePaneSet = new Set(runtimePaneIds);
-    const orderedPaneIds = (() => {
-      if (runtimePaneOrder.length) {
-        const ordered: string[] = [];
-        for (const id of runtimePaneOrder) {
-          if (!runtimePaneSet.has(id)) continue;
-          if (!ordered.includes(id)) ordered.push(id);
-        }
-        for (const id of runtimePaneIds) {
-          if (!ordered.includes(id)) ordered.push(id);
-        }
-        return ordered;
-      }
-      const fallback = paneLayout.order
-        .map((id) => canonicalRuntimePaneId(id))
-        .filter((id) => runtimePaneSet.has(id));
-      for (const id of runtimePaneIds) {
-        if (!fallback.includes(id)) fallback.push(id);
-      }
-      return fallback;
-    })();
-    const rootPaneId = orderedPaneIds.find((id) => {
-      const kind = paneLayout.panes[id]?.kind;
-      return kind === "price" || kind === "chart" || id === "price";
-    }) ?? orderedPaneIds[0] ?? "price";
-    const scopedPaneSpecs: Record<string, WorkspacePaneSpec> = {};
-    for (const paneId of orderedPaneIds) {
-      const existing = paneLayout.panes[paneId];
-      if (existing) {
-        scopedPaneSpecs[paneId] = existing;
-        continue;
-      }
-      scopedPaneSpecs[paneId] = {
-        id: paneId,
-        kind: paneId === rootPaneId ? (paneId === "price" ? "price" : "chart") : "indicator",
-        title: paneId === "price" ? "Main Chart" : paneId.toUpperCase(),
-        parentChartPaneId: paneId === rootPaneId ? undefined : rootPaneId,
-      };
+    const runtimePaneSet = new Set(state.panes.map((pane) => canonicalRuntimePaneId(pane.id)));
+    const preferredOrder = (runtimePaneOrder.length
+      ? runtimePaneOrder
+      : paneLayout.order.map((id) => canonicalRuntimePaneId(id))).filter(
+      (id, idx, arr) => runtimePaneSet.has(id) && arr.indexOf(id) === idx
+    );
+    const scopedOrder = [...preferredOrder];
+    for (const paneId of paneLayout.order.map((id) => canonicalRuntimePaneId(id))) {
+      if (!runtimePaneSet.has(paneId)) continue;
+      if (!scopedOrder.includes(paneId)) scopedOrder.push(paneId);
     }
-    const scopedPaneLayout: WorkspacePaneLayoutState = {
-      order: orderedPaneIds,
-      panes: scopedPaneSpecs,
-      visibility: Object.fromEntries(
-        orderedPaneIds.map((id) => [id, paneLayout.visibility[id] ?? true])
-      ),
-      collapsed: Object.fromEntries(
-        orderedPaneIds.map((id) => [id, paneLayout.collapsed[id] ?? false])
-      ),
-      ratios: Object.fromEntries(
-        orderedPaneIds.map((id) => [id, paneLayout.ratios[id] ?? (id === rootPaneId ? 1 : 0.2)])
-      ),
+    const scopedPaneLayout = {
+      ...paneLayout,
+      order: scopedOrder,
     };
     const nodes = buildObjectTreeNodes(state, scopedPaneLayout);
+    const orderedPaneIds = scopedOrder;
     const paneKindById = new Map<string, string>();
     for (const [paneId, paneSpec] of Object.entries(paneLayout.panes ?? {})) {
       paneKindById.set(paneId, paneSpec.kind);

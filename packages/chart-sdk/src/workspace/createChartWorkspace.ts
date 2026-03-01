@@ -21,7 +21,7 @@ import {
   defaultIndicatorToken,
   findTokenParamsForSeriesId,
 } from "./indicatorRuntime.js";
-import { canonicalRuntimePaneId } from "./paneSpec.js";
+import { buildPaneSpecForRuntime, canonicalRuntimePaneId } from "./paneSpec.js";
 import { createTopStrip } from "./topStrip.js";
 import {
   canonicalIndicatorId,
@@ -221,6 +221,21 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return created;
   };
   const getPrimaryRuntime = () => chartRuntimes.get("price") ?? chartRuntimes.values().next().value ?? null;
+  const reconcilePaneSpecsForRuntime = (ownerChartPaneId: string, chart: DrishyaChartClient) => {
+    const runtimePanes = chart.paneLayouts();
+    if (!runtimePanes.length) return;
+    const runtimeOrder = runtimePanes.map((pane) => pane.id);
+    const state = controller.getState();
+    for (const pane of runtimePanes) {
+      const paneId = canonicalRuntimePaneId(pane.id);
+      if (state.paneLayout.panes[paneId]) continue;
+      const spec = buildPaneSpecForRuntime(pane.id, state.paneLayout, runtimeOrder);
+      if (spec.kind === "indicator" && !spec.parentChartPaneId) {
+        spec.parentChartPaneId = ownerChartPaneId;
+      }
+      controller.registerPane(spec);
+    }
+  };
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
     for (const runtime of chartRuntimes.values()) {
@@ -240,6 +255,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const runtime = getRuntime(tab.chartPaneId);
       if (!runtime) continue;
       applyIndicatorSetToChart(runtime.chart, ids);
+      reconcilePaneSpecsForRuntime(tab.chartPaneId, runtime.chart);
     }
   };
 
@@ -630,6 +646,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         let anyApplied = false;
         for (const targetChart of applyTargets) {
           anyApplied = applyIndicatorParams(targetChart, indicatorId, nextWithInstance, target.seriesId) || anyApplied;
+          if (runtime?.chartTileId) {
+            const tile = controller.getState().chartTiles[runtime.chartTileId];
+            for (const tab of tile?.tabs ?? []) {
+              if (getRuntime(tab.chartPaneId)?.chart === targetChart) {
+                reconcilePaneSpecsForRuntime(tab.chartPaneId, targetChart);
+              }
+            }
+          }
         }
         if (anyApplied) {
           if (runtime?.chartTileId) {
@@ -1939,6 +1963,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       ? normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? [])
       : [];
     applyIndicatorSetToChart(paneChart, restoredIndicators);
+    reconcilePaneSpecsForRuntime(paneId, paneChart);
 
     const runtime: ChartPaneRuntime = {
       runtimeKey,
@@ -2211,12 +2236,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (chartPane && chartPane.visible === false) continue;
       const host = paneHostByPaneId.get(paneId);
       if (!host) continue;
-      const scopedPaneIds = state.paneLayout.order.filter((id) => {
+      const scopedIndicatorPaneIds = state.paneLayout.order.filter((id) => {
         const spec = state.paneLayout.panes[id];
         if (!spec) return false;
-        if (id === paneId && (spec.kind === "price" || spec.kind === "chart")) return true;
         return spec.kind === "indicator" && spec.parentChartPaneId === paneId;
       });
+      const scopedPaneIds = [paneId, ...scopedIndicatorPaneIds];
       const hostRect = host.stage.getBoundingClientRect();
       const chartPaneViewports: Record<string, { x: number; y: number; w: number; h: number }> = {
         [paneId]: {
@@ -2246,10 +2271,17 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const scopedRawOrder: string[] = [];
       for (const scopedId of scopedPaneIds) {
         const rawId = rawIdForScopedPane(scopedId);
-        if (!rawId) continue;
+        if (!rawId) {
+          console.warn(
+            `[workspace] missing runtime pane id for scoped pane '${scopedId}' in chart pane '${paneId}'`
+          );
+          continue;
+        }
         if (!scopedRawOrder.includes(rawId)) scopedRawOrder.push(rawId);
       }
-      if (scopedRawOrder.length) {
+      if (!scopedRawOrder.length) {
+        console.warn(`[workspace] no scoped pane order resolved for chart pane '${paneId}'`);
+      } else {
         runtime.chart.setPaneOrder(scopedRawOrder);
       }
       const scopedWeights: Record<string, number> = {};

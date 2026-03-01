@@ -1,7 +1,6 @@
 import { makeSvgIcon } from "./icons.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
-import { buildPaneSpecForRuntime, canonicalRuntimePaneId } from "./paneSpec.js";
 import type { DiscoveredIndicator } from "../wasm/contracts.js";
 
 export interface IndicatorModalOptions {
@@ -26,29 +25,6 @@ function defaultParamsFor(indicator: DiscoveredIndicator): Record<string, unknow
 }
 
 export function createIndicatorModal(options: IndicatorModalOptions) {
-    const syncControllerPanesFromRuntime = () => {
-        const runtimePanes = options.chart.paneLayouts();
-        if (!runtimePanes.length) return;
-        const runtimeOrder = runtimePanes.map((p) => p.id);
-        const state = options.controller.getState();
-        const activePaneId = state.activeChartPaneId;
-        const activePaneSpec = state.paneLayout.panes[activePaneId];
-        const parentForNewIndicator =
-            activePaneSpec?.kind === "indicator"
-                ? activePaneSpec.parentChartPaneId ?? "price"
-                : activePaneId;
-        for (const pane of runtimePanes) {
-            const canonicalPaneId = canonicalRuntimePaneId(pane.id);
-            const existing = state.paneLayout.panes[canonicalPaneId];
-            const spec = buildPaneSpecForRuntime(pane.id, state.paneLayout, runtimeOrder);
-            if (spec.kind === "indicator" && !existing) {
-                spec.parentChartPaneId = parentForNewIndicator;
-            }
-            options.controller.registerPane(spec);
-        }
-        options.controller.setPaneOrder(runtimeOrder);
-    };
-
     const backdrop = document.createElement("div");
     backdrop.className = "fixed inset-0 bg-black/40 z-[100] flex items-center justify-center animate-in fade-in duration-200";
 
@@ -123,7 +99,6 @@ export function createIndicatorModal(options: IndicatorModalOptions) {
                         applied.add(target);
                         target.addIndicator(ind.id, defaultParamsFor(ind));
                     }
-                    syncControllerPanesFromRuntime();
                     options.onIndicatorSelected?.(ind.id);
                     console.log(`[IndicatorModal] Successfully applied ${ind.display_name}`);
                 } catch (err) {

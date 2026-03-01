@@ -60,12 +60,6 @@ export function buildObjectTreeNodes(
     return base.length ? base : state.panes.map((pane) => canonicalPaneId(pane.id));
   })();
   const paneSpecMap = paneLayout?.panes ?? {};
-  const paneSeriesCount = new Map<string, number>();
-  for (const series of state.series) {
-    if (series.deleted) continue;
-    const id = canonicalPaneId(series.pane_id);
-    paneSeriesCount.set(id, (paneSeriesCount.get(id) ?? 0) + 1);
-  }
 
   const chartRoots = orderedPaneIds.filter((id) => {
     const kind = paneSpecMap[id]?.kind;
@@ -87,13 +81,7 @@ export function buildObjectTreeNodes(
     const scopedPaneOrder = orderedPaneIds.filter((paneId) => {
       if (paneId === rootId) return true;
       const spec = paneSpecMap[paneId];
-      const isIndicatorPane =
-        spec?.kind === "indicator" ||
-        (!spec &&
-          paneId !== "price" &&
-          !chartRoots.includes(paneId) &&
-          (paneSeriesCount.get(paneId) ?? 0) > 0);
-      if (!isIndicatorPane) return false;
+      if (spec?.kind !== "indicator") return false;
       if (spec?.parentChartPaneId) return canonicalPaneId(spec.parentChartPaneId) === rootId;
       const idx = orderedPaneIds.indexOf(paneId);
       for (let i = idx - 1; i >= 0; i -= 1) {
