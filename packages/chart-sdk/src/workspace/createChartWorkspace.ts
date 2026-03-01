@@ -54,6 +54,7 @@ import { createPersistenceScheduler } from "./persistenceScheduler.js";
 import { addChartTabForSymbol, addChartTabWithInheritedSource } from "./chartTabCreation.js";
 import { removeWorkspaceTileByChartTileId } from "./chartTileRemoval.js";
 import { toggleChartTileObjectTree } from "./objectTreeToggle.js";
+import { attachTileHeaderDragReorder } from "./tileHeaderDragReorder.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -930,65 +931,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           controller.setActiveChartTile(tile.chartTileId);
         }
       };
-      header.onpointerdown = (event) => {
-        if (event.button !== 0) return;
-        const target = event.target as HTMLElement | null;
-        if (target?.closest("[data-no-tile-drag='1']")) return;
-        const startX = event.clientX;
-        let dragging = false;
-        let didReorder = false;
-        const draggedShell = shell;
-        (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-        document.body.style.userSelect = "none";
-        document.body.style.cursor = "grabbing";
-        const onMove = (moveEvent: PointerEvent) => {
-          const dx = moveEvent.clientX - startX;
-          if (!dragging && Math.abs(dx) > 10) dragging = true;
-          if (!dragging) return;
-          if (draggedShell) {
-            draggedShell.style.transform = `translateX(${dx}px)`;
-            draggedShell.style.zIndex = "30";
-            draggedShell.style.opacity = "0.92";
-            draggedShell.style.pointerEvents = "none";
-          }
-          const stateNow = controller.getState();
-          const orderedIds = stateNow.workspaceTileOrder.filter((id) => stateNow.workspaceTiles[id]);
-          const centers = orderedIds.map((id) => {
-            const el = tileShellById.get(id);
-            const rect = el?.getBoundingClientRect();
-            return rect ? rect.left + rect.width / 2 : Number.POSITIVE_INFINITY;
-          });
-          let targetIndex = orderedIds.length - 1;
-          for (let i = 0; i < centers.length; i += 1) {
-            if (moveEvent.clientX < centers[i]) {
-              targetIndex = i;
-              break;
-            }
-          }
-          const currentIndex = orderedIds.indexOf(tileId);
-          if (currentIndex >= 0 && targetIndex !== currentIndex) {
-            controller.moveWorkspaceTile(tileId, targetIndex);
-            didReorder = true;
-          }
-        };
-        const onUp = () => {
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
-          if (draggedShell) {
-            draggedShell.style.transform = "";
-            draggedShell.style.zIndex = "";
-            draggedShell.style.opacity = "";
-            draggedShell.style.pointerEvents = "";
-          }
-          document.body.style.userSelect = "";
-          document.body.style.cursor = "";
-          if (didReorder) {
-            savePersistedState();
-          }
-        };
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-      };
+      attachTileHeaderDragReorder({
+        header,
+        shell,
+        tileId,
+        controller,
+        tileShellById,
+        onReordered: () => savePersistedState(),
+      });
       const body = shell.children[1] as HTMLDivElement;
       body.innerHTML = "";
       if (tile.kind === "chart" && tile.chartTileId) {
