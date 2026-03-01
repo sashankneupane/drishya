@@ -888,13 +888,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           chart: activeRuntime.chart,
           controller,
           getTargetCharts: () => {
-            const currentTile = controller.getState().chartTiles[chartTileId];
-            if (!currentTile) return [activeRuntime.chart];
-            const charts: DrishyaChartClient[] = [];
-            for (const tab of currentTile.tabs) {
-              const runtime = getRuntime(tab.chartPaneId);
-              if (runtime) charts.push(runtime.chart);
-            }
+            const charts = getChartsForTile(chartTileId);
             return charts.length ? charts : [activeRuntime.chart];
           },
           onIndicatorSelected: (indicatorId) => {
