@@ -36,7 +36,6 @@ import {
   buildChartLayoutTree,
   deriveActivePaneIdFromPersistedTiles,
   deriveChartPanesFromPersistedTiles,
-  normalizePersistedChartTileConfig,
   normalizePersistedChartTiles,
   type PersistedChartTileConfig,
   type PersistedChartTileStoredShape,
@@ -54,6 +53,7 @@ import { applyIndicatorsToTileCharts } from "./indicatorTileSync.js";
 import { initializeChartTileSourceState } from "./chartTileSourceInit.js";
 import { syncChartTileShellWidths } from "./tileWidthSync.js";
 import { buildPersistedChartTiles } from "./workspacePersistenceSnapshot.js";
+import { applyPersistedTileConfigs } from "./persistedTileConfigApply.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -334,32 +334,17 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             saved.activeChartTileId
           );
         }
-        for (const [chartTileId, tile] of Object.entries(persistedChartTiles)) {
-          const tileCfg = normalizePersistedChartTileConfig(tile.config);
-          chartTileTreeOpen.set(chartTileId, tileCfg.treeOpen === true);
-          chartTileIndicatorState.set(chartTileId, tileCfg.indicators ?? []);
-          for (const [paneId, source] of Object.entries(tileCfg.paneSourcesByPane ?? {})) {
-            controller.setChartPaneSource(paneId, {
-              symbol: source?.symbol,
-              timeframe:
-                source?.timeframe ??
-                options.marketControls?.selectedTimeframe ??
-                options.marketControls?.timeframes?.[0],
-            });
-          }
-          for (const [paneId, paneState] of Object.entries(tileCfg.paneStateByPane ?? {})) {
-            restoredPaneStatesByPane[paneId] = paneState ?? null;
-          }
-          for (const [paneId, styleMap] of Object.entries(tileCfg.indicatorStyleOverridesByPane ?? {})) {
-            restoredIndicatorStyleOverridesByPane[paneId] = styleMap ?? {};
-            const runtime = chartRuntimes.get(paneId);
-            if (runtime) {
-              for (const [seriesId, style] of Object.entries(styleMap ?? {})) {
-                runtime.chart.setSeriesStyleOverride(seriesId, style);
-              }
-            }
-          }
-        }
+        applyPersistedTileConfigs({
+          persistedChartTiles,
+          chartTileTreeOpen,
+          chartTileIndicatorState,
+          controller,
+          selectedTimeframe: options.marketControls?.selectedTimeframe,
+          availableTimeframes: options.marketControls?.timeframes,
+          restoredPaneStatesByPane,
+          restoredIndicatorStyleOverridesByPane,
+          getRuntimeChartByPaneId: (paneId) => chartRuntimes.get(paneId)?.chart ?? null,
+        });
 
         if (saved.appearance) applyAppearance(saved.appearance);
         const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
