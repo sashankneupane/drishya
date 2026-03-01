@@ -55,6 +55,7 @@ import { syncChartTileShellWidths } from "./tileWidthSync.js";
 import { buildPersistedChartTiles } from "./workspacePersistenceSnapshot.js";
 import { applyPersistedTileConfigs } from "./persistedTileConfigApply.js";
 import { closeChartTabOrTile } from "./chartTabActions.js";
+import { resolveChartTileHeaderContext } from "./chartTileHeaderContext.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -813,10 +814,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const actions = document.createElement("div");
     actions.className = "ml-auto h-7 flex items-center gap-0.5";
     actions.dataset.noTileDrag = "1";
-    const activeTab = getActiveTab(chartTile);
-    const activePaneId = activeTab?.chartPaneId ?? null;
-    const activeSource = activePaneId ? (controller.getState().chartPaneSources[activePaneId] ?? {}) : {};
-    const activeRuntime = activePaneId ? getRuntime(activePaneId) : null;
+    const { activePaneId, activeSource, activeRuntime } = resolveChartTileHeaderContext(
+      controller.getState(),
+      chartTileId,
+      getRuntime
+    );
 
     const mkHeaderBtn = (label: string) => {
       const btn = document.createElement("button");
