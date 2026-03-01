@@ -49,6 +49,7 @@ import { closeChartTabOrTile } from "./chartTabActions.js";
 import { resolveChartTileHeaderContext } from "./chartTileHeaderContext.js";
 import { restorePersistedWorkspace } from "./restorePersistedWorkspace.js";
 import { buildPersistedWorkspaceEnvelope } from "./workspacePersistEnvelope.js";
+import { createChartFacade } from "./chartFacade.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -317,18 +318,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   // top control strip
-  const chartFacade = new Proxy({} as DrishyaChartClient, {
-    get(_target, prop: keyof DrishyaChartClient) {
-      const runtime = getActiveRuntime();
-      const activeChart = runtime?.chart ?? getPrimaryRuntime()?.chart;
-      if (!activeChart) return undefined;
-      const value = (activeChart as any)[prop];
-      if (typeof value === "function") {
-        return (...args: unknown[]) => (activeChart as any)[prop](...args);
-      }
-      return value;
-    }
-  }) as DrishyaChartClient;
+  const chartFacade = createChartFacade(
+    () => getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart ?? null
+  );
 
   const initializeChartTileSource = async (chartTileId: string) => {
     const { paneId, symbol, timeframe } = initializeChartTileSourceState({
