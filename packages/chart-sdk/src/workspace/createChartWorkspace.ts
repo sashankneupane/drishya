@@ -33,11 +33,6 @@ import {
   parseIndicatorParamsFromSeriesId,
 } from "./indicatorIdentity.js";
 import {
-  buildChartLayoutTree,
-  deriveActivePaneIdFromPersistedTiles,
-  deriveChartPanesFromPersistedTiles,
-  normalizePersistedChartTiles,
-  type PersistedChartTileConfig,
   type PersistedChartTileStoredShape,
 } from "./persistenceHelpers.js";
 import { ReplayController } from "./replay/ReplayController.js";
@@ -53,9 +48,9 @@ import { applyIndicatorsToTileCharts } from "./indicatorTileSync.js";
 import { initializeChartTileSourceState } from "./chartTileSourceInit.js";
 import { syncChartTileShellWidths } from "./tileWidthSync.js";
 import { buildPersistedChartTiles } from "./workspacePersistenceSnapshot.js";
-import { applyPersistedTileConfigs } from "./persistedTileConfigApply.js";
 import { closeChartTabOrTile } from "./chartTabActions.js";
 import { resolveChartTileHeaderContext } from "./chartTileHeaderContext.js";
+import { restorePersistedWorkspace } from "./restorePersistedWorkspace.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -276,87 +271,21 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   });
 
   // Restore persisted state before building UI
-  if (persistKey && typeof localStorage !== "undefined") {
-    try {
-      const raw = localStorage.getItem(persistKey);
-      if (raw) {
-        const saved = JSON.parse(raw) as PersistedWorkspaceState;
-        if (saved.theme) {
-          controller.setTheme(saved.theme);
-          for (const runtime of chartRuntimes.values()) {
-            runtime.chart.setTheme(saved.theme);
-          }
-        }
-        if (saved.cursorMode) {
-          controller.setCursorMode(saved.cursorMode as "crosshair" | "dot" | "normal");
-          getPrimaryRuntime()?.chart.setCursorMode(saved.cursorMode);
-        }
-        if (saved.isObjectTreeOpen !== undefined) controller.setObjectTreeOpen(saved.isObjectTreeOpen);
-        if (typeof saved.objectTreeWidth === "number" && Number.isFinite(saved.objectTreeWidth)) {
-          restoredObjectTreeWidth = saved.objectTreeWidth;
-        }
-        if (saved.isLeftStripOpen !== undefined) controller.setLeftStripOpen(saved.isLeftStripOpen);
-        if (saved.priceAxisMode) {
-          controller.setPriceAxisMode(saved.priceAxisMode);
-          getPrimaryRuntime()?.chart.setPriceAxisMode(saved.priceAxisMode);
-        }
-        if (saved.paneLayout) {
-          controller.loadPaneLayout(saved.paneLayout);
-        }
-        const persistedChartTiles = normalizePersistedChartTiles(saved.chartTiles);
-        if (
-          saved.workspaceTiles &&
-          saved.workspaceTileOrder &&
-          Object.keys(persistedChartTiles).length > 0
-        ) {
-          const derivedChartPanes = deriveChartPanesFromPersistedTiles(persistedChartTiles);
-          const derivedActivePaneId = deriveActivePaneIdFromPersistedTiles(
-            persistedChartTiles,
-            saved.activeChartTileId
-          );
-          controller.loadChartLayout(
-            derivedChartPanes,
-            buildChartLayoutTree(Object.keys(derivedChartPanes)),
-            derivedActivePaneId
-          );
-          const runtimeChartTiles = Object.fromEntries(
-            Object.entries(persistedChartTiles).map(([id, tile]) => [
-              id,
-              {
-                id: tile.id,
-                tabs: tile.tabs,
-                activeTabId: tile.activeTabId,
-              },
-            ])
-          );
-          controller.loadWorkspaceTiles?.(
-            saved.workspaceTiles as any,
-            saved.workspaceTileOrder,
-            runtimeChartTiles as any,
-            saved.activeChartTileId
-          );
-        }
-        applyPersistedTileConfigs({
-          persistedChartTiles,
-          chartTileTreeOpen,
-          chartTileIndicatorState,
-          controller,
-          selectedTimeframe: options.marketControls?.selectedTimeframe,
-          availableTimeframes: options.marketControls?.timeframes,
-          restoredPaneStatesByPane,
-          restoredIndicatorStyleOverridesByPane,
-          getRuntimeChartByPaneId: (paneId) => chartRuntimes.get(paneId)?.chart ?? null,
-        });
-
-        if (saved.appearance) applyAppearance(saved.appearance);
-        const validStyle = saved.candleStyle as "solid" | "hollow" | "bars" | "volume" | undefined;
-        if (validStyle && ["solid", "hollow", "bars", "volume"].includes(validStyle)) {
-          getPrimaryRuntime()?.chart.setCandleStyle(validStyle);
-        }
-      }
-    } catch {
-      // ignore corrupt or incompatible persisted data
-    }
+  const restoreResult = restorePersistedWorkspace({
+    persistKey,
+    controller,
+    selectedTimeframe: options.marketControls?.selectedTimeframe,
+    availableTimeframes: options.marketControls?.timeframes,
+    chartTileTreeOpen,
+    chartTileIndicatorState,
+    restoredPaneStatesByPane,
+    restoredIndicatorStyleOverridesByPane,
+    getRuntimeChartByPaneId: (paneId) => chartRuntimes.get(paneId) ?? null,
+    getPrimaryChart: () => getPrimaryRuntime()?.chart ?? null,
+    applyAppearance,
+  });
+  if (restoreResult.restoredObjectTreeWidth !== null) {
+    restoredObjectTreeWidth = restoreResult.restoredObjectTreeWidth;
   }
 
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
