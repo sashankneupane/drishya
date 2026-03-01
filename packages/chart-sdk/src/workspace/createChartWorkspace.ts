@@ -51,6 +51,7 @@ import { restorePersistedWorkspace } from "./restorePersistedWorkspace.js";
 import { buildPersistedWorkspaceEnvelope } from "./workspacePersistEnvelope.js";
 import { createChartFacade } from "./chartFacade.js";
 import { createPersistenceScheduler } from "./persistenceScheduler.js";
+import { addChartTabForSymbol, addChartTabWithInheritedSource } from "./chartTabCreation.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -832,47 +833,34 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     addBtn.onclick = () => {
       const symbols = options.marketControls?.symbols ?? [];
       if (!symbols.length) {
-        const tabId = controller.addChartTab(chartTileId);
+        const tabId = addChartTabWithInheritedSource({
+          chartTileId,
+          controller,
+          selectedSymbol: options.marketControls?.selectedSymbol,
+          selectedTimeframe: options.marketControls?.selectedTimeframe,
+          availableTimeframes: options.marketControls?.timeframes,
+          applyIndicatorSetToTile,
+        });
         if (!tabId) return;
-        const nextTile = controller.getState().chartTiles[chartTileId];
-        const nextTab = nextTile?.tabs.find((candidate) => candidate.id === tabId);
-        const paneId = nextTab?.chartPaneId;
-        if (paneId) {
-          const activePaneId = controller.getState().activeChartPaneId;
-          const inherited = controller.getState().chartPaneSources[activePaneId] ?? {};
-          controller.setChartPaneSource(paneId, {
-            symbol: inherited.symbol ?? options.marketControls?.selectedSymbol,
-            timeframe:
-              inherited.timeframe ??
-              options.marketControls?.selectedTimeframe ??
-              options.marketControls?.timeframes?.[0],
-          });
-        }
-        applyIndicatorSetToTile(chartTileId);
         draw();
         return;
       }
       createSymbolSearchModal({
         symbols,
         onSelect: async (symbol) => {
-          const tabId = controller.addChartTab(chartTileId);
-          if (!tabId) return;
-          const nextTile = controller.getState().chartTiles[chartTileId];
-          const nextTab = nextTile?.tabs.find((candidate) => candidate.id === tabId);
-          const paneId = nextTab?.chartPaneId;
-          if (!paneId) return;
-          controller.setChartTabTitle(chartTileId, tabId, symbol);
-          const activePaneId = controller.getState().activeChartPaneId;
-          const inherited = controller.getState().chartPaneSources[activePaneId] ?? {};
-          const timeframe =
-            inherited.timeframe ??
-            options.marketControls?.selectedTimeframe ??
-            options.marketControls?.timeframes?.[0];
-          controller.setChartPaneSource(paneId, { symbol, timeframe });
-          applyIndicatorSetToTile(chartTileId);
-          await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+          const created = addChartTabForSymbol({
+            chartTileId,
+            controller,
             symbol,
-            timeframe
+            selectedSymbol: options.marketControls?.selectedSymbol,
+            selectedTimeframe: options.marketControls?.selectedTimeframe,
+            availableTimeframes: options.marketControls?.timeframes,
+            applyIndicatorSetToTile,
+          });
+          if (!created) return;
+          await options.marketControls?.onChartPaneSourceChange?.(created.paneId, {
+            symbol,
+            timeframe: created.timeframe
           });
           await options.marketControls?.onSymbolChange?.(symbol);
           draw();
