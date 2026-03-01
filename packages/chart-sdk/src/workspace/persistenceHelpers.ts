@@ -97,6 +97,20 @@ export const deriveChartPanesFromPersistedTiles = (
   return panes;
 };
 
+export const deriveActivePaneIdFromPersistedTiles = (
+  chartTiles: Record<string, PersistedChartTileStoredShape>,
+  activeChartTileId?: string
+): string => {
+  if (activeChartTileId && chartTiles[activeChartTileId]) {
+    const tile = chartTiles[activeChartTileId];
+    const activeTab = tile.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile.tabs[0];
+    if (activeTab?.chartPaneId) return activeTab.chartPaneId;
+  }
+  const firstTile = Object.values(chartTiles)[0];
+  const firstTab = firstTile?.tabs?.[0];
+  return firstTab?.chartPaneId ?? "price";
+};
+
 export const buildChartLayoutTree = (paneIds: string[]): WorkspaceChartSplitNode => {
   const ordered = paneIds.filter((id) => id && id !== "price");
   let tree: WorkspaceChartSplitNode = { type: "leaf", chartPaneId: "price" };

@@ -34,6 +34,7 @@ import {
 } from "./indicatorIdentity.js";
 import {
   buildChartLayoutTree,
+  deriveActivePaneIdFromPersistedTiles,
   deriveChartPanesFromPersistedTiles,
   normalizePersistedChartTileConfig,
   normalizePersistedChartTiles,
@@ -310,17 +311,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           Object.keys(persistedChartTiles).length > 0
         ) {
           const derivedChartPanes = deriveChartPanesFromPersistedTiles(persistedChartTiles);
-          const derivedActivePaneId = (() => {
-            const activeTileId = saved.activeChartTileId;
-            if (activeTileId && persistedChartTiles[activeTileId]) {
-              const tile = persistedChartTiles[activeTileId];
-              const activeTab = getActiveTab(tile);
-              if (activeTab?.chartPaneId) return activeTab.chartPaneId;
-            }
-            const firstTile = Object.values(persistedChartTiles)[0];
-            const firstTab = firstTile?.tabs?.[0];
-            return firstTab?.chartPaneId ?? "price";
-          })();
+          const derivedActivePaneId = deriveActivePaneIdFromPersistedTiles(
+            persistedChartTiles,
+            saved.activeChartTileId
+          );
           controller.loadChartLayout(
             derivedChartPanes,
             buildChartLayoutTree(Object.keys(derivedChartPanes)),
