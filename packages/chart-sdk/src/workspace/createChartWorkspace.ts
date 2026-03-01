@@ -52,6 +52,7 @@ import { buildPersistedWorkspaceEnvelope } from "./workspacePersistEnvelope.js";
 import { createChartFacade } from "./chartFacade.js";
 import { createPersistenceScheduler } from "./persistenceScheduler.js";
 import { addChartTabForSymbol, addChartTabWithInheritedSource } from "./chartTabCreation.js";
+import { removeWorkspaceTileByChartTileId } from "./chartTileRemoval.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -888,12 +889,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     removeTileBtn.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const stateNow = controller.getState();
-      const tileId = stateNow.workspaceTileOrder.find(
-        (workspaceTileId) => stateNow.workspaceTiles[workspaceTileId]?.kind === "chart" && stateNow.workspaceTiles[workspaceTileId]?.chartTileId === chartTileId
-      );
-      if (!tileId) return;
-      controller.removeWorkspaceTile(tileId);
+      if (!removeWorkspaceTileByChartTileId(controller, chartTileId)) return;
       draw();
     };
     actions.append(addBtn, treeBtn, removeTileBtn);
