@@ -9,7 +9,7 @@ import { createConfigModal } from "./ConfigModal.js";
 import { bindWorkspaceInteractions } from "./interactions.js";
 import { createLeftStrip } from "./leftStrip.js";
 import { computeIndicatorRectsForChartPane } from "./layout/index.js";
-import { createObjectTreePanel } from "./objectTreePanel.js";
+import type { ObjectTreePanelHandle } from "./objectTreePanel.js";
 import { makeSvgIcon } from "./icons.js";
 import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import { createIndicatorModal } from "./IndicatorModal.js";
@@ -46,6 +46,7 @@ import { createWorkspaceIntentController } from "./workspaceIntentController.js"
 import { WorkspaceController } from "./WorkspaceController.js";
 import { syncChartPaneContracts } from "./paneContracts.js";
 import { reconcilePaneSpecsForRuntime } from "./paneSpecReconcile.js";
+import { createTileObjectTreeHandle } from "./objectTreeHandleFactory.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -577,7 +578,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   });
 
-  const treeHandleByChartTileId = new Map<string, ReturnType<typeof createObjectTreePanel>>();
+  const treeHandleByChartTileId = new Map<string, ObjectTreePanelHandle>();
   const openIndicatorConfig = (target: { paneId?: string; seriesId?: string; indicatorId?: string }, chartHint?: DrishyaChartClient | null) => {
     const chart = chartHint ?? getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart ?? null;
     if (!chart) return;
@@ -728,68 +729,30 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const ensureTreeHandleForTile = (chartTileId: string) => {
     const existing = treeHandleByChartTileId.get(chartTileId);
     if (existing) return existing;
-    const handle = createObjectTreePanel({
-      getChart: () => {
-        const tile = controller.getState().chartTiles[chartTileId];
-        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
-        if (!activeTab) return null;
-        return getRuntime(activeTab.chartPaneId)?.chart ?? null;
-      },
-      getIsOpen: () => chartTileTreeOpen.get(chartTileId) === true,
-      onSetOpen: (open) => {
-        chartTileTreeOpen.set(chartTileId, open);
-        renderWorkspaceTiles();
-        setupCanvasBackingStore();
-        draw();
-      },
+    const handle = createTileObjectTreeHandle({
+      chartTileId,
       controller,
+      chartTileTreeOpen,
+      getChartForTile: getActiveChartForTile,
       symbols: options.marketControls?.symbols ?? [],
       onPaneSourceChange: async (paneId, symbol) => {
         controller.setChartPaneSource(paneId, { symbol });
         await options.marketControls?.onChartPaneSourceChange?.(paneId, {
           symbol,
-          timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
+          timeframe: controller.getState().chartPaneSources[paneId]?.timeframe,
         });
         await options.marketControls?.onSymbolChange?.(symbol);
         draw();
       },
-      onIndicatorConfig: (target) => {
-        const tile = controller.getState().chartTiles[chartTileId];
-        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
-        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
-        openIndicatorConfig(target, chart);
+      onIndicatorConfig: openIndicatorConfig,
+      onDrawingConfig: openDrawingConfig,
+      workspaceIntents,
+      onSetOpen: () => {
+        renderWorkspaceTiles();
+        setupCanvasBackingStore();
+        draw();
       },
-      onDrawingConfig: ({ drawingId }) => {
-        const tile = controller.getState().chartTiles[chartTileId];
-        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
-        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
-        openDrawingConfig(drawingId, chart);
-      },
-      onToggleVisibility: ({ kind, id, visible }) => {
-        const tile = controller.getState().chartTiles[chartTileId];
-        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
-        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
-        if (!chart) return;
-        workspaceIntents.toggleVisibility(chart, kind, id, visible);
-      },
-      onToggleLock: ({ kind, id, locked }) => {
-        const tile = controller.getState().chartTiles[chartTileId];
-        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
-        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
-        if (!chart) return;
-        workspaceIntents.toggleLock(chart, kind, id, locked);
-      },
-      onDelete: ({ kind, id, paneKind }) => {
-        const tile = controller.getState().chartTiles[chartTileId];
-        const activeTab = tile?.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile?.tabs[0];
-        const chart = activeTab ? getRuntime(activeTab.chartPaneId)?.chart ?? null : null;
-        if (!chart) return;
-        workspaceIntents.deleteNodeInTile(chartTileId, chart, kind, id, paneKind);
-      },
-      onMovePane: ({ paneId, direction }) => {
-        workspaceIntents.movePaneInTile(chartTileId, paneId, direction);
-      },
-      onMutate: () => draw()
+      onMutate: () => draw(),
     });
     treeHandleByChartTileId.set(chartTileId, handle);
     return handle;
