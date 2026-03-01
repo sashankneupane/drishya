@@ -69,13 +69,11 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
     const state = chart.objectTreeState();
     const paneLayout = controller.getState().paneLayout;
     const runtimePaneSet = new Set(state.panes.map((pane) => canonicalRuntimePaneId(pane.id)));
-    const preferredOrder = (runtimePaneOrder.length
-      ? runtimePaneOrder
-      : paneLayout.order.map((id) => canonicalRuntimePaneId(id))).filter(
-      (id, idx, arr) => runtimePaneSet.has(id) && arr.indexOf(id) === idx
-    );
-    const scopedOrder = [...preferredOrder];
-    for (const paneId of paneLayout.order.map((id) => canonicalRuntimePaneId(id))) {
+    const controllerOrder = paneLayout.order
+      .map((id) => canonicalRuntimePaneId(id))
+      .filter((id, idx, arr) => runtimePaneSet.has(id) && arr.indexOf(id) === idx);
+    const scopedOrder = [...controllerOrder];
+    for (const paneId of runtimePaneOrder) {
       if (!runtimePaneSet.has(paneId)) continue;
       if (!scopedOrder.includes(paneId)) scopedOrder.push(paneId);
     }
