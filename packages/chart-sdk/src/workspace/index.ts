@@ -10,4 +10,3 @@ export * from "./views/objectTreePanel.js";
 export * from "./replay/index.js";
 export * from "./models/types.js";
 export * from "./services/workspacePersistEnvelope.js";
-export * from "./controllers/WorkspaceController.js";

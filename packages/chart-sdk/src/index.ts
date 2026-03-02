@@ -51,5 +51,4 @@ export type {
 } from "./state/schema.js";
 export type { WorkspaceState as CanonicalWorkspaceState } from "./state/schema.js";
 export * from "./workspace/index.js";
-export * from "./workspace/controllers/WorkspaceController.js";
 export * from "./workspace/replay/index.js";

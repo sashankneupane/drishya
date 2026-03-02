@@ -21,47 +21,10 @@ export const parseIndicatorParamsFromSeriesId = (
     if (encoded && /^[a-z0-9_-]{6,}$/i.test(encoded)) {
       return { __instance: encoded };
     }
-    if (encoded && encoded.length % 2 === 0 && /^[0-9a-f]+$/i.test(encoded)) {
-      try {
-        let json = "";
-        for (let i = 0; i < encoded.length; i += 2) {
-          json += String.fromCharCode(Number.parseInt(encoded.slice(i, i + 2), 16));
-        }
-        const parsed = JSON.parse(json);
-        if (parsed && typeof parsed === "object") {
-          return parsed as Record<string, string | number | boolean>;
-        }
-      } catch {
-        // fall back to legacy parse
-      }
-    }
+    return {};
   }
-  const parts = rawSeriesId.split(":");
-  const base = canonicalIndicatorId(indicatorId);
-  switch (base) {
-    case "sma":
-    case "ema":
-    case "rsi":
-    case "atr":
-    case "adx":
-      return { period: Number(parts[1] ?? 14) };
-    case "bb":
-      return { period: Number(parts[1] ?? 20), std_mult: Number(parts[2] ?? 2) };
-    case "macd":
-      return {
-        fast_period: Number(parts[1] ?? 12),
-        slow_period: Number(parts[2] ?? 26),
-        signal_period: Number(parts[3] ?? 9),
-      };
-    case "stoch":
-      return {
-        k_period: Number(parts[1] ?? 14),
-        d_period: Number(parts[2] ?? 3),
-        smooth: Number(parts[3] ?? 3),
-      };
-    default:
-      return {};
-  }
+  const _ = indicatorId;
+  return {};
 };
 
 export const indicatorInstanceFromSeriesId = (seriesId?: string): string | null => {
