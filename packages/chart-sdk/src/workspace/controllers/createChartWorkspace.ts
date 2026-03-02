@@ -16,7 +16,6 @@ import {
   defaultIndicatorToken,
 } from "../services/indicatorRuntime.js";
 import { canonicalRuntimePaneId } from "../models/paneSpec.js";
-import { createTopStrip } from "../views/topStrip.js";
 import {
   canonicalIndicatorId,
   decodeIndicatorToken,
@@ -42,14 +41,9 @@ import {
   resolveChartTileHeaderContext,
 } from "../../tile/services/chartTileService.js";
 import { createTileSourceOrchestrator } from "../../tile/controllers/createTileSourceOrchestrator.js";
-import { createTileRuntimeRegistry } from "../../tile/runtime/runtimeRegistry.js";
-import {
-  attachTilePaneRuntimeInteractions,
-  createTilePaneRuntime,
-} from "../../tile/runtime/paneRuntimeLifecycle.js";
+import { createTileRuntimeOrchestrator } from "../../tile/controllers/createTileRuntimeOrchestrator.js";
 import { restorePersistedWorkspace } from "../services/restorePersistedWorkspace.js";
 import { serializeWorkspacePersistenceEnvelope } from "../services/workspacePersistEnvelope.js";
-import { createChartFacade } from "../adapters/chartFacade.js";
 import { createPersistenceScheduler } from "../services/persistenceScheduler.js";
 import { toggleChartTileObjectTree } from "../views/objectTreeToggle.js";
 import { attachTileHeaderDragReorder } from "../services/tileHeaderDragReorder.js";
@@ -61,7 +55,6 @@ import { renderIndicatorOverlays as renderIndicatorOverlayRows } from "../views/
 import { createOpenIndicatorConfig } from "../services/indicatorConfigFlow.js";
 import { snapshotIndicatorTokensFromReadout } from "../services/indicatorTokenSnapshot.js";
 import { projectChartTabs } from "../projectors/projectTabs.js";
-import { projectPanes } from "../projectors/projectPanes.js";
 import { projectWorkspace } from "../projectors/projectWorkspace.js";
 import { projectAssetScopedDrawings, restoreAssetScopedDrawings } from "../projectors/projectDrawings.js";
 import { createWorkspaceEngine } from "./api.js";
@@ -106,6 +99,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const drawingSignatureByAsset = new Map<string, string>();
   const latestCandlesByPane = new Map<string, { latest: Candle; prevClose: number | null }>();
   const chartTileTreeOpen = new Map<string, boolean>();
+  const paneHostByPaneId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
 
   // root element fills host completely and hides any overflow
   const root = document.createElement("div");
@@ -185,28 +179,55 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     primaryAppendCandle(candle);
     latestCandlesByPane.set("price", { latest: candle, prevClose });
   };
-  const runtimeRegistry = createTileRuntimeRegistry({
-    paneExists: (paneId) => !!controller.getState().chartPanes[paneId],
-    createRuntimeForPane: (paneId) => createRuntimeForPane(paneId),
+  let scheduleFastDrawPane: (paneId: string) => void = () => {};
+  let draw: () => void = () => {};
+  let savePersistedState: () => void = () => {};
+  let tileSourceOrchestrator: ReturnType<typeof createTileSourceOrchestrator>;
+  const tileRuntimeOrchestrator = createTileRuntimeOrchestrator({
+    controller,
+    createWasmChart,
+    fallbackStage: stage,
+    fallbackChartLayer: chartLayer,
+    paneHostByPaneId,
+    primaryRuntime: {
+      paneId: "price",
+      container: priceContainer,
+      canvas,
+      rawChart: primaryRawChart,
+      chart: primaryChart,
+      draw: () => primaryChart.draw(),
+      resize: (width: number, height: number) => primaryChart.resize(width, height),
+    },
+    restoredIndicatorStyleOverridesByPane,
+    restoredPaneStatesByPane,
+    latestCandlesByPane,
+    reconcilePaneSpecsForRuntime,
+    openSymbolSearch: async (onSelect) => {
+      const symbols = options.marketControls?.symbols ?? [];
+      if (!symbols.length) return;
+      createSymbolSearchModal({
+        symbols,
+        onSelect,
+        onClose: () => {},
+      });
+    },
+    onPaneSymbolSelect: async (paneId, nextSymbol) => {
+      controller.setChartPaneSource(paneId, { symbol: nextSymbol });
+      tileSourceOrchestrator.sync();
+      await options.marketControls?.onSymbolChange?.(nextSymbol);
+    },
+    redraw: () => draw(),
+    redrawFast: (paneId) => scheduleFastDrawPane(paneId),
+    bindRuntimeSource: (paneId) => tileSourceOrchestrator.bindPaneRuntime(paneId),
   });
-  const chartRuntimes = runtimeRegistry.map;
+  const chartRuntimes = tileRuntimeOrchestrator.chartRuntimes;
   primaryChart.setTheme(controller.getState().theme);
-  chartRuntimes.set("price", {
-    paneId: "price",
-    container: priceContainer,
-    canvas,
-    rawChart: primaryRawChart,
-    chart: primaryChart,
-    draw: () => primaryChart.draw(),
-    resize: (width: number, height: number) => primaryChart.resize(width, height)
-  });
 
   const getActiveRuntime = () =>
-    runtimeRegistry.getActiveRuntime(controller.getState().activeChartPaneId);
-  const getRuntime = (paneId: string) => runtimeRegistry.getRuntime(paneId);
-  const getPrimaryRuntime = () => runtimeRegistry.getPrimaryRuntime();
-  let savePersistedState: () => void = () => {};
-  const tileSourceOrchestrator = createTileSourceOrchestrator({
+    tileRuntimeOrchestrator.getActiveRuntime();
+  const getRuntime = (paneId: string) => tileRuntimeOrchestrator.getRuntime(paneId);
+  const getPrimaryRuntime = () => tileRuntimeOrchestrator.getPrimaryRuntime();
+  tileSourceOrchestrator = createTileSourceOrchestrator({
     controller,
     getRuntime,
     symbols: options.marketControls?.symbols,
@@ -504,11 +525,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     persistenceScheduler.flush();
   };
 
-  // top control strip
-  const chartFacade = createChartFacade(
-    () => getActiveRuntime()?.chart ?? getPrimaryRuntime()?.chart ?? null
-  );
-
   const initializeChartTileSource = async (chartTileId: string) => {
     const { symbol } = initializeChartTileSourceState({
       chartTileId,
@@ -520,55 +536,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       await options.marketControls?.onSymbolChange?.(symbol);
     }
   };
-
-  const topHandle = createTopStrip({
-    chart: chartFacade,
-    controller,
-    getAppearanceConfig: () => getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? null,
-    getCandleStyle: () => {
-      const value = getActiveRuntime()?.chart.candleStyle() ?? getPrimaryRuntime()?.chart.candleStyle() ?? null;
-      return value === "solid" || value === "hollow" || value === "bars" || value === "volume"
-        ? value
-        : null;
-    },
-    applyAppearanceConfig: (cfg) => {
-      applyAppearanceConfig(cfg);
-      savePersistedState();
-    },
-    applyCandleStyle: (style) => {
-      getActiveRuntime()?.chart.setCandleStyle(style);
-      getActiveRuntime()?.chart.draw();
-      savePersistedState();
-    },
-    onAddChartTile: async () => {
-      const chartTileId = controller.addChartTile();
-      await initializeChartTileSource(chartTileId);
-      ensureReplayForTile(chartTileId);
-      draw();
-    },
-    symbols: options.marketControls?.symbols ?? [],
-    timeframes: options.marketControls?.timeframes ?? [],
-    selectedSymbol: options.marketControls?.selectedSymbol,
-    selectedTimeframe: options.marketControls?.selectedTimeframe,
-    onSymbolChange: async (symbol) => {
-      const paneId = controller.getState().activeChartPaneId;
-      controller.setChartPaneSource(paneId, { symbol });
-      tileSourceOrchestrator.sync();
-      await options.marketControls?.onSymbolChange?.(symbol);
-    },
-    onTimeframeChange: async (timeframe) => {
-      const paneId = controller.getState().activeChartPaneId;
-      controller.setChartPaneSource(paneId, { timeframe });
-      const symbol =
-        controller.getState().chartPaneSources[paneId]?.symbol ??
-        options.marketControls?.selectedSymbol ??
-        options.marketControls?.symbols?.[0];
-      if (symbol) tileSourceOrchestrator.sync();
-      await options.marketControls?.onTimeframeChange?.(timeframe);
-    },
-    onCompareSymbol: options.marketControls?.onCompareSymbol,
-    onMutate: () => draw()
-  });
 
   const stripHandle = createLeftStrip({
     tools: WORKSPACE_DRAW_TOOLS,
@@ -993,8 +960,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           resizer.onpointerdown = null;
         }
       },
-      createRuntimeForPane,
-      ensureRuntimeInteractions,
+      projectRuntimeLayout: () => tileRuntimeOrchestrator.updateLayout(),
       afterProject: () => {
         syncTileWidths();
         renderIndicatorOverlays();
@@ -1034,7 +1000,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const chartTileBodyByChartTileId = new Map<string, HTMLDivElement>();
   const chartTileTabById = new Map<string, HTMLDivElement>();
   const chartTileStageByChartTileId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
-  const paneHostByPaneId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
   const indicatorOverlayByPaneId = new Map<string, HTMLDivElement>();
 
   const createChartTabStrip = (chartTileId: string) => {
@@ -1060,7 +1025,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   // Final assembly of UI pieces
-  root.insertBefore(topHandle.root, mainRow);
   mainRow.insertBefore(stripHandle.root, tilesRow);
   tilesRow.ondragover = (event) => {
     const isAddTileDrag = event.dataTransfer?.types?.includes("application/x-drishya-add-chart-tile");
@@ -1075,25 +1039,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const setupCanvasBackingStore = () => {
-    updateChartRuntimeLayout();
-  };
-
-  const createRuntimeForPane = (paneId: string): ChartPaneRuntime => {
-    const runtime = createTilePaneRuntime({
-      paneId,
-      controller,
-      paneHostByPaneId,
-      fallbackChartLayer: chartLayer,
-      createWasmChart,
-      chartTiles: controller.getState().chartTiles,
-      restoredIndicatorStyleOverridesByPane,
-      restoredPaneStatesByPane,
-      latestCandlesByPane,
-      reconcilePaneSpecsForRuntime,
-    });
-    ensureRuntimeInteractions(runtime);
-    tileSourceOrchestrator.bindPaneRuntime(paneId);
-    return runtime;
+    tileRuntimeOrchestrator.updateLayout();
   };
 
   let fastDrawRafId: number | null = null;
@@ -1108,46 +1054,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     renderIndicatorOverlays();
     fastDrawTargets.clear();
   };
-  const scheduleFastDrawPane = (paneId: string) => {
+  scheduleFastDrawPane = (paneId: string) => {
     if (!chartRuntimes.has(paneId)) return;
     fastDrawTargets.add(paneId);
     if (fastDrawRafId !== null) return;
     fastDrawRafId = requestAnimationFrame(flushFastDraw);
-  };
-
-  const ensureRuntimeInteractions = (runtime: ChartPaneRuntime) => {
-    const symbols = options.marketControls?.symbols ?? [];
-    attachTilePaneRuntimeInteractions({
-      runtime,
-      controller,
-      paneHostByPaneId,
-      fallbackStage: stage,
-      redraw: draw,
-      redrawFast: () => scheduleFastDrawPane(runtime.paneId),
-      openSymbolSearch: (onSelect) => {
-        if (symbols.length === 0) return;
-        createSymbolSearchModal({
-          symbols,
-          onSelect,
-          onClose: () => {},
-        });
-      },
-      onPaneSymbolSelect: async (paneId, nextSymbol) => {
-        controller.setChartPaneSource(paneId, { symbol: nextSymbol });
-        tileSourceOrchestrator.sync();
-        await options.marketControls?.onSymbolChange?.(nextSymbol);
-      },
-    });
-  };
-
-  const updateChartRuntimeLayout = () => {
-    projectPanes({
-      state: controller.getState(),
-      paneHostByPaneId,
-      chartRuntimes,
-      createRuntimeForPane,
-      ensureRuntimeInteractions,
-    });
   };
 
   const clearDrawings = () => {
@@ -1234,7 +1145,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     }
   };
 
-  const draw = () => {
+  draw = () => {
     for (const runtime of chartRuntimes.values()) {
       runtime.draw();
     }
@@ -1264,9 +1175,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const unbindInteractions = () => {
-    for (const runtime of chartRuntimes.values()) {
-      runtime.unbindInteractions?.();
-    }
+    tileRuntimeOrchestrator.unbindInteractions();
   };
 
   // Controller subscriptions
@@ -1337,7 +1246,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       });
       syncReadoutSourceLabel(state);
       tileSourceOrchestrator.sync();
-      updateChartRuntimeLayout();
+      tileRuntimeOrchestrator.updateLayout();
 
       draw();
       savePersistedState();
@@ -1568,7 +1477,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         controller.setTileReplayController(chartTileId, null);
       }
       replayByChartTileId.clear();
-      topHandle.destroy();
       stripHandle.destroy();
       for (const handle of treeHandleByChartTileId.values()) {
         handle.destroy();

@@ -1,5 +1,4 @@
 import type { ChartPaneRuntime } from "../models/runtimeTypes.js";
-import { projectPanes } from "./projectPanes.js";
 import { projectWorkspaceTiles, type TileShellMaps } from "./projectTiles.js";
 import type { WorkspaceLayoutNode } from "../../state/schema.js";
 
@@ -43,8 +42,7 @@ interface ProjectWorkspaceArgs {
     tileId: string;
     visibleChartOrder: string[];
   }) => void;
-  createRuntimeForPane: (paneId: string) => ChartPaneRuntime;
-  ensureRuntimeInteractions: (runtime: ChartPaneRuntime) => void;
+  projectRuntimeLayout: () => void;
   afterProject?: () => void;
 }
 
@@ -68,13 +66,7 @@ export function projectWorkspace(args: ProjectWorkspaceArgs): void {
     attachTileResizer: args.attachTileResizer,
   });
 
-  projectPanes({
-    state: args.state,
-    paneHostByPaneId: args.paneHostByPaneId,
-    chartRuntimes: args.chartRuntimes,
-    createRuntimeForPane: args.createRuntimeForPane,
-    ensureRuntimeInteractions: args.ensureRuntimeInteractions,
-  });
+  args.projectRuntimeLayout();
 
   args.afterProject?.();
 }
