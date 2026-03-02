@@ -32,37 +32,62 @@ function colorForCompareSymbol(symbol) {
 }
 
 export function createBinanceLoader({ workspace, requestRedraw, getDefaultSymbol, getDefaultInterval }) {
-  const paneFeeds = new Map();
+  let workspaceRef = workspace;
+  let requestRedrawRef = requestRedraw;
+  const sourceStreams = new Map();
+  const compareSeriesByPane = new Map();
 
-  function paneFeed(paneId) {
-    return paneFeeds.get(paneId) ?? null;
+  function sourceKey(source) {
+    return `${source.symbol}::${source.timeframe}`;
   }
 
-  function ensurePaneFeed(paneId) {
-    if (!paneFeeds.has(paneId)) {
-      paneFeeds.set(paneId, {
+  function ensureSourceStream(source) {
+    const key = sourceKey(source);
+    if (!sourceStreams.has(key)) {
+      sourceStreams.set(key, {
+        source,
         ws: null,
-        symbol: getDefaultSymbol(),
-        interval: getDefaultInterval(),
-        compareSeriesBySymbol: new Map()
+        listeners: new Set()
       });
     }
-    return paneFeeds.get(paneId);
+    return sourceStreams.get(key);
   }
 
-  function disconnectLiveCandles(paneId) {
-    const feed = paneFeed(paneId);
-    if (!feed) return;
-    if (feed.ws) {
-      feed.ws.close();
-      feed.ws = null;
+  function connectSourceStream(entry) {
+    if (entry.ws) return;
+    const stream = `${entry.source.symbol.toLowerCase()}@kline_${entry.source.timeframe}`;
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${stream}`);
+    entry.ws = ws;
+    ws.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        const kline = payload?.k;
+        if (!kline) return;
+        const candle = parseBinanceWsKline(kline);
+        for (const listener of entry.listeners) {
+          listener(candle);
+        }
+      } catch (error) {
+        console.warn("Failed to process Binance WS message:", error);
+      }
+    });
+    ws.addEventListener("close", () => {
+      if (entry.ws === ws) entry.ws = null;
+    });
+  }
+
+  function disconnectSourceStreamIfUnused(entry) {
+    if (entry.listeners.size > 0) return;
+    if (entry.ws) {
+      entry.ws.close();
+      entry.ws = null;
     }
+    sourceStreams.delete(sourceKey(entry.source));
   }
 
   async function loadCompareSeries(paneId, symbol, interval) {
-    const feed = ensurePaneFeed(paneId);
-    if (!symbol || symbol === feed.symbol) return;
-    const runtime = workspace.getChart(paneId);
+    if (!symbol) return;
+    const runtime = workspaceRef?.getChart?.(paneId);
     if (!runtime) return;
     const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${BINANCE_LIMIT}`;
     try {
@@ -71,119 +96,70 @@ export function createBinanceLoader({ workspace, requestRedraw, getDefaultSymbol
       const raw = await response.json();
       const candles = raw.map(parseBinanceKlineRow);
 
-      let seriesId = feed.compareSeriesBySymbol.get(symbol);
+      let paneSeries = compareSeriesByPane.get(paneId);
+      if (!paneSeries) {
+        paneSeries = new Map();
+        compareSeriesByPane.set(paneId, paneSeries);
+      }
+      let seriesId = paneSeries.get(symbol);
       if (!seriesId) {
         seriesId = runtime.chart.registerCompareSeries(symbol, symbol, colorForCompareSymbol(symbol));
         if (!seriesId) throw new Error(`Failed to register compare series for ${symbol}`);
-        feed.compareSeriesBySymbol.set(symbol, seriesId);
+        paneSeries.set(symbol, seriesId);
       }
 
       runtime.chart.setCompareSeriesCandles(seriesId, candles);
-      requestRedraw();
+      requestRedrawRef?.();
     } catch (error) {
       console.warn(`Failed to load compare series for ${symbol}:`, error);
     }
   }
 
-  async function refreshAllCompareSeries(paneId, interval) {
-    const feed = paneFeed(paneId);
-    if (!feed) return;
-    const symbols = Array.from(feed.compareSeriesBySymbol.keys());
-    if (symbols.length === 0) return;
-    await Promise.all(symbols.map((symbol) => loadCompareSeries(paneId, symbol, interval)));
-  }
-
-  async function loadInitialCandles(paneId, symbol, interval) {
-    const runtime = workspace.getChart(paneId);
-    if (!runtime) return false;
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${BINANCE_LIMIT}`;
+  async function loadSnapshot(source) {
+    const { symbol, timeframe } = source;
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${timeframe}&limit=${BINANCE_LIMIT}`;
 
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Binance REST failed: ${response.status}`);
 
       const raw = await response.json();
-      runtime.chart.setCandles(raw.map(parseBinanceKlineRow));
-      requestRedraw();
-      return true;
+      return raw.map(parseBinanceKlineRow);
     } catch (error) {
       console.error("Failed to load Binance data:", error);
-      return false;
+      return [];
     }
   }
 
-  function connectLiveCandles(paneId, symbol, interval) {
-    const runtime = workspace.getChart(paneId);
-    if (!runtime) return;
-    const feed = ensurePaneFeed(paneId);
-    disconnectLiveCandles(paneId);
-
-    const stream = `${symbol.toLowerCase()}@kline_${interval}`;
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${stream}`);
-    feed.ws = ws;
-
-    ws.addEventListener("message", (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        const kline = payload?.k;
-        if (!kline) return;
-        runtime.chart.appendCandle(parseBinanceWsKline(kline));
-        requestRedraw();
-      } catch (error) {
-        console.warn("Failed to process Binance WS message:", error);
-      }
-    });
-  }
-
-  async function startBinanceFeed(paneId, symbol, interval) {
-    const feed = ensurePaneFeed(paneId);
-    feed.symbol = symbol;
-    feed.interval = interval;
-    disconnectLiveCandles(paneId);
-    const loaded = await loadInitialCandles(paneId, symbol, interval);
-    if (loaded) {
-      await refreshAllCompareSeries(paneId, interval);
-      connectLiveCandles(paneId, symbol, interval);
-    }
-  }
-
-  async function bootstrapAllPanes(symbol, interval) {
-    for (const paneId of workspace.listCharts()) {
-      await startBinanceFeed(paneId, symbol, interval);
-    }
-  }
-
-  function syncPanesWithState(state, activeSymbol, activeInterval) {
-    for (const paneId of workspace.listCharts()) {
-      const src = state.chartPaneSources[paneId] ?? {};
-      const symbol = src.symbol ?? activeSymbol;
-      const interval = src.timeframe ?? activeInterval;
-      const existing = paneFeed(paneId);
-      if (!existing || existing.symbol !== symbol || existing.interval !== interval) {
-        startBinanceFeed(paneId, symbol, interval).catch((err) => {
-          console.warn(`Failed to bootstrap pane ${paneId}:`, err);
-        });
-      }
-    }
-    for (const paneId of Array.from(paneFeeds.keys())) {
-      if (!workspace.getChart(paneId)) {
-        disconnectLiveCandles(paneId);
-        paneFeeds.delete(paneId);
-      }
-    }
+  async function subscribe(source, onCandle) {
+    const entry = ensureSourceStream(source);
+    entry.listeners.add(onCandle);
+    connectSourceStream(entry);
+    return () => {
+      entry.listeners.delete(onCandle);
+      disconnectSourceStreamIfUnused(entry);
+    };
   }
 
   function dispose() {
-    for (const paneId of paneFeeds.keys()) {
-      disconnectLiveCandles(paneId);
+    for (const entry of sourceStreams.values()) {
+      entry.listeners.clear();
+      if (entry.ws) entry.ws.close();
     }
+    sourceStreams.clear();
+    compareSeriesByPane.clear();
   }
 
   return {
-    bootstrapAllPanes,
+    loadSnapshot,
+    subscribe,
     dispose,
     loadCompareSeries,
-    startBinanceFeed,
-    syncPanesWithState
+    setWorkspace: (workspaceHandle) => {
+      workspaceRef = workspaceHandle;
+    },
+    setRequestRedraw: (nextRequestRedraw) => {
+      requestRedrawRef = nextRequestRedraw;
+    }
   };
 }

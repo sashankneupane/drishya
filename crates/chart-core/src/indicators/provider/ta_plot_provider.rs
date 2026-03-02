@@ -7,6 +7,7 @@ use crate::indicators::engine::types::{
     IndicatorComputeContext, IndicatorComputeRequest, OhlcvBatch,
 };
 use crate::indicators::engine::IndicatorComputeProvider;
+use crate::indicators::error::IndicatorError;
 use crate::indicators::provider::ta_engine_provider::TaEngineProvider;
 use crate::plots::model::{
     BandStyle, HistogramStyle, LinePattern, LineStyle, PaneId, PlotPrimitive, PlotSeries,
@@ -127,14 +128,33 @@ impl TaCatalogPlotProvider {
 
 impl PlotDataProvider for TaCatalogPlotProvider {
     fn build_series(&self, candles: &[Candle]) -> Vec<PlotSeries> {
+        match self.build_series_strict(candles) {
+            Ok(series) => series,
+            Err(error) => {
+                eprintln!(
+                    "strict indicator provider '{}' failed contract validation: {}",
+                    self.indicator_id, error
+                );
+                Vec::new()
+            }
+        }
+    }
+}
+
+impl TaCatalogPlotProvider {
+    fn build_series_strict(&self, candles: &[Candle]) -> Result<Vec<PlotSeries>, IndicatorError> {
         let provider = TaEngineProvider::new();
         let req = make_request(&self.indicator_id, self.params.clone(), candles);
-        let out = match provider.compute(&req) {
-            Ok(v) => v,
-            Err(_) => return vec![],
-        };
+        let out = provider
+            .compute(&req)
+            .map_err(|reason| IndicatorError::ComputeFailed {
+                indicator_id: self.indicator_id.clone(),
+                reason: reason.to_string(),
+            })?;
         let Some(meta) = ta_engine::metadata::find_indicator_meta(&self.indicator_id) else {
-            return vec![];
+            return Err(IndicatorError::UnsupportedIndicator {
+                id: self.indicator_id.clone(),
+            });
         };
         let slot_map = style_slot_map(meta);
         let line_map: BTreeMap<String, Vec<Option<f64>>> = out
@@ -146,51 +166,80 @@ impl PlotDataProvider for TaCatalogPlotProvider {
         let mut primitives = Vec::new();
         for visual in meta.visual.output_visuals {
             let Some(slot) = slot_map.get(visual.style_slot) else {
-                continue;
+                return Err(IndicatorError::MissingStyleSlot {
+                    indicator_id: self.indicator_id.clone(),
+                    slot: visual.style_slot.to_string(),
+                });
             };
             match visual.primitive {
                 ta_engine::metadata::OutputVisualPrimitive::Line => {
-                    let values = line_map
-                        .get(visual.output)
-                        .cloned()
-                        .unwrap_or_else(|| vec![None; candles.len()]);
+                    let values = line_map.get(visual.output).cloned().ok_or_else(|| {
+                        IndicatorError::MissingOutputLine {
+                            indicator_id: self.indicator_id.clone(),
+                            output: visual.output.to_string(),
+                        }
+                    })?;
+                    let width =
+                        slot.default
+                            .width
+                            .ok_or_else(|| IndicatorError::MissingStyleDefault {
+                                indicator_id: self.indicator_id.clone(),
+                                slot: slot.slot.to_string(),
+                                field: "width".to_string(),
+                            })?;
+                    let pattern = slot.default.pattern.ok_or_else(|| {
+                        IndicatorError::MissingStyleDefault {
+                            indicator_id: self.indicator_id.clone(),
+                            slot: slot.slot.to_string(),
+                            field: "pattern".to_string(),
+                        }
+                    })?;
                     primitives.push(PlotPrimitive::Line {
                         values,
                         style: LineStyle {
                             color: slot.default.color.to_string(),
-                            width: slot.default.width.unwrap_or(1.5) as f32,
-                            pattern: match slot.default.pattern {
-                                Some(ta_engine::metadata::StrokePattern::Dashed) => {
-                                    LinePattern::Dashed
-                                }
-                                Some(ta_engine::metadata::StrokePattern::Dotted) => {
-                                    LinePattern::Dotted
-                                }
-                                _ => LinePattern::Solid,
+                            width: width as f32,
+                            pattern: match pattern {
+                                ta_engine::metadata::StrokePattern::Dashed => LinePattern::Dashed,
+                                ta_engine::metadata::StrokePattern::Dotted => LinePattern::Dotted,
+                                ta_engine::metadata::StrokePattern::Solid => LinePattern::Solid,
                             },
                         },
                     });
                 }
                 ta_engine::metadata::OutputVisualPrimitive::Histogram => {
-                    let values = line_map
-                        .get(visual.output)
-                        .cloned()
-                        .unwrap_or_else(|| vec![None; candles.len()]);
+                    let values = line_map.get(visual.output).cloned().ok_or_else(|| {
+                        IndicatorError::MissingOutputLine {
+                            indicator_id: self.indicator_id.clone(),
+                            output: visual.output.to_string(),
+                        }
+                    })?;
                     let color = slot.default.color.to_string();
+                    let width_factor =
+                        slot.default
+                            .width
+                            .ok_or_else(|| IndicatorError::MissingStyleDefault {
+                                indicator_id: self.indicator_id.clone(),
+                                slot: slot.slot.to_string(),
+                                field: "width".to_string(),
+                            })?;
                     primitives.push(PlotPrimitive::Histogram {
                         values,
                         base: 0.0,
                         style: HistogramStyle {
                             positive_color: color.clone(),
                             negative_color: color,
-                            width_factor: slot.default.width.unwrap_or(0.7) as f32,
+                            width_factor: width_factor as f32,
                         },
                     });
                 }
                 ta_engine::metadata::OutputVisualPrimitive::BandFill => {
                     let (Some(upper), Some(lower)) = (line_map.get("upper"), line_map.get("lower"))
                     else {
-                        continue;
+                        return Err(IndicatorError::MissingOutputLine {
+                            indicator_id: self.indicator_id.clone(),
+                            output: "upper/lower".to_string(),
+                        });
                     };
                     primitives.push(PlotPrimitive::Band {
                         upper: upper.clone(),
@@ -206,19 +255,24 @@ impl PlotDataProvider for TaCatalogPlotProvider {
         }
 
         if primitives.is_empty() {
-            return vec![];
+            return Err(IndicatorError::InvalidParameter {
+                name: "visual.output_visuals".to_string(),
+                reason: "no chart-plottable primitives were produced".to_string(),
+            });
         }
 
-        vec![PlotSeries {
+        Ok(vec![PlotSeries {
             id: series_instance_id(&self.indicator_id, &self.params),
             name: meta.display_name.to_string(),
             pane: map_pane_hint(&self.indicator_id, meta.visual.pane_hint),
             visible: true,
             primitives,
-        }]
+        }])
     }
 }
 
+// Legacy convenience adapters are retained only for regression test parity.
+// Chart integration should use TaCatalogPlotProvider through add_indicator_with_params.
 pub struct TaSmaPlotProvider {
     period: usize,
     color: String,

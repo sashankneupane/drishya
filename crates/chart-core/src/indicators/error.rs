@@ -33,6 +33,23 @@ pub enum IndicatorError {
         name: String,
         reason: String,
     },
+    ComputeFailed {
+        indicator_id: String,
+        reason: String,
+    },
+    MissingStyleSlot {
+        indicator_id: String,
+        slot: String,
+    },
+    MissingStyleDefault {
+        indicator_id: String,
+        slot: String,
+        field: String,
+    },
+    MissingOutputLine {
+        indicator_id: String,
+        output: String,
+    },
 }
 
 impl Display for IndicatorError {
@@ -80,6 +97,40 @@ impl Display for IndicatorError {
             }
             IndicatorError::InvalidParameter { name, reason } => {
                 write!(f, "invalid parameter '{}': {}", name, reason)
+            }
+            IndicatorError::ComputeFailed {
+                indicator_id,
+                reason,
+            } => {
+                write!(f, "indicator '{}' compute failed: {}", indicator_id, reason)
+            }
+            IndicatorError::MissingStyleSlot { indicator_id, slot } => {
+                write!(
+                    f,
+                    "indicator '{}' missing required style slot '{}'",
+                    indicator_id, slot
+                )
+            }
+            IndicatorError::MissingStyleDefault {
+                indicator_id,
+                slot,
+                field,
+            } => {
+                write!(
+                    f,
+                    "indicator '{}' style slot '{}' missing required default '{}'",
+                    indicator_id, slot, field
+                )
+            }
+            IndicatorError::MissingOutputLine {
+                indicator_id,
+                output,
+            } => {
+                write!(
+                    f,
+                    "indicator '{}' output '{}' missing from compute result",
+                    indicator_id, output
+                )
             }
         }
     }

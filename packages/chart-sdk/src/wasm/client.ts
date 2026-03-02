@@ -12,12 +12,18 @@ import type {
   ReplayState,
   SeriesStyleOverride,
   SeriesStyleSnapshot,
+  StrictIndicatorStyleSlotConfig,
   RestoreChartStateOptions,
   ReadoutSnapshot,
-  WasmChartLike
-} from "./contracts";
+  RuntimeSnapshot,
+  SourceKey,
+  TileIndicatorConfig,
+  TileLayoutConfig,
+  WasmChartLike,
+  WasmRuntimeEngineLike
+} from "./contracts.js";
 
-import type { ObjectTreeAction } from "../chrome/objectTree.js";
+import type { ObjectTreeAction } from "../workspace/models/objectTree.js";
 
 const EMPTY_OBJECT_TREE: ObjectTreeState = {
   panes: [],
@@ -292,6 +298,27 @@ export class DrishyaChartClient {
 
   addIndicator(indicatorId: string, params: Record<string, unknown> = {}): void {
     this.wasm.add_indicator_json?.(indicatorId, JSON.stringify(params ?? {}));
+  }
+
+  addIndicatorStrict(
+    indicatorId: string,
+    params: Record<string, unknown>,
+    styleSlots: Record<string, StrictIndicatorStyleSlotConfig>
+  ): void {
+    if (typeof this.wasm.add_indicator_strict_json !== "function") {
+      throw new Error("WASM strict indicator API is unavailable.");
+    }
+    if (!isRecord(params)) {
+      throw new Error("Strict indicator params must be a JSON object.");
+    }
+    if (!isRecord(styleSlots)) {
+      throw new Error("Strict indicator style slots must be a JSON object.");
+    }
+    this.wasm.add_indicator_strict_json(
+      indicatorId,
+      JSON.stringify(params),
+      JSON.stringify(styleSlots)
+    );
   }
 
   clearIndicatorOverlays(): void {
@@ -621,10 +648,51 @@ export class DrishyaChartClient {
   }
 }
 
+export class DrishyaRuntimeEngineClient {
+  constructor(private readonly wasm: WasmRuntimeEngineLike) {}
+
+  createRuntime(tileId: string, tabId: string, width = 300, height = 300): void {
+    this.wasm.create_runtime(tileId, tabId, width, height);
+  }
+
+  bindSource(tileId: string, tabId: string, source: SourceKey): void {
+    this.wasm.bind_source_json(tileId, tabId, JSON.stringify(source));
+  }
+
+  setTileLayout(tileId: string, layout: TileLayoutConfig): void {
+    this.wasm.set_tile_layout_json(tileId, JSON.stringify(layout));
+  }
+
+  setTileIndicators(tileId: string, config: TileIndicatorConfig): void {
+    this.wasm.set_tile_indicators_json(tileId, JSON.stringify(config));
+  }
+
+  ingestSnapshot(source: SourceKey, candles: Candle[]): void {
+    this.wasm.ingest_snapshot_json(JSON.stringify(source), JSON.stringify(candles));
+  }
+
+  appendCandle(source: SourceKey, candle: Candle): void {
+    this.wasm.append_candle_json(JSON.stringify(source), JSON.stringify(candle));
+  }
+
+  runtimeSnapshot(tileId: string, tabId: string): RuntimeSnapshot {
+    const raw = this.wasm.runtime_snapshot_json(tileId, tabId);
+    const parsed = safeJsonParse<RuntimeSnapshot>(raw);
+    if (!parsed) {
+      throw new Error(`Invalid runtime snapshot for ${tileId}:${tabId}`);
+    }
+    return parsed;
+  }
+}
+
 function safeJsonParse<T>(value: string): T | null {
   try {
     return JSON.parse(value) as T;
   } catch {
     return null;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }

@@ -12,6 +12,7 @@ pub mod layout;
 pub mod plots;
 pub mod render;
 pub mod replay;
+pub mod runtime;
 pub mod scale;
 pub mod types;
 pub mod viewport;

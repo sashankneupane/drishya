@@ -3,13 +3,14 @@
  * Modernized to use the new Headless Controller Architecture.
  */
 import { createBinanceLoader } from "./loader.js";
+import { createPlaygroundStateStore } from "./stateStore.js";
 
 const DEFAULT_BINANCE_SYMBOL = "BTCUSDT";
 const DEFAULT_BINANCE_INTERVAL = "1m";
 const BINANCE_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT"];
 const BINANCE_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"];
-const DEMO_PERSIST_KEY = "drishya-playground-config-v5";
-const PLAYGROUND_RESET_STAMP = "drishya-playground-reset-v5";
+const DEMO_PERSIST_KEY = "drishya-playground-config-v6";
+const PLAYGROUND_RESET_STAMP = "drishya-playground-reset-v6";
 
 function cleanupDemoStorage() {
   try {
@@ -17,10 +18,11 @@ function cleanupDemoStorage() {
     for (let i = localStorage.length - 1; i >= 0; i -= 1) {
       const key = localStorage.key(i);
       if (!key) continue;
-      const isLegacyPlayground = key.startsWith("drishya-playground-config-") && key !== DEMO_PERSIST_KEY;
       const shouldHardResetPlayground = !hasReset && key.startsWith("drishya-playground-config-");
       const isLegacyWorkspace = key === "drishya-config";
-      if (isLegacyPlayground || shouldHardResetPlayground || isLegacyWorkspace) {
+      const isOldResetStamp =
+        !hasReset && key.startsWith("drishya-playground-reset-") && key !== PLAYGROUND_RESET_STAMP;
+      if (shouldHardResetPlayground || isLegacyWorkspace || isOldResetStamp) {
         localStorage.removeItem(key);
       }
     }
@@ -44,6 +46,14 @@ async function main() {
   // Dynamically import the modernized UI core
   const { createChartWorkspaceFromModule } = await import(`/packages/chart-sdk/dist/index.js?v=${version}`);
   const host = document.getElementById("chart-root");
+  const stateStore = createPlaygroundStateStore(DEMO_PERSIST_KEY);
+  const initialPersistedState = stateStore.load();
+  loaderApi = createBinanceLoader({
+    workspace: null,
+    requestRedraw: () => {},
+    getDefaultSymbol: () => activeSymbol,
+    getDefaultInterval: () => activeInterval
+  });
 
   // Initialize the workspace with the new controller-based API
   const workspace = await createChartWorkspaceFromModule({
@@ -52,25 +62,26 @@ async function main() {
     initialTheme: "dark",
     initialTool: "select",
     injectStyles: true,
-    persistKey: DEMO_PERSIST_KEY,
+    persistence: {
+      initialState: initialPersistedState,
+      onStateChange: (next) => {
+        stateStore.save(next);
+      },
+    },
     marketControls: {
       symbols: BINANCE_SYMBOLS,
       timeframes: BINANCE_INTERVALS,
       selectedSymbol: DEFAULT_BINANCE_SYMBOL,
       selectedTimeframe: DEFAULT_BINANCE_INTERVAL,
+      dataFeed: {
+        loadSnapshot: loaderApi.loadSnapshot,
+        subscribe: loaderApi.subscribe,
+      },
       onSymbolChange: async (symbol) => {
         activeSymbol = symbol;
       },
       onTimeframeChange: async (timeframe) => {
         activeInterval = timeframe;
-      },
-      onChartPaneSourceChange: async (_chartPaneId, next) => {
-        if (next.symbol) activeSymbol = next.symbol;
-        if (next.timeframe) activeInterval = next.timeframe;
-        const paneId = _chartPaneId || controllerRef?.getState?.().activeChartPaneId || "price";
-        if (loaderApi) {
-          await loaderApi.startBinanceFeed(paneId, activeSymbol, activeInterval);
-        }
       },
       onCompareSymbol: async (symbol) => {
         const paneId = controllerRef?.getState?.().activeChartPaneId || "price";
@@ -83,6 +94,7 @@ async function main() {
 
   const { draw, controller } = workspace;
   controllerRef = controller;
+  loaderApi.setWorkspace(workspace);
 
   const initialState = controller.getState();
   const initialActivePane = initialState.activeChartPaneId;
@@ -111,25 +123,7 @@ async function main() {
       draw();
     });
   }
-
-  loaderApi = createBinanceLoader({
-    workspace,
-    requestRedraw,
-    getDefaultSymbol: () => activeSymbol,
-    getDefaultInterval: () => activeInterval
-  });
-
-  // Initial load: respect restored per-pane sources from persisted workspace state.
-  for (const paneId of workspace.listCharts()) {
-    const source = controller.getState().chartPaneSources[paneId] ?? {};
-    const symbol = source.symbol ?? activeSymbol;
-    const timeframe = source.timeframe ?? activeInterval;
-    await loaderApi.startBinanceFeed(paneId, symbol, timeframe);
-  }
-
-  controller.subscribe((state) => {
-    loaderApi.syncPanesWithState(state, activeSymbol, activeInterval);
-  });
+  loaderApi.setRequestRedraw(requestRedraw);
 
   window.addEventListener("beforeunload", () => {
     loaderApi.dispose();

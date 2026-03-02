@@ -29,6 +29,66 @@ impl WasmChart {
             .map_err(|e| JsValue::from_str(&e))
     }
 
+    /// Adds a built-in indicator using strict explicit params and style slot payloads.
+    ///
+    /// This API is designed for consumer-owned state pipelines where indicator creation
+    /// must reject implicit defaults and missing style contracts up front.
+    pub fn add_indicator_strict_json(
+        &mut self,
+        indicator_id: &str,
+        params_json: &str,
+        style_slots_json: &str,
+    ) -> Result<(), JsValue> {
+        let id = indicator_id.trim().to_ascii_lowercase();
+        let catalog = list_available_indicators();
+        let Some(meta) = catalog
+            .iter()
+            .find(|item| item.id.trim().eq_ignore_ascii_case(&id))
+        else {
+            return Err(JsValue::from_str(&format!(
+                "Unsupported built-in indicator id '{}' for strict attachment",
+                indicator_id
+            )));
+        };
+
+        let params: HashMap<String, serde_json::Value> = serde_json::from_str(params_json)
+            .map_err(|e| {
+                JsValue::from_str(&format!("Invalid strict indicator params JSON: {e}"))
+            })?;
+
+        let style_slots: HashMap<String, serde_json::Value> =
+            serde_json::from_str(style_slots_json).map_err(|e| {
+                JsValue::from_str(&format!("Invalid strict indicator style JSON: {e}"))
+            })?;
+
+        for required in meta.params.iter().filter(|param| param.required) {
+            if !params.contains_key(&required.name) {
+                return Err(JsValue::from_str(&format!(
+                    "Strict indicator '{}' is missing required param '{}'",
+                    id, required.name
+                )));
+            }
+        }
+
+        for slot in &meta.visual.style_slots {
+            let Some(slot_payload) = style_slots.get(&slot.slot) else {
+                return Err(JsValue::from_str(&format!(
+                    "Strict indicator '{}' is missing required style slot '{}'",
+                    id, slot.slot
+                )));
+            };
+            if !slot_payload.is_object() {
+                return Err(JsValue::from_str(&format!(
+                    "Strict indicator '{}' style slot '{}' must be an object",
+                    id, slot.slot
+                )));
+            }
+        }
+
+        indicator_api::add_indicator_with_params(&mut self.chart, indicator_id, &params)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
     /// Clears all active indicator overlays.
     pub fn clear_indicator_overlays(&mut self) {
         indicator_api::clear_builtins(&mut self.chart);
