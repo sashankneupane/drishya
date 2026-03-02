@@ -3,11 +3,11 @@
 use crate::indicators::contracts::{
     IndicatorId, IndicatorParamValue, IndicatorSpec, NormalizedSeries,
 };
-use crate::indicators::error::IndicatorError;
 use crate::indicators::engine::types::{
     IndicatorComputeContext, IndicatorComputeRequest, OhlcvBatch,
 };
 use crate::indicators::engine::IndicatorComputeProvider;
+use crate::indicators::error::IndicatorError;
 use crate::indicators::provider::ta_engine_provider::TaEngineProvider;
 use crate::plots::model::{
     BandStyle, HistogramStyle, LinePattern, LineStyle, PaneId, PlotPrimitive, PlotSeries,
@@ -179,15 +179,20 @@ impl TaCatalogPlotProvider {
                             output: visual.output.to_string(),
                         }
                     })?;
-                    let width = slot.default.width.ok_or_else(|| IndicatorError::MissingStyleDefault {
-                        indicator_id: self.indicator_id.clone(),
-                        slot: slot.slot.to_string(),
-                        field: "width".to_string(),
-                    })?;
-                    let pattern = slot.default.pattern.ok_or_else(|| IndicatorError::MissingStyleDefault {
-                        indicator_id: self.indicator_id.clone(),
-                        slot: slot.slot.to_string(),
-                        field: "pattern".to_string(),
+                    let width =
+                        slot.default
+                            .width
+                            .ok_or_else(|| IndicatorError::MissingStyleDefault {
+                                indicator_id: self.indicator_id.clone(),
+                                slot: slot.slot.to_string(),
+                                field: "width".to_string(),
+                            })?;
+                    let pattern = slot.default.pattern.ok_or_else(|| {
+                        IndicatorError::MissingStyleDefault {
+                            indicator_id: self.indicator_id.clone(),
+                            slot: slot.slot.to_string(),
+                            field: "pattern".to_string(),
+                        }
                     })?;
                     primitives.push(PlotPrimitive::Line {
                         values,
@@ -210,11 +215,14 @@ impl TaCatalogPlotProvider {
                         }
                     })?;
                     let color = slot.default.color.to_string();
-                    let width_factor = slot.default.width.ok_or_else(|| IndicatorError::MissingStyleDefault {
-                        indicator_id: self.indicator_id.clone(),
-                        slot: slot.slot.to_string(),
-                        field: "width".to_string(),
-                    })?;
+                    let width_factor =
+                        slot.default
+                            .width
+                            .ok_or_else(|| IndicatorError::MissingStyleDefault {
+                                indicator_id: self.indicator_id.clone(),
+                                slot: slot.slot.to_string(),
+                                field: "width".to_string(),
+                            })?;
                     primitives.push(PlotPrimitive::Histogram {
                         values,
                         base: 0.0,

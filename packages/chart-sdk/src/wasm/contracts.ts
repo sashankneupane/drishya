@@ -7,6 +7,47 @@ export interface Candle {
   volume: number;
 }
 
+export interface RuntimeId {
+  tile_id: string;
+  tab_id: string;
+}
+
+export interface SourceKey {
+  asset: string;
+  timeframe: string;
+}
+
+export interface TileLayoutConfig {
+  pane_order: string[];
+  pane_weights: Record<string, number>;
+}
+
+export interface TileIndicatorSpec {
+  indicator_id: string;
+  params?: Record<string, unknown>;
+}
+
+export interface TileIndicatorConfig {
+  indicators: TileIndicatorSpec[];
+}
+
+export interface RuntimeSnapshot {
+  runtime_id: RuntimeId;
+  source: SourceKey | null;
+  candle_count: number;
+  tile_config_version: number;
+  pane_layout_state: {
+    registered: string[];
+    order: string[];
+    weights: Record<string, number>;
+    hidden: string[];
+    collapsed: string[];
+    y_axis_visible: Record<string, boolean>;
+    min_heights: Record<string, number>;
+    max_heights: Record<string, number>;
+  };
+}
+
 export type ChartEventKind = "signal" | "entry" | "exit" | "stop" | "target" | "reject";
 export type ChartEventSide = "long" | "short";
 
@@ -452,4 +493,14 @@ export interface WasmChartLike {
   replay_seek_ts?(ts: number): void;
   replay_tick?(): number | undefined;
   replay_state_json?(): string;
+}
+
+export interface WasmRuntimeEngineLike {
+  create_runtime(tileId: string, tabId: string, width: number, height: number): void;
+  bind_source_json(tileId: string, tabId: string, sourceJson: string): void;
+  set_tile_layout_json(tileId: string, layoutJson: string): void;
+  set_tile_indicators_json(tileId: string, indicatorsJson: string): void;
+  ingest_snapshot_json(sourceJson: string, candlesJson: string): void;
+  append_candle_json(sourceJson: string, candleJson: string): void;
+  runtime_snapshot_json(tileId: string, tabId: string): string;
 }

@@ -52,10 +52,14 @@ impl WasmChart {
         };
 
         let params: HashMap<String, serde_json::Value> = serde_json::from_str(params_json)
-            .map_err(|e| JsValue::from_str(&format!("Invalid strict indicator params JSON: {e}")))?;
+            .map_err(|e| {
+                JsValue::from_str(&format!("Invalid strict indicator params JSON: {e}"))
+            })?;
 
-        let style_slots: HashMap<String, serde_json::Value> = serde_json::from_str(style_slots_json)
-            .map_err(|e| JsValue::from_str(&format!("Invalid strict indicator style JSON: {e}")))?;
+        let style_slots: HashMap<String, serde_json::Value> =
+            serde_json::from_str(style_slots_json).map_err(|e| {
+                JsValue::from_str(&format!("Invalid strict indicator style JSON: {e}"))
+            })?;
 
         for required in meta.params.iter().filter(|param| param.required) {
             if !params.contains_key(&required.name) {

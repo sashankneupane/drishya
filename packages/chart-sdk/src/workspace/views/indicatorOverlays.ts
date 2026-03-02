@@ -191,10 +191,6 @@ export const renderIndicatorOverlays = ({
           symbols,
           onSelect: async (nextSymbol) => {
             workspaceIntents.setPaneSource(paneId, { symbol: nextSymbol });
-            await options.marketControls?.onChartPaneSourceChange?.(paneId, {
-              symbol: nextSymbol,
-              timeframe: controller.getState().chartPaneSources[paneId]?.timeframe,
-            });
             await options.marketControls?.onSymbolChange?.(nextSymbol);
           },
           onClose: () => {},

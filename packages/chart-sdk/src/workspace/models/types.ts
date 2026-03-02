@@ -1,5 +1,5 @@
 import type { DrawingToolId } from "./drawingTool.js";
-import type { ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../../wasm/contracts.js";
+import type { Candle, ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../../wasm/contracts.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
 import type { ReplayState } from "../../wasm/contracts.js";
 import type { ChartPaneRuntime } from "./runtimeTypes.js";
@@ -30,18 +30,18 @@ export interface CreateChartWorkspaceOptions {
     debounceMs?: number;
   };
   marketControls?: {
-    /**
-     * Called when a specific chart pane source is changed via pane UI.
-     * Downstream apps can use this to load pane-scoped OHLCV feeds.
-     */
-    onChartPaneSourceChange?: (
-      chartPaneId: WorkspaceChartPaneId,
-      next: { symbol: string; timeframe?: string }
-    ) => void | Promise<void>;
     symbols: readonly string[];
     timeframes: readonly string[];
     selectedSymbol?: string;
     selectedTimeframe?: string;
+    dataFeed?: {
+      loadSnapshot: (source: { symbol: string; timeframe: string }) => Promise<Candle[]>;
+      subscribe: (
+        source: { symbol: string; timeframe: string },
+        onCandle: (candle: Candle) => void
+      ) => void | (() => void) | Promise<void | (() => void)>;
+      sourceKey?: (source: { symbol: string; timeframe: string }) => string;
+    };
     onSymbolChange?: (symbol: string) => void | Promise<void>;
     onTimeframeChange?: (timeframe: string) => void | Promise<void>;
     onCompareSymbol?: (symbol: string) => void | Promise<void>;

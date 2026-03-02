@@ -47,6 +47,12 @@ async function main() {
   const host = document.getElementById("chart-root");
   const stateStore = createPlaygroundStateStore(DEMO_PERSIST_KEY);
   const initialPersistedState = stateStore.load();
+  loaderApi = createBinanceLoader({
+    workspace: null,
+    requestRedraw: () => {},
+    getDefaultSymbol: () => activeSymbol,
+    getDefaultInterval: () => activeInterval
+  });
 
   // Initialize the workspace with the new controller-based API
   const workspace = await createChartWorkspaceFromModule({
@@ -66,19 +72,15 @@ async function main() {
       timeframes: BINANCE_INTERVALS,
       selectedSymbol: DEFAULT_BINANCE_SYMBOL,
       selectedTimeframe: DEFAULT_BINANCE_INTERVAL,
+      dataFeed: {
+        loadSnapshot: loaderApi.loadSnapshot,
+        subscribe: loaderApi.subscribe,
+      },
       onSymbolChange: async (symbol) => {
         activeSymbol = symbol;
       },
       onTimeframeChange: async (timeframe) => {
         activeInterval = timeframe;
-      },
-      onChartPaneSourceChange: async (_chartPaneId, next) => {
-        if (next.symbol) activeSymbol = next.symbol;
-        if (next.timeframe) activeInterval = next.timeframe;
-        const paneId = _chartPaneId || controllerRef?.getState?.().activeChartPaneId || "price";
-        if (loaderApi) {
-          await loaderApi.startBinanceFeed(paneId, activeSymbol, activeInterval);
-        }
       },
       onCompareSymbol: async (symbol) => {
         const paneId = controllerRef?.getState?.().activeChartPaneId || "price";
@@ -91,6 +93,7 @@ async function main() {
 
   const { draw, controller } = workspace;
   controllerRef = controller;
+  loaderApi.setWorkspace(workspace);
 
   const initialState = controller.getState();
   const initialActivePane = initialState.activeChartPaneId;
@@ -119,25 +122,7 @@ async function main() {
       draw();
     });
   }
-
-  loaderApi = createBinanceLoader({
-    workspace,
-    requestRedraw,
-    getDefaultSymbol: () => activeSymbol,
-    getDefaultInterval: () => activeInterval
-  });
-
-  // Initial load: respect restored per-pane sources from persisted workspace state.
-  for (const paneId of workspace.listCharts()) {
-    const source = controller.getState().chartPaneSources[paneId] ?? {};
-    const symbol = source.symbol ?? activeSymbol;
-    const timeframe = source.timeframe ?? activeInterval;
-    await loaderApi.startBinanceFeed(paneId, symbol, timeframe);
-  }
-
-  controller.subscribe((state) => {
-    loaderApi.syncPanesWithState(state, activeSymbol, activeInterval);
-  });
+  loaderApi.setRequestRedraw(requestRedraw);
 
   window.addEventListener("beforeunload", () => {
     loaderApi.dispose();

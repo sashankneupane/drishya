@@ -15,7 +15,12 @@ import type {
   StrictIndicatorStyleSlotConfig,
   RestoreChartStateOptions,
   ReadoutSnapshot,
-  WasmChartLike
+  RuntimeSnapshot,
+  SourceKey,
+  TileIndicatorConfig,
+  TileLayoutConfig,
+  WasmChartLike,
+  WasmRuntimeEngineLike
 } from "./contracts.js";
 
 import type { ObjectTreeAction } from "../workspace/models/objectTree.js";
@@ -640,6 +645,43 @@ export class DrishyaChartClient {
 
   setCompareSeriesCandles(seriesId: string, candles: Candle[]): void {
     this.wasm.set_compare_series_ohlcv_json?.(seriesId, JSON.stringify(candles));
+  }
+}
+
+export class DrishyaRuntimeEngineClient {
+  constructor(private readonly wasm: WasmRuntimeEngineLike) {}
+
+  createRuntime(tileId: string, tabId: string, width = 300, height = 300): void {
+    this.wasm.create_runtime(tileId, tabId, width, height);
+  }
+
+  bindSource(tileId: string, tabId: string, source: SourceKey): void {
+    this.wasm.bind_source_json(tileId, tabId, JSON.stringify(source));
+  }
+
+  setTileLayout(tileId: string, layout: TileLayoutConfig): void {
+    this.wasm.set_tile_layout_json(tileId, JSON.stringify(layout));
+  }
+
+  setTileIndicators(tileId: string, config: TileIndicatorConfig): void {
+    this.wasm.set_tile_indicators_json(tileId, JSON.stringify(config));
+  }
+
+  ingestSnapshot(source: SourceKey, candles: Candle[]): void {
+    this.wasm.ingest_snapshot_json(JSON.stringify(source), JSON.stringify(candles));
+  }
+
+  appendCandle(source: SourceKey, candle: Candle): void {
+    this.wasm.append_candle_json(JSON.stringify(source), JSON.stringify(candle));
+  }
+
+  runtimeSnapshot(tileId: string, tabId: string): RuntimeSnapshot {
+    const raw = this.wasm.runtime_snapshot_json(tileId, tabId);
+    const parsed = safeJsonParse<RuntimeSnapshot>(raw);
+    if (!parsed) {
+      throw new Error(`Invalid runtime snapshot for ${tileId}:${tabId}`);
+    }
+    return parsed;
   }
 }
 

@@ -10,6 +10,7 @@ import type { DrawingToolId } from "../models/drawingTool.js";
 export interface DrishyaWasmModule {
   default?: () => Promise<unknown> | unknown;
   WasmChart: new (canvasId: string, width: number, height: number) => WasmChartLike;
+  WasmRuntimeEngine?: new () => unknown;
 }
 
 export interface CreateChartWorkspaceFromModuleOptions {
