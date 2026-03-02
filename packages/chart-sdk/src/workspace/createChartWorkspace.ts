@@ -62,6 +62,7 @@ import { buildPaneToTileOwnershipMap } from "./paneOwnership.js";
 import { resolveReadoutColor, resolveReadoutLabel } from "./readoutStyle.js";
 import { resolvePaneRuntimeIdentity } from "./runtimeIdentity.js";
 import { createOverlayIconButton } from "./overlayIconButton.js";
+import { buildChartRootPaneIdSet } from "./chartPaneRoots.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -1132,8 +1133,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       overlay.innerHTML = "";
 
       const snapshot = runtime.chart.readoutSnapshot();
-      const chartRootPaneIds = new Set(
-        Object.keys(controller.getState().chartPanes).map((id) => canonicalRuntimePaneId(id))
+      const chartRootPaneIds = buildChartRootPaneIdSet(
+        Object.keys(controller.getState().chartPanes)
       );
       const source = state.chartPaneSources[paneId] ?? state.chartPaneSources.price ?? {};
       const symbol = source.symbol ?? options.marketControls?.selectedSymbol ?? "";
