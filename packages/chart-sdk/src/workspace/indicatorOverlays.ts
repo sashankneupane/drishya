@@ -76,12 +76,16 @@ export const renderIndicatorOverlays = ({
     const paneLayouts = runtime.chart.paneLayouts();
     const paneTopById = new Map<string, number>();
     const paneWidthById = new Map<string, number>();
-    const orderedPaneIds = paneLayouts.map((pane) => canonicalRuntimePaneId(pane.id));
+    const runtimePaneIdSet = new Set<string>();
     for (const pane of paneLayouts) {
       const canonicalPaneId = canonicalRuntimePaneId(pane.id);
+      runtimePaneIdSet.add(canonicalPaneId);
       paneTopById.set(canonicalPaneId, pane.y);
       paneWidthById.set(canonicalPaneId, pane.w);
     }
+    const orderedPaneIds = state.paneLayout.order
+      .map((id) => canonicalRuntimePaneId(id))
+      .filter((id, idx, arr) => runtimePaneIdSet.has(id) && arr.indexOf(id) === idx);
     const paneOffsets = new Map<string, number>();
     const rowHeight = 24;
     const styleBySeriesId = new Map(

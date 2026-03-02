@@ -139,30 +139,10 @@ export const createWorkspaceIntentController = (
     return true;
   };
 
-  const mergeTilePaneOrderIntoController = (chartTileId: string, nextRuntimeOrder: string[]): void => {
-    const canonicalRuntimeOrder = nextRuntimeOrder.map((id) => canonicalRuntimePaneId(id));
-    const canonicalDedupedOrder: string[] = [];
-    for (const id of canonicalRuntimeOrder) {
-      if (!canonicalDedupedOrder.includes(id)) canonicalDedupedOrder.push(id);
-    }
-    const currentOrder = options.controller.getState().paneLayout.order;
-    const runtimeSet = new Set(canonicalDedupedOrder);
-    const orderWithoutRuntime = currentOrder.filter(
-      (id) => !runtimeSet.has(canonicalRuntimePaneId(id))
-    );
-    const firstRuntimeIdx = currentOrder.findIndex((id) =>
-      runtimeSet.has(canonicalRuntimePaneId(id))
-    );
-    const insertAt =
-      firstRuntimeIdx < 0
-        ? orderWithoutRuntime.length
-        : currentOrder
-            .slice(0, firstRuntimeIdx)
-            .filter((id) => !runtimeSet.has(canonicalRuntimePaneId(id))).length;
-    const nextGlobalOrder = [...orderWithoutRuntime];
-    nextGlobalOrder.splice(insertAt, 0, ...canonicalDedupedOrder);
-    options.controller.setPaneOrder(nextGlobalOrder);
-
+  const applyTilePaneOrderFromController = (chartTileId: string): void => {
+    const currentOrder = options.controller
+      .getState()
+      .paneLayout.order.map((id) => canonicalRuntimePaneId(id));
     const tileCharts = options.getChartsForTile(chartTileId);
     for (const chart of tileCharts) {
       const paneLayouts = chart.paneLayouts();
@@ -171,7 +151,7 @@ export const createWorkspaceIntentController = (
         const canonical = canonicalRuntimePaneId(pane.id);
         if (!rawByCanonical.has(canonical)) rawByCanonical.set(canonical, pane.id);
       }
-      const scopedRaw = canonicalDedupedOrder
+      const scopedRaw = currentOrder
         .map((id) => rawByCanonical.get(id))
         .filter((id): id is string => typeof id === "string");
       if (scopedRaw.length) chart.setPaneOrder(scopedRaw);
@@ -184,11 +164,11 @@ export const createWorkspaceIntentController = (
     const runtimeOrder = chart.paneLayouts().map((pane) => canonicalRuntimePaneId(pane.id));
     if (!runtimeOrder.length) return false;
     const runtimeSet = new Set(runtimeOrder);
-    const currentScopedOrder = options.controller
+    const currentGlobalOrder = options.controller
       .getState()
       .paneLayout.order
-      .map((id) => canonicalRuntimePaneId(id))
-      .filter((id, idx, arr) => runtimeSet.has(id) && arr.indexOf(id) === idx);
+      .map((id) => canonicalRuntimePaneId(id));
+    const currentScopedOrder = currentGlobalOrder.filter((id) => runtimeSet.has(id));
     if (!currentScopedOrder.length) return false;
 
     const targetPaneId = canonicalRuntimePaneId(paneId);
@@ -202,7 +182,19 @@ export const createWorkspaceIntentController = (
       nextScopedOrder[swapIdx]!,
       nextScopedOrder[idx]!,
     ];
-    mergeTilePaneOrderIntoController(chartTileId, nextScopedOrder);
+
+    const nextGlobalOrder = [...currentGlobalOrder];
+    const scopedPositions: number[] = [];
+    for (let i = 0; i < nextGlobalOrder.length; i += 1) {
+      if (runtimeSet.has(nextGlobalOrder[i]!)) scopedPositions.push(i);
+    }
+    for (let i = 0; i < scopedPositions.length; i += 1) {
+      const position = scopedPositions[i]!;
+      const scopedPaneId = nextScopedOrder[i];
+      if (scopedPaneId) nextGlobalOrder[position] = scopedPaneId;
+    }
+    options.controller.setPaneOrder(nextGlobalOrder);
+    applyTilePaneOrderFromController(chartTileId);
     options.savePersistedState();
     return true;
   };
@@ -247,13 +239,7 @@ export const createWorkspaceIntentController = (
       retainTileIndicatorTokensFromChart(chartTileId, chart);
     if (changed) options.applyIndicatorSetToTile(chartTileId);
     options.controller.cleanupEmptyIndicatorPanes(chart.objectTreeState());
-    const nextRuntimeOrder = chart
-      .paneLayouts()
-      .map((pane) => pane.id)
-      .filter((id) => canonicalRuntimePaneId(id) !== targetPaneId);
-    if (nextRuntimeOrder.length) {
-      mergeTilePaneOrderIntoController(chartTileId, nextRuntimeOrder);
-    }
+    applyTilePaneOrderFromController(chartTileId);
     options.savePersistedState();
     return true;
   };

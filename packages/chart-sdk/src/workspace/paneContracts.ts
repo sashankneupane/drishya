@@ -51,11 +51,7 @@ export function syncChartPaneContracts({
       if (!rawByCanonical.has(canonical)) rawByCanonical.set(canonical, pane.id);
       paneChartPaneMap[pane.id] = paneId;
     }
-    const rootRawPaneId =
-      rawByCanonical.get("price") ??
-      rawByCanonical.get(canonicalRuntimePaneId(paneId)) ??
-      runtimePanes[0]?.id ??
-      null;
+    const rootRawPaneId = rawByCanonical.get(canonicalRuntimePaneId(paneId)) ?? null;
     const rawIdForScopedPane = (scopedId: string): string | null => {
       if (scopedId === paneId) return rootRawPaneId;
       return rawByCanonical.get(canonicalRuntimePaneId(scopedId)) ?? null;
