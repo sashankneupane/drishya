@@ -9,6 +9,7 @@ import { applyPersistedTileConfigs } from "./persistedTileConfigApply.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
 import type { SeriesStyleOverride } from "../../wasm/contracts.js";
 import type { ChartStateSnapshot } from "../../wasm/contracts.js";
+import type { WorkspaceLayoutNode } from "../../state/schema.js";
 
 interface RestoredWorkspaceShape {
   theme?: "dark" | "light";
@@ -19,6 +20,7 @@ interface RestoredWorkspaceShape {
   priceAxisMode?: "linear" | "log" | "percent";
   workspaceTiles?: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
   workspaceTileOrder?: string[];
+  workspaceLayoutTree?: WorkspaceLayoutNode;
   chartTiles?: Record<string, PersistedChartTileStoredShape>;
   drawingsByAsset?: Record<string, ChartStateSnapshot>;
   activeChartTileId?: string;
@@ -37,10 +39,17 @@ function deriveWorkspaceTilesFromPersistedState(
 } {
   const chartTileIds = Object.keys(persistedChartTiles);
   const oldWorkspaceTiles = saved.workspaceTiles ?? {};
-  const oldChartTileByChartTileId = new Map<string, { widthRatio: number; title: string }>();
-  for (const tile of Object.values(oldWorkspaceTiles)) {
+  const oldChartTileByChartTileId = new Map<
+    string,
+    { workspaceTileId: string; widthRatio: number; title: string }
+  >();
+  for (const [workspaceTileId, tile] of Object.entries(oldWorkspaceTiles)) {
     if (tile.kind === "chart" && tile.chartTileId) {
-      oldChartTileByChartTileId.set(tile.chartTileId, { widthRatio: tile.widthRatio, title: tile.title });
+      oldChartTileByChartTileId.set(tile.chartTileId, {
+        workspaceTileId,
+        widthRatio: tile.widthRatio,
+        title: tile.title,
+      });
     }
   }
 
@@ -48,6 +57,8 @@ function deriveWorkspaceTilesFromPersistedState(
   const workspaceTileOrder: string[] = [];
   const defaultChartWidth = chartTileIds.length > 0 ? 1 / chartTileIds.length : 1;
   let activeWorkspaceTileId: string | undefined;
+  const generatedWorkspaceTileByChartTileId = new Map<string, string>();
+  const generatedWorkspaceTileByLegacyWorkspaceTileId = new Map<string, string>();
 
   chartTileIds.forEach((chartTileId, index) => {
     const workspaceTileId = `tile-chart-${index + 1}`;
@@ -60,11 +71,31 @@ function deriveWorkspaceTilesFromPersistedState(
       widthRatio: old?.widthRatio ?? defaultChartWidth,
       chartTileId,
     };
-    workspaceTileOrder.push(workspaceTileId);
+    generatedWorkspaceTileByChartTileId.set(chartTileId, workspaceTileId);
+    if (old?.workspaceTileId) {
+      generatedWorkspaceTileByLegacyWorkspaceTileId.set(old.workspaceTileId, workspaceTileId);
+    }
     if (saved.activeChartTileId === chartTileId) {
       activeWorkspaceTileId = workspaceTileId;
     }
   });
+
+  const collectLayoutLeafIds = (node: WorkspaceLayoutNode): string[] => {
+    if (node.type === "leaf") return [node.tileId];
+    return [...collectLayoutLeafIds(node.first), ...collectLayoutLeafIds(node.second)];
+  };
+  if (saved.workspaceLayoutTree) {
+    const treeOrder = collectLayoutLeafIds(saved.workspaceLayoutTree)
+      .map((tileId) => generatedWorkspaceTileByLegacyWorkspaceTileId.get(tileId) ?? tileId)
+      .filter((tileId) => !!workspaceTiles[tileId])
+      .filter((tileId): tileId is string => typeof tileId === "string");
+    workspaceTileOrder.push(...treeOrder);
+  }
+  for (const generatedTileId of generatedWorkspaceTileByChartTileId.values()) {
+    if (!workspaceTileOrder.includes(generatedTileId)) {
+      workspaceTileOrder.push(generatedTileId);
+    }
+  }
 
   const existingObjectTile = Object.values(oldWorkspaceTiles).find((tile) => tile.kind === "objects");
   const objectsTileId = existingObjectTile?.id ?? "tile-objects";

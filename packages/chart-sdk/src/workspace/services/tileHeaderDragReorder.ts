@@ -6,6 +6,7 @@ interface AttachTileHeaderDragReorderOptions {
   tileId: string;
   controller: WorkspaceController;
   tileShellById: Map<string, HTMLDivElement>;
+  getOrderedTileIds: () => string[];
   onReordered: () => void;
 }
 
@@ -31,8 +32,7 @@ export function attachTileHeaderDragReorder(
       draggedShell.style.zIndex = "30";
       draggedShell.style.opacity = "0.92";
       draggedShell.style.pointerEvents = "none";
-      const stateNow = options.controller.getState();
-      const orderedIds = stateNow.workspaceTileOrder.filter((id) => stateNow.workspaceTiles[id]);
+      const orderedIds = options.getOrderedTileIds();
       const centers = orderedIds.map((id) => {
         const el = options.tileShellById.get(id);
         const rect = el?.getBoundingClientRect();

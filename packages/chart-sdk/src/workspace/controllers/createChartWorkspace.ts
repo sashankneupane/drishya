@@ -38,7 +38,7 @@ import { buildPersistedChartTiles } from "../services/workspacePersistenceSnapsh
 import { closeChartTabOrTile } from "../services/chartTabActions.js";
 import { resolveChartTileHeaderContext } from "../services/chartTileHeaderContext.js";
 import { restorePersistedWorkspace } from "../services/restorePersistedWorkspace.js";
-import { buildPersistedWorkspaceEnvelope } from "../services/workspacePersistEnvelope.js";
+import { serializeWorkspacePersistenceEnvelope } from "../services/workspacePersistEnvelope.js";
 import { createChartFacade } from "../adapters/chartFacade.js";
 import { createPersistenceScheduler } from "../services/persistenceScheduler.js";
 import { addChartTabForSymbol, addChartTabWithInheritedSource } from "../services/chartTabCreation.js";
@@ -47,6 +47,7 @@ import { toggleChartTileObjectTree } from "../views/objectTreeToggle.js";
 import { attachTileHeaderDragReorder } from "../services/tileHeaderDragReorder.js";
 import { attachTileResizerDrag } from "../services/tileResizerDrag.js";
 import { placeNewChartTileAtPointer } from "../services/tilePlacement.js";
+import { collectWorkspaceChartTileOrder, collectWorkspaceTileOrder } from "../services/workspaceTileOrder.js";
 import { parseChartTabDragPayload } from "../services/chartTabDnd.js";
 import { resolvePaneRuntimeIdentity } from "../services/runtimeIdentity.js";
 import { renderIndicatorOverlays as renderIndicatorOverlayRows } from "../views/indicatorOverlays.js";
@@ -262,8 +263,63 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return tree;
   };
 
-  const buildWorkspaceDocumentFromControllerState = (): WorkspaceDocument => {
+  const collectLayoutLeafTileIds = (node: WorkspaceLayoutNode): string[] => {
+    if (node.type === "leaf") return [node.tileId];
+    return [...collectLayoutLeafTileIds(node.first), ...collectLayoutLeafTileIds(node.second)];
+  };
+
+  const pruneLayoutTree = (
+    node: WorkspaceLayoutNode,
+    allowedTileIds: Set<string>
+  ): WorkspaceLayoutNode | null => {
+    if (node.type === "leaf") {
+      return allowedTileIds.has(node.tileId) ? node : null;
+    }
+    const first = pruneLayoutTree(node.first, allowedTileIds);
+    const second = pruneLayoutTree(node.second, allowedTileIds);
+    if (!first && !second) return null;
+    if (!first) return second;
+    if (!second) return first;
+    return { ...node, first, second };
+  };
+
+  const appendLeafToLayoutTree = (
+    tree: WorkspaceLayoutNode,
+    tileId: string
+  ): WorkspaceLayoutNode => ({
+    type: "split",
+    id: `workspace-split-${tileId}`,
+    direction: "row",
+    ratio: 0.5,
+    first: tree,
+    second: { type: "leaf", tileId },
+  });
+
+  const buildWorkspaceDocumentFromControllerState = (
+    layoutTreeOverride?: WorkspaceLayoutNode
+  ): WorkspaceDocument => {
     const state = controller.getState();
+    const orderedTileIds = collectWorkspaceTileOrder({
+      layoutTree: layoutTreeOverride,
+      workspaceTileOrder: state.workspaceTileOrder,
+      workspaceTiles: state.workspaceTiles,
+    });
+    const normalizedLayoutTree = (() => {
+      if (!orderedTileIds.length) return { type: "leaf", tileId: "tile-chart-1" } as WorkspaceLayoutNode;
+      if (!layoutTreeOverride) return buildWorkspaceLayoutTreeFromControllerState();
+      const allowed = new Set(orderedTileIds);
+      let next = pruneLayoutTree(layoutTreeOverride, allowed) ?? {
+        type: "leaf",
+        tileId: orderedTileIds[0]!,
+      };
+      const existingLeafIds = new Set(collectLayoutLeafTileIds(next));
+      for (const tileId of orderedTileIds) {
+        if (existingLeafIds.has(tileId)) continue;
+        next = appendLeafToLayoutTree(next, tileId);
+        existingLeafIds.add(tileId);
+      }
+      return next;
+    })();
     const tiles: WorkspaceDocument["workspace"]["tiles"] = {};
     for (const [tileId, tileSpec] of Object.entries(state.workspaceTiles)) {
       if (tileSpec.kind === "chart" && tileSpec.chartTileId) {
@@ -326,10 +382,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return {
       workspace: {
         activeTileId:
-          state.workspaceTileOrder.find((tileId) => state.workspaceTiles[tileId]?.chartTileId === state.activeChartTileId) ??
-          state.workspaceTileOrder[0] ??
+          orderedTileIds.find((tileId) => state.workspaceTiles[tileId]?.chartTileId === state.activeChartTileId) ??
+          orderedTileIds[0] ??
           null,
-        layoutTree: buildWorkspaceLayoutTreeFromControllerState(),
+        layoutTree: normalizedLayoutTree,
         tiles,
         drawingsByAsset: {},
         ui: {
@@ -391,8 +447,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         selectedTimeframe: options.marketControls?.selectedTimeframe,
         availableTimeframes: options.marketControls?.timeframes,
       });
-      const state = buildPersistedWorkspaceEnvelope({
+      const state = serializeWorkspacePersistenceEnvelope({
         state: stateNow,
+        workspaceLayoutTree: workspaceEngine.getState().workspace.layoutTree,
         objectTreeWidth,
         candleStyle:
           getActiveRuntime()?.chart.candleStyle() ??
@@ -589,7 +646,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   }
 
   const syncTileWidths = () => {
-    syncChartTileShellWidths(controller.getState(), tileShellById);
+    syncChartTileShellWidths(
+      {
+        ...controller.getState(),
+        workspaceLayoutTree: workspaceEngine.getState().workspace.layoutTree,
+      },
+      tileShellById
+    );
   };
 
   const renderChartTabs = (chartTileId: string) => {
@@ -833,6 +896,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           tileId,
           controller,
           tileShellById,
+          getOrderedTileIds: () =>
+            collectWorkspaceTileOrder({
+              layoutTree: workspaceEngine.getState().workspace.layoutTree,
+              workspaceTileOrder: controller.getState().workspaceTileOrder,
+              workspaceTiles: controller.getState().workspaceTiles,
+            }),
           onReordered: () => savePersistedState(),
         });
       },
@@ -892,18 +961,26 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const addChartTileAtPointer = async (clientX: number) => {
-    const before = controller.getState().workspaceTileOrder.filter((tileId) => controller.getState().workspaceTiles[tileId]?.kind === "chart");
+    const before = collectWorkspaceChartTileOrder({
+      layoutTree: workspaceEngine.getState().workspace.layoutTree,
+      workspaceTileOrder: controller.getState().workspaceTileOrder,
+      workspaceTiles: controller.getState().workspaceTiles,
+    });
     const chartTileId = controller.addChartTile();
     await initializeChartTileSource(chartTileId);
-    const afterState = controller.getState();
-    const after = afterState.workspaceTileOrder.filter((tileId) => afterState.workspaceTiles[tileId]?.kind === "chart");
+    const after = collectWorkspaceChartTileOrder({
+      layoutTree: workspaceEngine.getState().workspace.layoutTree,
+      workspaceTileOrder: controller.getState().workspaceTileOrder,
+      workspaceTiles: controller.getState().workspaceTiles,
+    });
     const newTileId = after.find((id) => !before.includes(id));
     if (!newTileId) return;
     placeNewChartTileAtPointer({
-      controller,
+      orderedChartTileIds: after,
       tileShellById,
       clientX,
       newTileId,
+      moveWorkspaceTile: (tileId, nextIndex) => controller.moveWorkspaceTile(tileId, nextIndex),
     });
     draw();
     savePersistedState();
@@ -1255,7 +1332,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   let lastLayoutJson = "";
   const unsubscribe = controller.subscribe((state) => {
-    workspaceEngine.setState(buildWorkspaceDocumentFromControllerState());
+    workspaceEngine.setState(
+      buildWorkspaceDocumentFromControllerState(workspaceEngine.getState().workspace.layoutTree)
+    );
+    const orderedTileIds = collectWorkspaceTileOrder({
+      layoutTree: workspaceEngine.getState().workspace.layoutTree,
+      workspaceTileOrder: state.workspaceTileOrder,
+      workspaceTiles: state.workspaceTiles,
+    });
     const layout = state.paneLayout;
     const currentLayoutJson = JSON.stringify({
       theme: state.theme,
@@ -1265,9 +1349,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       activeChartPaneId: state.activeChartPaneId,
       chartPaneSources: state.chartPaneSources,
       objectTreeOpen: state.isObjectTreeOpen,
-      workspaceTileOrder: state.workspaceTileOrder,
+      workspaceTileOrder: orderedTileIds,
       workspaceTileRatios: Object.fromEntries(
-        state.workspaceTileOrder.map((tileId) => [tileId, state.workspaceTiles[tileId]?.widthRatio ?? 0])
+        orderedTileIds.map((tileId) => [tileId, state.workspaceTiles[tileId]?.widthRatio ?? 0])
       ),
       chartTileTreeOpen: Object.fromEntries(chartTileTreeOpen.entries()),
       objectTreeWidth,

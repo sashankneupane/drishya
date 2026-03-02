@@ -12,9 +12,9 @@ export function closeChartTabOrTile(
     return true;
   }
   const state = controller.getState();
-  const workspaceTileId = state.workspaceTileOrder.find(
-    (id) => state.workspaceTiles[id]?.chartTileId === chartTileId
-  );
+  const workspaceTileId = Object.entries(state.workspaceTiles).find(
+    ([, tile]) => tile?.kind === "chart" && tile.chartTileId === chartTileId
+  )?.[0];
   if (!workspaceTileId) return false;
   controller.removeWorkspaceTile(workspaceTileId);
   return true;

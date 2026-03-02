@@ -1,5 +1,6 @@
 import { getActiveTab } from "../services/chartTileSelection.js";
 import type { WorkspaceLayoutNode } from "../../state/schema.js";
+import { collectWorkspaceTileOrder } from "../services/workspaceTileOrder.js";
 
 type WorkspaceTile = {
   id: string;
@@ -76,13 +77,11 @@ export function projectWorkspaceTiles(args: ProjectWorkspaceTilesArgs): void {
     attachTileResizer,
   } = args;
 
-  const orderFromLayoutTree = state.workspaceLayoutTree
-    ? collectLayoutLeafTileIds(state.workspaceLayoutTree).filter((tileId) => state.workspaceTiles[tileId])
-    : [];
-  const order =
-    orderFromLayoutTree.length > 0
-      ? orderFromLayoutTree
-      : state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+  const order = collectWorkspaceTileOrder({
+    layoutTree: state.workspaceLayoutTree,
+    workspaceTileOrder: state.workspaceTileOrder,
+    workspaceTiles: state.workspaceTiles,
+  });
   const visibleChartOrder = order.filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart");
   paneHostByPaneId.clear();
 
@@ -193,11 +192,4 @@ export function projectWorkspaceTiles(args: ProjectWorkspaceTilesArgs): void {
     }
     attachTileResizer({ shell, tileId, visibleChartOrder });
   }
-}
-
-function collectLayoutLeafTileIds(node: WorkspaceLayoutNode): string[] {
-  if (node.type === "leaf") {
-    return [node.tileId];
-  }
-  return [...collectLayoutLeafTileIds(node.first), ...collectLayoutLeafTileIds(node.second)];
 }

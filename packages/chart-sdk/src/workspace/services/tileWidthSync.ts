@@ -1,10 +1,16 @@
 import type { WorkspaceState } from "../controllers/WorkspaceController.js";
+import type { WorkspaceLayoutNode } from "../../state/schema.js";
+import { collectWorkspaceTileOrder } from "./workspaceTileOrder.js";
 
 export function syncChartTileShellWidths(
-  state: WorkspaceState,
+  state: WorkspaceState & { workspaceLayoutTree?: WorkspaceLayoutNode },
   tileShellById: Map<string, HTMLDivElement>
 ): void {
-  const order = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+  const order = collectWorkspaceTileOrder({
+    layoutTree: state.workspaceLayoutTree,
+    workspaceTileOrder: state.workspaceTileOrder,
+    workspaceTiles: state.workspaceTiles,
+  });
   const visibleChartTiles = order.filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart");
   const sum = visibleChartTiles.reduce(
     (acc, tileId) => acc + Math.max(0.0001, state.workspaceTiles[tileId]?.widthRatio ?? 0),

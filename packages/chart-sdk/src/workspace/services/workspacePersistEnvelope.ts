@@ -2,6 +2,7 @@ import type { WorkspaceState } from "../controllers/WorkspaceController.js";
 import type { ChartAppearanceConfig } from "../../wasm/contracts.js";
 import type { PersistedChartTileStoredShape } from "./persistenceHelpers.js";
 import type { ChartStateSnapshot } from "../../wasm/contracts.js";
+import type { WorkspaceLayoutNode } from "../../state/schema.js";
 
 export interface WorkspacePersistenceEnvelope {
   theme: WorkspaceState["theme"];
@@ -14,6 +15,7 @@ export interface WorkspacePersistenceEnvelope {
   appearance?: ChartAppearanceConfig;
   workspaceTiles: WorkspaceState["workspaceTiles"];
   workspaceTileOrder: WorkspaceState["workspaceTileOrder"];
+  workspaceLayoutTree?: WorkspaceLayoutNode;
   chartTiles: Record<string, PersistedChartTileStoredShape>;
   drawingsByAsset: Record<string, ChartStateSnapshot>;
   activeChartTileId: WorkspaceState["activeChartTileId"];
@@ -27,6 +29,7 @@ interface WorkspacePersistenceEnvelopeOptions {
   appearance?: ChartAppearanceConfig | null;
   chartTiles: Record<string, PersistedChartTileStoredShape>;
   drawingsByAsset?: Record<string, ChartStateSnapshot>;
+  workspaceLayoutTree?: WorkspaceLayoutNode;
 }
 
 export function serializeWorkspacePersistenceEnvelope(
@@ -43,6 +46,7 @@ export function serializeWorkspacePersistenceEnvelope(
     appearance: options.appearance ?? undefined,
     workspaceTiles: options.state.workspaceTiles,
     workspaceTileOrder: options.state.workspaceTileOrder,
+    workspaceLayoutTree: options.workspaceLayoutTree,
     chartTiles: options.chartTiles,
     drawingsByAsset: options.drawingsByAsset ?? {},
     activeChartTileId: options.state.activeChartTileId,
@@ -56,7 +60,4 @@ export function deserializeWorkspacePersistenceEnvelope(
   if (!value || typeof value !== "object") return null;
   return value as WorkspacePersistenceEnvelope;
 }
-
-// Backward-compatible alias while consumers migrate.
-export const buildPersistedWorkspaceEnvelope = serializeWorkspacePersistenceEnvelope;
 

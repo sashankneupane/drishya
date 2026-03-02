@@ -1,19 +1,15 @@
-import type { WorkspaceController } from "../controllers/WorkspaceController.js";
-
 interface PlaceNewChartTileAtPointerOptions {
-  controller: WorkspaceController;
+  orderedChartTileIds: readonly string[];
   tileShellById: Map<string, HTMLDivElement>;
   clientX: number;
   newTileId: string;
+  moveWorkspaceTile: (tileId: string, nextIndex: number) => void;
 }
 
 export function placeNewChartTileAtPointer(
   options: PlaceNewChartTileAtPointerOptions
 ): boolean {
-  const state = options.controller.getState();
-  const ordered = state.workspaceTileOrder.filter(
-    (id) => state.workspaceTiles[id]?.kind === "chart"
-  );
+  const ordered = [...options.orderedChartTileIds];
   if (!ordered.includes(options.newTileId)) return false;
   const centers = ordered.map((id) => {
     const el = options.tileShellById.get(id);
@@ -27,7 +23,7 @@ export function placeNewChartTileAtPointer(
       break;
     }
   }
-  options.controller.moveWorkspaceTile(options.newTileId, targetIndex);
+  options.moveWorkspaceTile(options.newTileId, targetIndex);
   return true;
 }
 
