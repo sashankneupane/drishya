@@ -262,6 +262,8 @@ impl TaCatalogPlotProvider {
     }
 }
 
+// Legacy convenience adapters are retained only for regression test parity.
+// Chart integration should use TaCatalogPlotProvider through add_indicator_with_params.
 pub struct TaSmaPlotProvider {
     period: usize,
     color: String,
