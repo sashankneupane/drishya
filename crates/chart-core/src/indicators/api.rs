@@ -2,6 +2,7 @@
 
 use crate::chart::Chart;
 use crate::indicators::contracts::IndicatorParamValue;
+use crate::indicators::error::IndicatorError;
 use crate::indicators::provider::ta_plot_provider::{
     TaAdxPlotProvider, TaAoHistogramPlotProvider, TaAtrPlotProvider, TaBbandsPlotProvider,
     TaCatalogPlotProvider, TaEmaPlotProvider, TaMacdPlotProvider, TaObvPlotProvider,
@@ -106,19 +107,50 @@ pub fn add_indicator_with_params(
         chart.register_named_pane(meta.id);
     }
 
+    for required in meta.params.iter().filter(|param| param.required) {
+        if !params.contains_key(required.name) {
+            return Err(IndicatorError::MissingParameter {
+                name: required.name.to_string(),
+            }
+            .to_string());
+        }
+    }
+
     let parsed_params = params
         .iter()
-        .filter_map(|(key, value)| {
+        .map(|(key, value)| {
             let parsed = match value {
-                Value::Bool(v) => Some(IndicatorParamValue::Bool(*v)),
-                Value::Number(v) if v.is_i64() => v.as_i64().map(IndicatorParamValue::Int),
-                Value::Number(v) => v.as_f64().map(IndicatorParamValue::Float),
-                Value::String(v) => Some(IndicatorParamValue::Text(v.clone())),
-                _ => None,
-            }?;
-            Some((key.clone(), parsed))
+                Value::Bool(v) => IndicatorParamValue::Bool(*v),
+                Value::Number(v) if v.is_i64() => {
+                    let Some(parsed) = v.as_i64() else {
+                        return Err(IndicatorError::InvalidParameter {
+                            name: key.clone(),
+                            reason: "invalid integer value".to_string(),
+                        });
+                    };
+                    IndicatorParamValue::Int(parsed)
+                }
+                Value::Number(v) => {
+                    let Some(parsed) = v.as_f64() else {
+                        return Err(IndicatorError::InvalidParameter {
+                            name: key.clone(),
+                            reason: "invalid float value".to_string(),
+                        });
+                    };
+                    IndicatorParamValue::Float(parsed)
+                }
+                Value::String(v) => IndicatorParamValue::Text(v.clone()),
+                _ => {
+                    return Err(IndicatorError::InvalidParameter {
+                        name: key.clone(),
+                        reason: "unsupported JSON value type".to_string(),
+                    });
+                }
+            };
+            Ok((key.clone(), parsed))
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, IndicatorError>>()
+        .map_err(|e| e.to_string())?;
 
     chart.add_plot_provider(Box::new(TaCatalogPlotProvider::new(
         meta.id.to_string(),
