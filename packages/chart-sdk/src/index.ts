@@ -6,6 +6,39 @@ export * from "./tabs/model.js";
 export * from "./toolbar/model.js";
 export * from "./wasm/contracts.js";
 export * from "./wasm/client.js";
+export {
+  validateWorkspaceDocument,
+  assertValidWorkspaceDocument,
+} from "./state/validator.js";
+export { reduceWorkspaceDocument, reduceWorkspaceState } from "./state/reducer.js";
+export type { WorkspaceIntent } from "./state/intents.js";
+export {
+  selectWorkspaceState,
+  selectTiles,
+  selectTile,
+  selectChartTile,
+  selectActiveTileId,
+  selectDrawingsForAsset,
+} from "./state/selectors.js";
+export type {
+  AssetId,
+  TileId,
+  TabId,
+  PaneId,
+  IndicatorInstanceId,
+  DrawingId,
+  WorkspaceDocument,
+  WorkspaceLayoutNode,
+  TileState,
+  ChartTileState,
+  ChartTabState,
+  PaneState,
+  IndicatorInstanceState,
+  IndicatorStyleSlotState,
+  DrawingState,
+  WorkspaceUiState,
+} from "./state/schema.js";
+export type { WorkspaceState as CanonicalWorkspaceState } from "./state/schema.js";
 export * from "./workspace/index.js";
 export * from "./workspace/WorkspaceController.js";
 export * from "./workspace/replay/index.js";

@@ -1,4 +1,5 @@
 export * from "./constants.js";
+export * from "./api.js";
 export * from "./createChartWorkspace.js";
 export * from "./createChartWorkspaceFromModule.js";
 export * from "./icons.js";
