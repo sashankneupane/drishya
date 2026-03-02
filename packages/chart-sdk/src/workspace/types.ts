@@ -75,13 +75,31 @@ export interface ChartWorkspaceHandle {
   destroy: () => void;
 }
 
+/**
+ * @deprecated Use `PaneId` from `state/schema.ts` for canonical persisted state.
+ */
 export type WorkspacePaneId = string;
 export type WorkspaceChartPaneId = string;
+/**
+ * @deprecated Use `WorkspaceLayoutNode` from `state/schema.ts` for canonical persisted state.
+ */
 export type WorkspaceChartSplitDirection = "horizontal" | "vertical";
+/**
+ * @deprecated Use `TileId` from `state/schema.ts` for canonical persisted state.
+ */
 export type WorkspaceTileId = string;
+/**
+ * @deprecated Use `TileId` from `state/schema.ts` for canonical persisted state.
+ */
 export type WorkspaceChartTileId = string;
+/**
+ * @deprecated Use `TabId` from `state/schema.ts` for canonical persisted state.
+ */
 export type WorkspaceChartTabId = string;
 
+/**
+ * @deprecated Use `WorkspaceLayoutNode` from `state/schema.ts` for canonical persisted state.
+ */
 export type WorkspaceChartSplitNode =
   | {
       type: "leaf";
