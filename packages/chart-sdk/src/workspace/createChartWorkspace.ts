@@ -57,6 +57,7 @@ import { toggleChartTileObjectTree } from "./objectTreeToggle.js";
 import { attachTileHeaderDragReorder } from "./tileHeaderDragReorder.js";
 import { attachTileResizerDrag } from "./tileResizerDrag.js";
 import { placeNewChartTileAtPointer } from "./tilePlacement.js";
+import { parseChartTabDragPayload } from "./chartTabDnd.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -631,14 +632,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     tabStrip.ondrop = (event) => {
       event.preventDefault();
       clearDropPreview();
-      const raw = event.dataTransfer?.getData("application/x-drishya-tab");
-      if (!raw) return;
-      try {
-        const payload = JSON.parse(raw) as { sourceChartTileId: string; tabId: string };
-        controller.moveChartTab(payload.sourceChartTileId, payload.tabId, chartTileId, Number.MAX_SAFE_INTEGER);
-      } catch {
-        // ignore malformed payload
-      }
+      const payload = parseChartTabDragPayload(event.dataTransfer);
+      if (!payload) return;
+      controller.moveChartTab(
+        payload.sourceChartTileId,
+        payload.tabId,
+        chartTileId,
+        Number.MAX_SAFE_INTEGER
+      );
     };
     const chartTile = controller.getState().chartTiles[chartTileId];
     if (!chartTile) return;
@@ -693,15 +694,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         event.preventDefault();
         tabBtn.style.boxShadow = "";
         clearDropPreview();
-        const raw = event.dataTransfer?.getData("application/x-drishya-tab");
-        if (!raw) return;
-        try {
-          const payload = JSON.parse(raw) as { sourceChartTileId: string; tabId: string };
-          const targetIndex = chartTile.tabs.findIndex((candidate) => candidate.id === tab.id);
-          controller.moveChartTab(payload.sourceChartTileId, payload.tabId, chartTileId, targetIndex);
-        } catch {
-          // ignore malformed payload
-        }
+        const payload = parseChartTabDragPayload(event.dataTransfer);
+        if (!payload) return;
+        const targetIndex = chartTile.tabs.findIndex((candidate) => candidate.id === tab.id);
+        controller.moveChartTab(payload.sourceChartTileId, payload.tabId, chartTileId, targetIndex);
       };
       tabBtn.onclick = () => {
         controller.setActiveChartTab(chartTileId, tab.id);
@@ -961,14 +957,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         header.ondrop = (event) => {
           event.preventDefault();
           if (tabs) tabs.style.boxShadow = "";
-          const raw = event.dataTransfer?.getData("application/x-drishya-tab");
-          if (!raw) return;
-          try {
-            const payload = JSON.parse(raw) as { sourceChartTileId: string; tabId: string };
-            controller.moveChartTab(payload.sourceChartTileId, payload.tabId, tile.chartTileId!, Number.MAX_SAFE_INTEGER);
-          } catch {
-            // ignore malformed payload
-          }
+          const payload = parseChartTabDragPayload(event.dataTransfer);
+          if (!payload) return;
+          controller.moveChartTab(
+            payload.sourceChartTileId,
+            payload.tabId,
+            tile.chartTileId!,
+            Number.MAX_SAFE_INTEGER
+          );
         };
         let tileBody = chartTileBodyByChartTileId.get(tile.chartTileId);
         if (!tileBody) {
