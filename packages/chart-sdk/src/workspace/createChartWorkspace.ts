@@ -54,6 +54,11 @@ import { resolvePaneRuntimeIdentity } from "./runtimeIdentity.js";
 import { renderIndicatorOverlays as renderIndicatorOverlayRows } from "./indicatorOverlays.js";
 import { createOpenIndicatorConfig } from "./indicatorConfigFlow.js";
 import { snapshotIndicatorTokensFromReadout } from "./indicatorTokenSnapshot.js";
+import {
+  createChartTabStripElement,
+  createTileHeaderElement,
+  ensureChartTileStageHost,
+} from "./chartTileDom.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -773,7 +778,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (!shell) {
         shell = document.createElement("div");
         shell.className = "h-full min-h-0 min-w-0 flex flex-col border-r border-zinc-900/80 bg-zinc-950/60";
-        const header = createTileHeader(tile.title);
+        const header = createTileHeaderElement(tile.title);
         tileHeaderById.set(tileId, header);
         const body = document.createElement("div");
         body.className = "flex-1 min-h-0 min-w-0";
@@ -926,37 +931,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const paneHostByPaneId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
   const indicatorOverlayByPaneId = new Map<string, HTMLDivElement>();
 
-  const createTileHeader = (label: string) => {
-    const header = document.createElement("div");
-    header.className = "h-9 shrink-0 border-b border-zinc-800/80 bg-zinc-950/95 px-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-400 min-w-0";
-    const grip = document.createElement("span");
-    grip.textContent = "⋮⋮";
-    grip.className = "cursor-grab select-none text-zinc-600";
-    const title = document.createElement("span");
-    title.textContent = label;
-    title.className = "truncate";
-    header.append(grip, title);
-    return header;
-  };
-
   const createChartTabStrip = (chartTileId: string) => {
-    const strip = document.createElement("div");
-    strip.className = "flex-1 min-w-0 h-7 px-1 flex items-center gap-1 overflow-x-auto";
+    const strip = createChartTabStripElement();
     chartTileTabById.set(chartTileId, strip);
     return strip;
   };
 
-  const ensureChartTileStage = (chartTileId: string) => {
-    const existing = chartTileStageByChartTileId.get(chartTileId);
-    if (existing) return existing;
-    const tileStage = document.createElement("div");
-    tileStage.className = "min-h-0 min-w-0 bg-chart-bg flex-shrink-0 relative overflow-hidden flex-1";
-    const tileChartLayer = document.createElement("div");
-    tileChartLayer.className = "absolute inset-0";
-    tileStage.appendChild(tileChartLayer);
-    chartTileStageByChartTileId.set(chartTileId, { stage: tileStage, chartLayer: tileChartLayer });
-    return { stage: tileStage, chartLayer: tileChartLayer };
-  };
+  const ensureChartTileStage = (chartTileId: string) =>
+    ensureChartTileStageHost(chartTileId, chartTileStageByChartTileId);
 
   const renderIndicatorOverlays = () => {
     renderIndicatorOverlayRows({
