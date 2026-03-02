@@ -33,9 +33,7 @@ export function applyPersistedTileConfigs(options: PersistedTileConfigApplyOptio
           options.availableTimeframes?.[0],
       });
     }
-    for (const [paneId, paneState] of Object.entries(tileCfg.paneStateByPane ?? {})) {
-      options.restoredPaneStatesByPane[paneId] = paneState ?? null;
-    }
+    // Intentionally ignore persisted pane-state snapshots; runtime pane contracts are tile-scoped.
     for (const [paneId, styleMap] of Object.entries(
       tileCfg.indicatorStyleOverridesByPane ?? {}
     )) {
@@ -49,4 +47,3 @@ export function applyPersistedTileConfigs(options: PersistedTileConfigApplyOptio
     }
   }
 }
-

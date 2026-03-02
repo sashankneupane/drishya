@@ -16,6 +16,8 @@ export interface WorkspacePersistenceEnvelope {
   objectTreeWidth: number;
   isLeftStripOpen: WorkspaceState["isLeftStripOpen"];
   priceAxisMode: WorkspaceState["priceAxisMode"];
+  paneLayout: WorkspaceState["paneLayout"];
+  workspaceLayoutTree?: WorkspaceLayoutNode;
   candleStyle?: string;
   appearance?: ChartAppearanceConfig;
   document: WorkspaceOwnershipDocument;
@@ -44,6 +46,8 @@ export function serializeWorkspacePersistenceEnvelope(
     objectTreeWidth: options.objectTreeWidth,
     isLeftStripOpen: options.state.isLeftStripOpen,
     priceAxisMode: options.state.priceAxisMode,
+    paneLayout: options.state.paneLayout,
+    workspaceLayoutTree: options.workspaceLayoutTree,
     candleStyle: options.candleStyle ?? undefined,
     appearance: options.appearance ?? undefined,
     document: buildWorkspaceOwnershipDocument({
@@ -62,4 +66,3 @@ export function deserializeWorkspacePersistenceEnvelope(
   if (!value || typeof value !== "object") return null;
   return value as WorkspacePersistenceEnvelope;
 }
-

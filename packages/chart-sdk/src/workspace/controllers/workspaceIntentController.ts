@@ -8,6 +8,7 @@ import {
   parseIndicatorParamsFromSeriesId,
 } from "../services/indicatorIdentity.js";
 import { canonicalRuntimePaneId } from "../models/paneSpec.js";
+import { buildTileScopedPaneMapping } from "../services/tileScopedPaneMapping.js";
 
 type PaneDirection = "up" | "down";
 type NodeKind = "pane" | "series" | "drawing" | "layer" | "group";
@@ -50,7 +51,8 @@ export interface WorkspaceIntentController {
     chartTileId: string,
     paneId: string,
     paneKind: string | undefined,
-    chart: DrishyaChartClient
+    chart: DrishyaChartClient,
+    paneRuntimeIdHint?: string
   ) => boolean;
   deleteSeriesInTile: (chartTileId: string, seriesId: string, chart: DrishyaChartClient) => boolean;
   toggleVisibility: (
@@ -140,36 +142,14 @@ export const createWorkspaceIntentController = (
     return true;
   };
 
-  const applyTilePaneOrderFromController = (chartTileId: string): void => {
-    const currentOrder = options.controller
-      .getState()
-      .paneLayout.order.map((id) => canonicalRuntimePaneId(id));
-    const tileCharts = options.getChartsForTile(chartTileId);
-    for (const chart of tileCharts) {
-      const paneLayouts = chart.paneLayouts();
-      const rawByCanonical = new Map<string, string>();
-      for (const pane of paneLayouts) {
-        const canonical = canonicalRuntimePaneId(pane.id);
-        if (!rawByCanonical.has(canonical)) rawByCanonical.set(canonical, pane.id);
-      }
-      const scopedRaw = currentOrder
-        .map((id) => rawByCanonical.get(id))
-        .filter((id): id is string => typeof id === "string");
-      if (scopedRaw.length) chart.setPaneOrder(scopedRaw);
-    }
-  };
-
   const movePaneInTile = (chartTileId: string, paneId: string, direction: PaneDirection): boolean => {
     const state = options.controller.getState();
     const chartTile = state.chartTiles[chartTileId];
     if (!chartTile) return false;
-    const rootPaneIds = new Set(chartTile.tabs.map((tab) => canonicalRuntimePaneId(tab.chartPaneId)));
-    if (!rootPaneIds.size) return false;
-    const scopedPaneSet = new Set<string>(rootPaneIds);
+    const scopedPaneSet = new Set<string>(["price"]);
     for (const [paneKey, spec] of Object.entries(state.paneLayout.panes)) {
       const canonicalPaneKey = canonicalRuntimePaneId(paneKey);
-      const parent = canonicalRuntimePaneId(spec.parentChartPaneId ?? "");
-      if (spec.kind === "indicator" && rootPaneIds.has(parent)) {
+      if (spec.kind === "indicator") {
         scopedPaneSet.add(canonicalPaneKey);
       }
     }
@@ -200,7 +180,6 @@ export const createWorkspaceIntentController = (
       if (scopedPaneId) nextGlobalOrder[position] = scopedPaneId;
     }
     options.controller.setPaneOrder(nextGlobalOrder);
-    applyTilePaneOrderFromController(chartTileId);
     options.savePersistedState();
     return true;
   };
@@ -224,7 +203,8 @@ export const createWorkspaceIntentController = (
     chartTileId: string,
     paneId: string,
     paneKind: string | undefined,
-    chart: DrishyaChartClient
+    chart: DrishyaChartClient,
+    paneRuntimeIdHint?: string
   ): boolean => {
     const targetPaneId = canonicalRuntimePaneId(paneId);
     if (paneKind === "chart") {
@@ -233,19 +213,74 @@ export const createWorkspaceIntentController = (
       return true;
     }
     const stateBefore = chart.objectTreeState();
+    const runtimePanes = chart.paneLayouts();
+    const tileState = options.controller.getState().chartTiles[chartTileId];
+    const ownerPaneId = tileState?.tabs.find((t) => t.id === tileState.activeTabId)?.chartPaneId
+      ?? tileState?.tabs[0]?.chartPaneId;
+    const statePaneIdByRuntimePaneId = buildTileScopedPaneMapping(
+      options.controller.getState().paneLayout,
+      runtimePanes,
+      ownerPaneId
+    ).statePaneIdByRuntimePaneId;
+    const targetRuntimePaneIds = new Set<string>();
+    if (typeof paneRuntimeIdHint === "string" && paneRuntimeIdHint.trim()) {
+      targetRuntimePaneIds.add(paneRuntimeIdHint.trim());
+    }
+    for (const runtimePaneId of runtimePanes.map((pane) => pane.id)) {
+      const statePaneId =
+        statePaneIdByRuntimePaneId.get(runtimePaneId) ??
+        canonicalRuntimePaneId(runtimePaneId);
+      if (statePaneId === targetPaneId || canonicalRuntimePaneId(runtimePaneId) === targetPaneId) {
+        targetRuntimePaneIds.add(runtimePaneId);
+      }
+    }
     const paneSeriesIds = stateBefore.series
-      .filter((series) => !series.deleted && canonicalRuntimePaneId(series.pane_id) === targetPaneId)
+      .filter((series) => {
+        if (series.deleted) return false;
+        if (targetRuntimePaneIds.has(series.pane_id)) return true;
+        const mappedStatePaneId =
+          statePaneIdByRuntimePaneId.get(series.pane_id) ??
+          canonicalRuntimePaneId(series.pane_id);
+        return mappedStatePaneId === targetPaneId;
+      })
       .map((series) => series.id);
+
+    const removeTokensByIndicatorId = (indicatorIds: readonly string[]): boolean => {
+      if (!indicatorIds.length) return false;
+      const current = options.controller.getChartTileIndicatorTokens(chartTileId);
+      if (!current.length) return false;
+      const indicatorIdSet = new Set(
+        indicatorIds.map((id) => canonicalIndicatorId(id)).filter((id) => !!id)
+      );
+      const next = current.filter((token) => {
+        const decoded = decodeIndicatorToken(token);
+        return !indicatorIdSet.has(canonicalIndicatorId(decoded.indicatorId));
+      });
+      if (next.length === current.length) return false;
+      options.controller.setChartTileIndicatorTokens(chartTileId, normalizeIndicatorIds(next));
+      return true;
+    };
+
+    const paneIndicatorIds = (chart.readoutSnapshot()?.indicators ?? [])
+      .filter((indicator) => {
+        if (targetRuntimePaneIds.has(indicator.pane_id)) return true;
+        const mappedStatePaneId =
+          statePaneIdByRuntimePaneId.get(indicator.pane_id) ??
+          canonicalRuntimePaneId(indicator.pane_id);
+        return mappedStatePaneId === targetPaneId;
+      })
+      .map((indicator) => indicator.id.split(":")[0] ?? "")
+      .filter((id) => id.length > 0);
+
     for (const seriesId of paneSeriesIds) {
       chart.applyObjectTreeAction({ type: "delete", kind: "series", id: seriesId });
     }
     options.controller.unregisterPane(targetPaneId);
-    const changed =
-      removeTokensForDeletedSeries(chartTileId, paneSeriesIds) ||
-      retainTileIndicatorTokensFromChart(chartTileId, chart);
-    if (changed) options.applyIndicatorSetToTile(chartTileId);
+    removeTokensForDeletedSeries(chartTileId, paneSeriesIds);
+    removeTokensByIndicatorId(paneIndicatorIds);
+    retainTileIndicatorTokensFromChart(chartTileId, chart);
+    options.applyIndicatorSetToTile(chartTileId);
     options.controller.cleanupEmptyIndicatorPanes(chart.objectTreeState());
-    applyTilePaneOrderFromController(chartTileId);
     options.savePersistedState();
     return true;
   };
@@ -281,7 +316,7 @@ export const createWorkspaceIntentController = (
       chart.updateGroup(id, { locked });
     },
     deleteNodeInTile: (chartTileId, chart, kind, id, paneKind) => {
-      if (kind === "pane") return deletePaneInTile(chartTileId, id, paneKind, chart);
+      if (kind === "pane") return deletePaneInTile(chartTileId, id, paneKind, chart, id);
       if (kind === "series") return deleteSeriesInTile(chartTileId, id, chart);
       chart.applyObjectTreeAction({
         type: "delete",

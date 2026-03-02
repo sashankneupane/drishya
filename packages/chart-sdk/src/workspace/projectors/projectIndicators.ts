@@ -1,6 +1,7 @@
 import type { DrishyaChartClient } from "../../wasm/client.js";
 import type { DiscoveredIndicator, StrictIndicatorStyleSlotConfig } from "../../wasm/contracts.js";
 import { assertValidIndicatorPayloadAgainstCatalog } from "../../state/catalogValidation.js";
+import { canonicalIndicatorId } from "../services/indicatorIdentity.js";
 import { decodeIndicatorToken } from "../services/indicatorIdentity.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
 
@@ -51,22 +52,35 @@ export function projectTileIndicators(options: ProjectTileIndicatorsOptions): vo
     options.indicatorIds.forEach((token, indicatorIndex) => {
       const decoded = decodeIndicatorToken(token);
       const metadata = catalog.find(
-        (item) => item.id.toLowerCase().trim() === decoded.indicatorId.toLowerCase().trim()
+        (item) => canonicalIndicatorId(item.id) === canonicalIndicatorId(decoded.indicatorId)
       );
       if (!metadata) {
-        throw new Error(
-          `Invalid indicator payload: workspace.tiles.${options.chartTileId}.tabs.${tab.chartPaneId}.indicators.${indicatorIndex}.indicatorId: Indicator '${decoded.indicatorId}' was not found in the runtime catalog.`
+        console.warn(
+          `Skipping invalid indicator payload: workspace.tiles.${options.chartTileId}.tabs.${tab.chartPaneId}.indicators.${indicatorIndex}.indicatorId: Indicator '${decoded.indicatorId}' was not found in the runtime catalog.`
         );
+        return;
       }
+      const runtimeIndicatorId = metadata.id;
       const styleSlots = buildStyleSlotsFromCatalog(metadata);
-      assertValidIndicatorPayloadAgainstCatalog({
-        catalog,
-        indicatorId: decoded.indicatorId,
-        params: decoded.params ?? {},
-        styleSlots,
-        path: `workspace.tiles.${options.chartTileId}.tabs.${tab.chartPaneId}.indicators.${indicatorIndex}`,
-      });
-      runtime.chart.addIndicatorStrict(decoded.indicatorId, decoded.params ?? {}, styleSlots);
+      try {
+        assertValidIndicatorPayloadAgainstCatalog({
+          catalog,
+          indicatorId: runtimeIndicatorId,
+          params: decoded.params ?? {},
+          styleSlots,
+          path: `workspace.tiles.${options.chartTileId}.tabs.${tab.chartPaneId}.indicators.${indicatorIndex}`,
+        });
+        runtime.chart.addIndicatorStrict(runtimeIndicatorId, decoded.params ?? {}, styleSlots);
+      } catch (error) {
+        try {
+          runtime.chart.addIndicator(runtimeIndicatorId, decoded.params ?? {});
+        } catch {
+          console.warn(
+            `Skipping invalid indicator payload: workspace.tiles.${options.chartTileId}.tabs.${tab.chartPaneId}.indicators.${indicatorIndex}`,
+            error
+          );
+        }
+      }
     });
 
     options.reconcilePaneSpecsForRuntime({

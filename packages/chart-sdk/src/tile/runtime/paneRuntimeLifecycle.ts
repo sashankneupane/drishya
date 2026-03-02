@@ -6,6 +6,8 @@ import { DEFAULT_APPEARANCE_CONFIG } from "../../workspace/models/constants.js";
 import { applyIndicatorSetToChart } from "../../workspace/services/indicatorRuntime.js";
 import { resolvePaneRuntimeIdentity } from "../../workspace/services/runtimeIdentity.js";
 import { bindWorkspaceInteractions } from "../../workspace/views/interactions.js";
+import { canonicalRuntimePaneId } from "../../workspace/models/paneSpec.js";
+import { buildTileScopedPaneMapping } from "../../workspace/services/tileScopedPaneMapping.js";
 
 interface PaneHost {
   stage: HTMLDivElement;
@@ -27,6 +29,7 @@ interface CreatePaneRuntimeOptions {
     chart: DrishyaChartClient;
     controller: WorkspaceController;
   }) => void;
+  onIndicatorsReapplied?: (paneId: string) => void;
 }
 
 export function createTilePaneRuntime(options: CreatePaneRuntimeOptions): ChartPaneRuntime {
@@ -75,6 +78,7 @@ export function createTilePaneRuntime(options: CreatePaneRuntimeOptions): ChartP
       if (chartTileId) {
         options.controller.setChartTileIndicatorTokens(chartTileId, beforeIndicatorIds);
       }
+      options.onIndicatorsReapplied?.(paneId);
     }
   })(paneChart.setCandles.bind(paneChart));
 
@@ -91,10 +95,8 @@ export function createTilePaneRuntime(options: CreatePaneRuntimeOptions): ChartP
     // ignore unsupported appearance config in older wasm
   }
 
-  const restoredPaneState = options.restoredPaneStatesByPane[paneId] ?? null;
-  if (restoredPaneState) {
-    paneChart.restorePaneStateJson(restoredPaneState);
-  }
+  // Pane layout/weights must stay tile-scoped from WorkspaceController contracts.
+  // Restoring raw pane-state snapshots can override ratios/order with stale runtime-local data.
 
   const restoredIndicators = chartTileId
     ? options.controller.getChartTileIndicatorTokens(chartTileId)
@@ -165,6 +167,80 @@ export function attachTilePaneRuntimeInteractions(
         }
         options.controller.setChartPaneSource(paneId, { symbol: nextSymbol });
       });
+    },
+    onPaneWeightsCommit: (updates, context) => {
+      const state = options.controller.getState();
+      const runtimePanes = options.runtime.chart.paneLayouts();
+      const { statePaneIdByRuntimePaneId } = buildTileScopedPaneMapping(
+        state.paneLayout,
+        runtimePanes,
+        options.runtime.paneId
+      );
+
+      const canonicalUpdates: Record<string, number> = {};
+      for (const [runtimePaneId, ratio] of Object.entries(updates)) {
+        const targetPaneId =
+          statePaneIdByRuntimePaneId.get(runtimePaneId) ??
+          canonicalRuntimePaneId(runtimePaneId);
+        if (!state.paneLayout.panes[targetPaneId]) continue;
+        canonicalUpdates[targetPaneId] = ratio;
+      }
+      if (Object.keys(canonicalUpdates).length === 0) {
+        return;
+      }
+      const pricePaneId = "price";
+      const paneOrder = state.paneLayout.order.filter((id) => state.paneLayout.panes[id]);
+      const currentRatios: Record<string, number> = {};
+      for (const paneId of paneOrder) {
+        currentRatios[paneId] = Math.max(0.0001, Number(state.paneLayout.ratios[paneId] ?? 0.0001));
+      }
+      const hintedStatePaneId = context?.targetRuntimePaneId
+        ? statePaneIdByRuntimePaneId.get(context.targetRuntimePaneId) ??
+          canonicalRuntimePaneId(context.targetRuntimePaneId)
+        : null;
+      const target =
+        hintedStatePaneId &&
+        hintedStatePaneId !== pricePaneId &&
+        state.paneLayout.panes[hintedStatePaneId]?.kind === "indicator"
+          ? {
+              paneId: hintedStatePaneId,
+              desired: Math.max(
+                0.0001,
+                canonicalUpdates[hintedStatePaneId] ?? currentRatios[hintedStatePaneId] ?? 0.0001
+              ),
+              delta: Math.abs(
+                Math.max(
+                  0.0001,
+                  canonicalUpdates[hintedStatePaneId] ?? currentRatios[hintedStatePaneId] ?? 0.0001
+                ) - (currentRatios[hintedStatePaneId] ?? 0.0001)
+              ),
+            }
+          : null;
+      if (!target || !(target.delta > 0.000001) || !(currentRatios[pricePaneId] > 0)) {
+        options.controller.updatePaneRatios(canonicalUpdates);
+        return;
+      }
+
+      let total = 0;
+      for (const paneId of paneOrder) total += currentRatios[paneId] ?? 0;
+      if (!(total > 0)) total = 1;
+      const minRatio = 0.0001;
+
+      let othersSum = 0;
+      for (const paneId of paneOrder) {
+        if (paneId === target.paneId || paneId === pricePaneId) continue;
+        othersSum += currentRatios[paneId] ?? 0;
+      }
+      const maxTarget = Math.max(minRatio, total - othersSum - minRatio);
+      const nextTarget = Math.max(minRatio, Math.min(maxTarget, target.desired));
+      const nextPrice = Math.max(minRatio, total - othersSum - nextTarget);
+
+      const fixedScopeUpdates: Record<string, number> = {
+        ...currentRatios,
+        [target.paneId]: nextTarget,
+        [pricePaneId]: nextPrice,
+      };
+      options.controller.updatePaneRatios(fixedScopeUpdates);
     },
   });
 }

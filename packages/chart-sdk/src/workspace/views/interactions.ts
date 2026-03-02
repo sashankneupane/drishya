@@ -1,6 +1,7 @@
 import type { DrishyaChartClient } from "../../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../../wasm/contracts.js";
 import { isDrawingToolId } from "../models/drawingTool.js";
+import { canonicalRuntimePaneId } from "../models/paneSpec.js";
 import type { LayoutRect } from "../layout/types.js";
 import type { WorkspaceChartSplitDirection, WorkspaceChartSplitNode } from "../models/types.js";
 
@@ -22,6 +23,10 @@ interface BindWorkspaceInteractionsOptions {
   getPaneViewport?: () => LayoutRect | null;
   getWorkspaceViewport?: () => LayoutRect;
   onSourceReadoutClick?: () => void;
+  onPaneWeightsCommit?: (
+    updates: Record<string, number>,
+    context?: { targetRuntimePaneId?: string }
+  ) => void;
 }
 
 export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOptions): () => void {
@@ -34,6 +39,7 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     getPaneLayouts,
     controller,
     onSourceReadoutClick,
+    onPaneWeightsCommit,
     paneId,
     getPaneViewport,
     getWorkspaceViewport
@@ -60,6 +66,8 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
   let panAnchorY: number | null = null;
   let axisZoomDrag: { axis: "x" | "y"; lastClient: number; anchor: number } | null = null;
   let paneResizeDrag: { index: number } | null = null;
+  let pendingPaneWeightUpdates: Record<string, number> | null = null;
+  let pendingPaneWeightTargetRuntimePaneId: string | null = null;
   let drawingInteractionActive = false;
   let movedWhileDragging = false;
   let drawingSessionMouseActive = false;
@@ -240,17 +248,52 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
     const totalAvailPx = panes.reduce((sum, p) => sum + p.h, 0);
     if (totalAvailPx <= 0) return;
 
-    const updates: Record<string, number> = {};
-    for (let i = 0; i < panes.length; i += 1) {
-      const pane = panes[i];
-      if (pane.id === upper.id) {
-        updates[pane.id] = newUpperH / totalAvailPx;
-      } else if (pane.id === lower.id) {
-        updates[pane.id] = newLowerH / totalAvailPx;
-      } else {
-        updates[pane.id] = pane.h / totalAvailPx;
-      }
+    const pricePaneId =
+      panes.find((pane) => canonicalRuntimePaneId(pane.id) === "price")?.id ?? panes[0]?.id ?? null;
+    if (!pricePaneId) return;
+    let targetPaneId = canonicalRuntimePaneId(upper.id) === "price" ? lower.id : upper.id;
+    if (targetPaneId === pricePaneId) {
+      targetPaneId = upper.id === pricePaneId ? lower.id : upper.id;
     }
+    if (targetPaneId === pricePaneId) return;
+
+    const currentHeights: Record<string, number> = {};
+    for (const pane of panes) {
+      currentHeights[pane.id] = pane.h;
+    }
+    const desiredTargetHeight =
+      targetPaneId === upper.id ? newUpperH : targetPaneId === lower.id ? newLowerH : currentHeights[targetPaneId] ?? PANE_MIN_HEIGHT_PX;
+    let fixedOthersHeight = 0;
+    for (const pane of panes) {
+      if (pane.id === targetPaneId || pane.id === pricePaneId) continue;
+      fixedOthersHeight += currentHeights[pane.id] ?? 0;
+    }
+    const minTargetHeight = PANE_MIN_HEIGHT_PX;
+    const minPriceHeight = PANE_MIN_HEIGHT_PX;
+    const maxTargetHeight = Math.max(
+      minTargetHeight,
+      totalAvailPx - fixedOthersHeight - minPriceHeight
+    );
+    const nextTargetHeight = Math.max(minTargetHeight, Math.min(maxTargetHeight, desiredTargetHeight));
+    const nextPriceHeight = Math.max(
+      minPriceHeight,
+      totalAvailPx - fixedOthersHeight - nextTargetHeight
+    );
+
+    const updates: Record<string, number> = {};
+    for (const pane of panes) {
+      if (pane.id === targetPaneId) {
+        updates[pane.id] = nextTargetHeight / totalAvailPx;
+        continue;
+      }
+      if (pane.id === pricePaneId) {
+        updates[pane.id] = nextPriceHeight / totalAvailPx;
+        continue;
+      }
+      updates[pane.id] = (currentHeights[pane.id] ?? pane.h) / totalAvailPx;
+    }
+    pendingPaneWeightUpdates = updates;
+    pendingPaneWeightTargetRuntimePaneId = targetPaneId;
     chart.setPaneWeights(updates);
   };
 
@@ -475,15 +518,24 @@ export function bindWorkspaceInteractions(options: BindWorkspaceInteractionsOpti
 
     const hadChartSplitDrag = chartSplitDrag !== null;
     const hadPaneResizeDrag = paneResizeDrag !== null;
+    const committedPaneWeightUpdates = pendingPaneWeightUpdates;
+    const committedPaneWeightTargetRuntimePaneId = pendingPaneWeightTargetRuntimePaneId;
     axisZoomDrag = null;
     chartSplitDrag = null;
     paneResizeDrag = null;
+    pendingPaneWeightUpdates = null;
+    pendingPaneWeightTargetRuntimePaneId = null;
     drawingInteractionActive = false;
     movedWhileDragging = false;
     dragging = false;
     panAnchorY = null;
     if (hadPaneResizeDrag || hadChartSplitDrag) {
       redraw();
+    }
+    if (hadPaneResizeDrag && committedPaneWeightUpdates && onPaneWeightsCommit) {
+      onPaneWeightsCommit(committedPaneWeightUpdates, {
+        targetRuntimePaneId: committedPaneWeightTargetRuntimePaneId ?? undefined,
+      });
     }
 
     if (pointerInCanvas) {

@@ -31,6 +31,7 @@ interface CreateTileRuntimeOrchestratorOptions {
   redraw: () => void;
   redrawFast: (paneId: string) => void;
   bindRuntimeSource: (paneId: string) => void;
+  onIndicatorsReapplied?: (paneId: string) => void;
 }
 
 export interface TileRuntimeOrchestrator {
@@ -82,6 +83,7 @@ export function createTileRuntimeOrchestrator(
       restoredPaneStatesByPane: options.restoredPaneStatesByPane,
       latestCandlesByPane: options.latestCandlesByPane,
       reconcilePaneSpecsForRuntime: options.reconcilePaneSpecsForRuntime,
+      onIndicatorsReapplied: options.onIndicatorsReapplied,
     });
     ensureRuntimeInteractions(runtime);
     options.bindRuntimeSource(paneId);

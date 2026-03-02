@@ -39,6 +39,7 @@ export function buildWorkspaceOwnershipDocument(options: {
 export function flattenOwnershipDocumentForLegacyRuntime(doc: WorkspaceOwnershipDocument): {
   workspaceTiles: WorkspaceState["workspaceTiles"];
   workspaceTileOrder: WorkspaceState["workspaceTileOrder"];
+  workspaceLayoutTree: WorkspaceLayoutNode | undefined;
   activeChartTileId: WorkspaceState["activeChartTileId"];
   activeWorkspaceTileId: string | undefined;
 } {
@@ -48,6 +49,7 @@ export function flattenOwnershipDocumentForLegacyRuntime(doc: WorkspaceOwnership
   return {
     workspaceTiles: doc.workspace.workspaceTiles,
     workspaceTileOrder: doc.workspace.workspaceTileOrder,
+    workspaceLayoutTree: doc.workspace.workspaceLayoutTree,
     activeChartTileId: doc.workspace.activeChartTileId,
     activeWorkspaceTileId,
   };

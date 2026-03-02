@@ -8,6 +8,7 @@ import { buildPaneToTileOwnershipMap } from "../models/paneOwnership.js";
 import { canonicalRuntimePaneId } from "../models/paneSpec.js";
 import { resolveReadoutColor, resolveReadoutLabel } from "../utils/readoutStyle.js";
 import { createOhlcvReadoutElement } from "./sourceReadout.js";
+import { buildTileScopedPaneMapping } from "../services/tileScopedPaneMapping.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
 import type { WorkspaceIntentController } from "../controllers/workspaceIntentController.js";
 import type { CreateChartWorkspaceOptions } from "../models/types.js";
@@ -72,14 +73,20 @@ export const renderIndicatorOverlays = ({
     const symbol = source.symbol ?? options.marketControls?.selectedSymbol ?? "";
     const timeframe = source.timeframe ?? options.marketControls?.selectedTimeframe ?? "";
     const paneLayouts = runtime.chart.paneLayouts();
+    const { statePaneIdByRuntimePaneId } = buildTileScopedPaneMapping(
+      state.paneLayout,
+      paneLayouts,
+      paneId
+    );
     const paneTopById = new Map<string, number>();
     const paneWidthById = new Map<string, number>();
     const runtimePaneIdSet = new Set<string>();
     for (const pane of paneLayouts) {
-      const canonicalPaneId = canonicalRuntimePaneId(pane.id);
-      runtimePaneIdSet.add(canonicalPaneId);
-      paneTopById.set(canonicalPaneId, pane.y);
-      paneWidthById.set(canonicalPaneId, pane.w);
+      const statePaneId =
+        statePaneIdByRuntimePaneId.get(pane.id) ?? canonicalRuntimePaneId(pane.id);
+      runtimePaneIdSet.add(statePaneId);
+      paneTopById.set(statePaneId, pane.y);
+      paneWidthById.set(statePaneId, pane.w);
     }
     const orderedPaneIds = state.paneLayout.order
       .map((id) => canonicalRuntimePaneId(id))
@@ -209,7 +216,8 @@ export const renderIndicatorOverlays = ({
     });
     const indicatorsByPane = new Map<string, typeof indicatorsInRuntime>();
     for (const item of indicatorsInRuntime) {
-      const indicatorPaneId = canonicalRuntimePaneId(item.pane_id);
+      const indicatorPaneId =
+        statePaneIdByRuntimePaneId.get(item.pane_id) ?? canonicalRuntimePaneId(item.pane_id);
       const arr = indicatorsByPane.get(indicatorPaneId) ?? [];
       arr.push(item);
       indicatorsByPane.set(indicatorPaneId, arr);
@@ -324,7 +332,13 @@ export const renderIndicatorOverlays = ({
           paneControls.append(
             mkOverlayIconBtn("trash", "Delete pane", () => {
               if (!chartTileId) return;
-              workspaceIntents.deletePaneInTile(chartTileId, indicatorPaneId, "indicator", runtime.chart);
+              workspaceIntents.deletePaneInTile(
+                chartTileId,
+                indicatorPaneId,
+                "indicator",
+                runtime.chart,
+                snapshotItem.pane_id
+              );
             })
           );
         }

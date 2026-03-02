@@ -39,8 +39,8 @@ export function buildPersistedChartTiles(
         symbol: src.symbol,
         timeframe: src.timeframe,
       };
-      paneStateByPane[tab.chartPaneId] =
-        options.chartRuntimes.get(tab.chartPaneId)?.chart.getPaneStateJson() ?? null;
+      // Do not persist raw pane-state snapshots; pane layout is controller-owned/tile-scoped.
+      paneStateByPane[tab.chartPaneId] = null;
       indicatorStyleOverridesByPane[tab.chartPaneId] =
         options.chartRuntimes.get(tab.chartPaneId)?.chart.allSeriesStyleOverrides() ?? {};
     }
@@ -63,4 +63,3 @@ export function buildPersistedChartTiles(
   }
   return persistedChartTiles;
 }
-

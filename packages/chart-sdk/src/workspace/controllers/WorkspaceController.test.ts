@@ -55,7 +55,24 @@ function testWorkspaceController() {
     if (state.paneLayout.ratios["ind1"] !== 0.5) throw new Error("ind1 ratio should be 0.5");
     if (state.paneLayout.ratios[PRICE_PANE_ID] !== 0.5) throw new Error("Price pane ratio should be 0.5");
 
+    // updatePaneRatios should only normalize/update provided pane scope and keep unrelated panes stable
+    controller.registerPane({ id: "ind2", kind: "indicator", title: "MACD" });
+    state = controller.getState();
+    const ind2Before = state.paneLayout.ratios["ind2"];
+    controller.updatePaneRatios({ "price-pane": 0.2, "ind1-pane": 0.8 });
+    state = controller.getState();
+    if (Math.abs((state.paneLayout.ratios[PRICE_PANE_ID] ?? 0) - 0.2) > 0.001) {
+        throw new Error("updatePaneRatios should commit canonicalized price ratio");
+    }
+    if (Math.abs((state.paneLayout.ratios["ind1"] ?? 0) - 0.8) > 0.001) {
+        throw new Error("updatePaneRatios should commit canonicalized indicator ratio");
+    }
+    if (Math.abs((state.paneLayout.ratios["ind2"] ?? 0) - (ind2Before ?? 0)) > 0.001) {
+        throw new Error("updatePaneRatios should not renormalize unrelated panes");
+    }
+
     controller.unregisterPane("ind1");
+    controller.unregisterPane("ind2");
     state = controller.getState();
     if (state.paneLayout.order.length !== 1) throw new Error("Should revert to 1 pane");
 

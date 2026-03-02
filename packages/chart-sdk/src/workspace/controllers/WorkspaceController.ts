@@ -331,6 +331,21 @@ export class WorkspaceController {
         if (!(paneId in ratios)) {
             ratios[paneId] = paneSpec.kind === "indicator" ? DEFAULT_INDICATOR_PANE_RATIO : 0.2;
         }
+        if (paneSpec.kind === "indicator") {
+            const minRatio = 0.0001;
+            const parentPaneId = canonicalPaneId(paneSpec.parentChartPaneId ?? PRICE_PANE_ID);
+            const targetParentId = this.state.paneLayout.panes[parentPaneId]
+                ? parentPaneId
+                : PRICE_PANE_ID;
+            const parentRatio = Math.max(minRatio, Number(ratios[targetParentId] ?? 0));
+            const desired = Math.max(minRatio, Number(ratios[paneId] ?? DEFAULT_INDICATOR_PANE_RATIO));
+            const transfer = Math.max(minRatio, Math.min(desired, Math.max(minRatio, parentRatio - minRatio)));
+            ratios[paneId] = transfer;
+            ratios[targetParentId] = Math.max(minRatio, parentRatio - transfer);
+            this.state.paneLayout = { order, ratios, visibility, collapsed, panes };
+            this.notify();
+            return;
+        }
 
         const normalizedRatios = normalizePaneRatios(ratios, order.filter(id => visibility[id] && !collapsed[id]));
 
@@ -354,7 +369,18 @@ export class WorkspaceController {
         delete collapsed[paneId];
 
         const ratios = { ...this.state.paneLayout.ratios };
+        const removedRatio = Math.max(0, Number(ratios[paneId] ?? 0));
         delete ratios[paneId];
+
+        const removedSpec = this.state.paneLayout.panes[paneId];
+        if (removedSpec?.kind === "indicator") {
+            const parentPaneId = canonicalPaneId(removedSpec.parentChartPaneId ?? PRICE_PANE_ID);
+            const targetParentId = panes[parentPaneId] ? parentPaneId : PRICE_PANE_ID;
+            ratios[targetParentId] = Math.max(0.0001, Number(ratios[targetParentId] ?? 0) + removedRatio);
+            this.state.paneLayout = { order, ratios, visibility, collapsed, panes };
+            this.notify();
+            return;
+        }
 
         const normalizedRatios = normalizePaneRatios(ratios, order.filter(id => visibility[id] && !collapsed[id]));
 
@@ -436,18 +462,32 @@ export class WorkspaceController {
 
     updatePaneRatios(updates: Record<WorkspacePaneId, number>): void {
         const currentRatios = { ...this.state.paneLayout.ratios };
+        const scopedIds: WorkspacePaneId[] = [];
         for (const [id, val] of Object.entries(updates)) {
             const paneId = canonicalPaneId(id);
             if (!paneId) continue;
+            if (!this.state.paneLayout.panes[paneId]) continue;
             currentRatios[paneId] = Math.max(0, val);
+            if (!scopedIds.includes(paneId)) scopedIds.push(paneId);
+        }
+        if (scopedIds.length === 0) return;
+
+        let scopedSum = 0;
+        for (const paneId of scopedIds) {
+            scopedSum += currentRatios[paneId] || 0;
+        }
+        if (scopedSum <= 0) {
+            const equalShare = 1 / scopedIds.length;
+            for (const paneId of scopedIds) {
+                currentRatios[paneId] = equalShare;
+            }
+        } else {
+            for (const paneId of scopedIds) {
+                currentRatios[paneId] = (currentRatios[paneId] || 0) / scopedSum;
+            }
         }
 
-        const normalizedRatios = normalizePaneRatios(
-            currentRatios,
-            this.state.paneLayout.order.filter(id => this.state.paneLayout.visibility[id] && !this.state.paneLayout.collapsed[id])
-        );
-
-        this.state.paneLayout = { ...this.state.paneLayout, ratios: normalizedRatios };
+        this.state.paneLayout = { ...this.state.paneLayout, ratios: currentRatios };
         this.notify();
     }
 

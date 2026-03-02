@@ -1,6 +1,8 @@
 import { canonicalRuntimePaneId } from "../models/paneSpec.js";
 import type { ChartPaneRuntime } from "../models/runtimeTypes.js";
 import type { WorkspacePaneLayoutState } from "../models/types.js";
+import { DEFAULT_INDICATOR_PANE_RATIO } from "../models/constants.js";
+import { buildTileScopedPaneMapping } from "./tileScopedPaneMapping.js";
 
 interface ChartPaneVisibility {
   visible?: boolean;
@@ -28,12 +30,6 @@ export function syncChartPaneContracts({
     const host = paneHostByPaneId.get(paneId);
     if (!host) continue;
 
-    const scopedIndicatorPaneIds = state.paneLayout.order.filter((id) => {
-      const spec = state.paneLayout.panes[id];
-      if (!spec) return false;
-      return spec.kind === "indicator" && spec.parentChartPaneId === paneId;
-    });
-    const scopedPaneIds = [paneId, ...scopedIndicatorPaneIds];
     const hostRect = host.stage.getBoundingClientRect();
     const chartPaneViewports: Record<string, { x: number; y: number; w: number; h: number }> = {
       [paneId]: {
@@ -45,46 +41,65 @@ export function syncChartPaneContracts({
     };
     const paneChartPaneMap: Record<string, string> = {};
     const runtimePanes = runtime.chart.paneLayouts();
-    const rawByCanonical = new Map<string, string>();
     for (const pane of runtimePanes) {
-      const canonical = canonicalRuntimePaneId(pane.id);
-      if (!rawByCanonical.has(canonical)) rawByCanonical.set(canonical, pane.id);
       paneChartPaneMap[pane.id] = paneId;
     }
-    const rootRawPaneId = rawByCanonical.get(canonicalRuntimePaneId(paneId)) ?? null;
-    const rawIdForScopedPane = (scopedId: string): string | null => {
-      if (scopedId === paneId) return rootRawPaneId;
-      return rawByCanonical.get(canonicalRuntimePaneId(scopedId)) ?? null;
-    };
-    const scopedRawOrder: string[] = [];
-    for (const scopedId of scopedPaneIds) {
-      const rawId = rawIdForScopedPane(scopedId);
-      if (!rawId) {
-        console.warn(
-          `[workspace] missing runtime pane id for scoped pane '${scopedId}' in chart pane '${paneId}'`
-        );
-        continue;
-      }
-      if (!scopedRawOrder.includes(rawId)) scopedRawOrder.push(rawId);
-    }
-    if (!scopedRawOrder.length) {
-      console.warn(`[workspace] no scoped pane order resolved for chart pane '${paneId}'`);
-    } else {
+
+    const { statePaneIdByRuntimePaneId } = buildTileScopedPaneMapping(
+      state.paneLayout,
+      runtimePanes,
+      paneId
+    );
+
+    const stateOrderIndex = new Map<string, number>();
+    state.paneLayout.order.forEach((id, index) => stateOrderIndex.set(id, index));
+    const scopedRawOrder = runtimePanes
+      .map((pane, runtimeIndex) => {
+        const statePaneId =
+          statePaneIdByRuntimePaneId.get(pane.id) ?? canonicalRuntimePaneId(pane.id);
+        const priority = stateOrderIndex.get(statePaneId) ?? 10_000 + runtimeIndex;
+        return { rawId: pane.id, priority };
+      })
+      .sort((a, b) => a.priority - b.priority)
+      .map((entry) => entry.rawId);
+    if (scopedRawOrder.length) {
       runtime.chart.setPaneOrder(scopedRawOrder);
     }
+
+    const runtimeHeightByRawId = new Map<string, number>();
+    for (const pane of runtimePanes) {
+      runtimeHeightByRawId.set(pane.id, Math.max(0.0001, Number(pane.h) || 0.0001));
+    }
+
     const scopedWeights: Record<string, number> = {};
-    for (const scopedId of scopedPaneIds) {
-      const rawId = rawIdForScopedPane(scopedId);
-      if (!rawId) continue;
-      const ratio = state.paneLayout.ratios[scopedId];
-      if (!Number.isFinite(ratio)) continue;
-      scopedWeights[rawId] = Math.max(0.0001, ratio);
+    for (const pane of runtimePanes) {
+      const rawId = pane.id;
+      const statePaneId =
+        statePaneIdByRuntimePaneId.get(rawId) ?? canonicalRuntimePaneId(rawId);
+      const ratio = state.paneLayout.ratios[statePaneId];
+      if (Number.isFinite(ratio)) {
+        scopedWeights[rawId] = Math.max(0.0001, ratio);
+      } else {
+        scopedWeights[rawId] =
+          statePaneId === "price"
+            ? runtimeHeightByRawId.get(rawId) ?? 0.0001
+            : Math.max(0.0001, DEFAULT_INDICATOR_PANE_RATIO);
+      }
     }
     if (Object.keys(scopedWeights).length > 0) {
+      let scopedWeightSum = 0;
+      for (const value of Object.values(scopedWeights)) scopedWeightSum += value;
+      if (!(scopedWeightSum > 0)) {
+        const equal = 1 / Object.keys(scopedWeights).length;
+        for (const key of Object.keys(scopedWeights)) scopedWeights[key] = equal;
+      } else {
+        for (const key of Object.keys(scopedWeights)) {
+          scopedWeights[key] = scopedWeights[key]! / scopedWeightSum;
+        }
+      }
       runtime.chart.setPaneWeights(scopedWeights);
     }
     runtime.chart.setChartPaneViewports(chartPaneViewports);
     runtime.chart.setPaneChartPaneMap(paneChartPaneMap);
   }
 }
-

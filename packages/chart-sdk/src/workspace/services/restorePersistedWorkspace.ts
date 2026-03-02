@@ -42,6 +42,7 @@ function deriveWorkspaceTilesFromPersistedState(
   workspaceTiles: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
   workspaceTileOrder: string[];
   activeWorkspaceTileId: string | undefined;
+  workspaceLayoutTree: WorkspaceLayoutNode | undefined;
 } {
   const chartTileIds = Object.keys(persistedChartTiles);
   const oldWorkspaceTiles = saved.workspaceTiles ?? {};
@@ -90,9 +91,25 @@ function deriveWorkspaceTilesFromPersistedState(
     if (node.type === "leaf") return [node.tileId];
     return [...collectLayoutLeafIds(node.first), ...collectLayoutLeafIds(node.second)];
   };
-  if (saved.workspaceLayoutTree) {
-    const treeOrder = collectLayoutLeafIds(saved.workspaceLayoutTree)
-      .map((tileId) => generatedWorkspaceTileByLegacyWorkspaceTileId.get(tileId) ?? tileId)
+  const mapLayoutTreeTileIds = (node: WorkspaceLayoutNode): WorkspaceLayoutNode => {
+    if (node.type === "leaf") {
+      return {
+        type: "leaf",
+        tileId: generatedWorkspaceTileByLegacyWorkspaceTileId.get(node.tileId) ?? node.tileId,
+      };
+    }
+    return {
+      ...node,
+      first: mapLayoutTreeTileIds(node.first),
+      second: mapLayoutTreeTileIds(node.second),
+    };
+  };
+  const mappedWorkspaceLayoutTree = saved.workspaceLayoutTree
+    ? mapLayoutTreeTileIds(saved.workspaceLayoutTree)
+    : undefined;
+
+  if (mappedWorkspaceLayoutTree) {
+    const treeOrder = collectLayoutLeafIds(mappedWorkspaceLayoutTree)
       .filter((tileId) => !!workspaceTiles[tileId])
       .filter((tileId): tileId is string => typeof tileId === "string");
     workspaceTileOrder.push(...treeOrder);
@@ -119,6 +136,7 @@ function deriveWorkspaceTilesFromPersistedState(
     workspaceTiles,
     workspaceTileOrder,
     activeWorkspaceTileId,
+    workspaceLayoutTree: mappedWorkspaceLayoutTree,
   };
 }
 
@@ -138,12 +156,16 @@ interface RestorePersistedWorkspaceOptions {
 
 export function restorePersistedWorkspace(
   options: RestorePersistedWorkspaceOptions
-): { restoredObjectTreeWidth: number | null } {
+): {
+  restoredObjectTreeWidth: number | null;
+  restoredWorkspaceLayoutTree: WorkspaceLayoutNode | null;
+} {
   if (!options.persistedState || typeof options.persistedState !== "object") {
-    return { restoredObjectTreeWidth: null };
+    return { restoredObjectTreeWidth: null, restoredWorkspaceLayoutTree: null };
   }
 
   let restoredObjectTreeWidth: number | null = null;
+  let restoredWorkspaceLayoutTree: WorkspaceLayoutNode | null = null;
   try {
     const saved = options.persistedState as RestoredWorkspaceShape;
     if (saved.theme) {
@@ -201,6 +223,11 @@ export function restorePersistedWorkspace(
         runtimeChartTiles as any,
         derivedWorkspace.activeWorkspaceTileId
       );
+      restoredWorkspaceLayoutTree =
+        derivedWorkspace.workspaceLayoutTree ??
+        saved.document?.workspace.workspaceLayoutTree ??
+        saved.workspaceLayoutTree ??
+        null;
     }
     applyPersistedTileConfigs({
       persistedChartTiles,
@@ -222,6 +249,6 @@ export function restorePersistedWorkspace(
     // ignore corrupt or incompatible persisted data
   }
 
-  return { restoredObjectTreeWidth };
+  return { restoredObjectTreeWidth, restoredWorkspaceLayoutTree };
 }
 
