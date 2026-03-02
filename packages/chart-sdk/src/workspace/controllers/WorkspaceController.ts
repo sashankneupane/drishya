@@ -995,18 +995,6 @@ export class WorkspaceController {
         this.notify();
     }
 
-    setWorkspaceTileWidthRatio(tileId: WorkspaceTileId, ratio: number): void {
-        const tile = this.state.workspaceTiles[tileId];
-        if (!tile) return;
-        const clamped = Math.max(0.12, Math.min(0.88, ratio));
-        this.state.workspaceTiles = {
-            ...this.state.workspaceTiles,
-            [tileId]: { ...tile, widthRatio: clamped }
-        };
-        this.normalizeWorkspaceTileRatios();
-        this.notify();
-    }
-
     updateWorkspaceTileRatios(updates: Record<WorkspaceTileId, number>): void {
         const nextTiles = { ...this.state.workspaceTiles };
         for (const [tileId, ratio] of Object.entries(updates)) {
@@ -1073,20 +1061,24 @@ export class WorkspaceController {
     }
 
     private normalizeWorkspaceTileRatios(): void {
-        const order = this.state.workspaceTileOrder.filter((id) => this.state.workspaceTiles[id]);
-        const chartOrder = order.filter((id) => this.state.workspaceTiles[id]?.kind === "chart");
-        const ratioSum = chartOrder.reduce((sum, id) => sum + Math.max(0, this.state.workspaceTiles[id]?.widthRatio ?? 0), 0);
+        const chartTileIds = Object.entries(this.state.workspaceTiles)
+            .filter(([, tile]) => tile.kind === "chart")
+            .map(([tileId]) => tileId);
+        const ratioSum = chartTileIds.reduce(
+            (sum, id) => sum + Math.max(0, this.state.workspaceTiles[id]?.widthRatio ?? 0),
+            0
+        );
         if (ratioSum <= 0) {
-            const each = 1 / Math.max(1, chartOrder.length);
+            const each = 1 / Math.max(1, chartTileIds.length);
             const next = { ...this.state.workspaceTiles };
-            for (const id of chartOrder) {
+            for (const id of chartTileIds) {
                 next[id] = { ...next[id], widthRatio: each };
             }
             this.state.workspaceTiles = next;
             return;
         }
         const next = { ...this.state.workspaceTiles };
-        for (const id of chartOrder) {
+        for (const id of chartTileIds) {
             const raw = Math.max(0, next[id]?.widthRatio ?? 0);
             next[id] = { ...next[id], widthRatio: raw / ratioSum };
         }

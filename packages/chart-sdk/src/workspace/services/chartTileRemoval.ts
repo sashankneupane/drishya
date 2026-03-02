@@ -5,11 +5,9 @@ export function removeWorkspaceTileByChartTileId(
   chartTileId: string
 ): boolean {
   const state = controller.getState();
-  const tileId = state.workspaceTileOrder.find(
-    (workspaceTileId) =>
-      state.workspaceTiles[workspaceTileId]?.kind === "chart" &&
-      state.workspaceTiles[workspaceTileId]?.chartTileId === chartTileId
-  );
+  const tileId = Object.entries(state.workspaceTiles).find(
+    ([, tile]) => tile?.kind === "chart" && tile.chartTileId === chartTileId
+  )?.[0];
   if (!tileId) return false;
   controller.removeWorkspaceTile(tileId);
   return true;

@@ -939,9 +939,15 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             : "none";
         if (resizer.style.display === "block") {
           const nextTileId = visibleChartOrder[visibleIndex + 1];
+          const nextShell = nextTileId ? tileShellById.get(nextTileId) ?? null : null;
+          if (!nextShell) {
+            resizer.onpointerdown = null;
+            return;
+          }
           attachTileResizerDrag({
             resizer,
-            tilesRow,
+            leftShell: shell,
+            rightShell: nextShell,
             tileId,
             nextTileId,
             controller,
