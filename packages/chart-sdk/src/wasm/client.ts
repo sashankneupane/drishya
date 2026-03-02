@@ -16,7 +16,7 @@ import type {
   RestoreChartStateOptions,
   ReadoutSnapshot,
   WasmChartLike
-} from "./contracts";
+} from "./contracts.js";
 
 import type { ObjectTreeAction } from "../chrome/objectTree.js";
 

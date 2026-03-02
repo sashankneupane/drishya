@@ -61,8 +61,8 @@ export function computeChartChromeLayout(
   };
 }
 
-import type { WorkspacePaneLayoutState, WorkspacePaneId } from "../workspace/types.js";
-import { MIN_PANE_HEIGHT_PX } from "../workspace/constants.js";
+import type { WorkspacePaneLayoutState, WorkspacePaneId } from "../workspace/models/types.js";
+import { MIN_PANE_HEIGHT_PX } from "../workspace/models/constants.js";
 
 export interface ComputedPaneLayout {
   id: WorkspacePaneId;

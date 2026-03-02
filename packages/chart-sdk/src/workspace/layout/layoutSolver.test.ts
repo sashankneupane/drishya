@@ -1,6 +1,6 @@
 import { computeChartPaneRects } from "./computeChartPaneRects.js";
 import { computeIndicatorRectsForChartPane } from "./computeIndicatorRects.js";
-import type { WorkspacePaneLayoutState } from "../types.js";
+import type { WorkspacePaneLayoutState } from "../models/types.js";
 
 function testLayoutSolvers() {
   const chartRects = computeChartPaneRects(

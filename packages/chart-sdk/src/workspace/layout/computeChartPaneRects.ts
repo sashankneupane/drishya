@@ -1,5 +1,5 @@
 import type { LayoutRect } from "../../layout/splitTree.js";
-import type { WorkspaceChartPaneId, WorkspaceChartSplitNode } from "../types.js";
+import type { WorkspaceChartPaneId, WorkspaceChartSplitNode } from "../models/types.js";
 
 export interface ChartPaneRect {
   chartPaneId: WorkspaceChartPaneId;

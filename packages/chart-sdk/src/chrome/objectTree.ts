@@ -1,5 +1,5 @@
 import type { ObjectTreeState } from "../wasm/contracts.js";
-import type { WorkspacePaneLayoutState } from "../workspace/types.js";
+import type { WorkspacePaneLayoutState } from "../workspace/models/types.js";
 
 export type ObjectTreeNodeKind = "pane" | "series" | "drawing" | "header" | "layer" | "group";
 
