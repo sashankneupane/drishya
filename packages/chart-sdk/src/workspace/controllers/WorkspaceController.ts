@@ -90,8 +90,9 @@ export class WorkspaceController {
     private state: WorkspaceState;
     private chartTileIndicatorTokens: Record<string, string[]> = {};
     private listeners: Set<WorkspaceListener> = new Set();
-    private replayController: ReplayController | null = null;
-    private replayUnsubscribe: (() => void) | null = null;
+    private replayControllerByChartTileId: Record<string, ReplayController> = {};
+    private replayUnsubscribeByChartTileId: Record<string, () => void> = {};
+    private replayStateByChartTileId: Record<string, ReplayState> = {};
 
     constructor(initial: Partial<WorkspaceState> = {}) {
         const defaultPaneLayout: WorkspacePaneLayoutState = {
@@ -164,6 +165,7 @@ export class WorkspaceController {
         };
         this.repairWorkspaceState();
         this.repairChartTileIndicatorTokens();
+        this.repairReplayTileState();
     }
 
     getState(): WorkspaceState {
@@ -237,18 +239,25 @@ export class WorkspaceController {
         this.state.crosshair = crosshair;
     }
 
-    setReplayController(controller: ReplayController | null): void {
-        this.replayUnsubscribe?.();
-        this.replayUnsubscribe = null;
-        this.replayController = controller;
+    setTileReplayController(chartTileId: WorkspaceChartTileId, controller: ReplayController | null): void {
+        this.replayUnsubscribeByChartTileId[chartTileId]?.();
+        delete this.replayUnsubscribeByChartTileId[chartTileId];
         if (controller) {
-            this.state.replay = controller.state();
-            this.replayUnsubscribe = controller.subscribe((replayState) => {
-                this.state.replay = replayState;
+            this.replayControllerByChartTileId[chartTileId] = controller;
+            this.replayStateByChartTileId[chartTileId] = controller.state();
+            this.replayUnsubscribeByChartTileId[chartTileId] = controller.subscribe((replayState) => {
+                this.replayStateByChartTileId[chartTileId] = replayState;
+                if (this.state.activeChartTileId === chartTileId) {
+                    this.state.replay = replayState;
+                }
                 this.notify();
             });
         } else {
-            this.state.replay = { playing: false, cursor_ts: null };
+            delete this.replayControllerByChartTileId[chartTileId];
+            delete this.replayStateByChartTileId[chartTileId];
+        }
+        if (this.state.activeChartTileId === chartTileId) {
+            this.state.replay = this.getChartTileReplayState(chartTileId);
         }
         this.notify();
     }
@@ -261,20 +270,41 @@ export class WorkspaceController {
         stepEvent: () => number | null;
         seekTs: (ts: number) => void;
         state: () => ReplayState;
+    }
+    replay(chartTileId: WorkspaceChartTileId): {
+        play: () => void;
+        pause: () => void;
+        stop: () => void;
+        stepBar: () => number | null;
+        stepEvent: () => number | null;
+        seekTs: (ts: number) => void;
+        state: () => ReplayState;
+    }
+
+    replay(chartTileId: WorkspaceChartTileId = this.state.activeChartTileId): {
+        play: () => void;
+        pause: () => void;
+        stop: () => void;
+        stepBar: () => number | null;
+        stepEvent: () => number | null;
+        seekTs: (ts: number) => void;
+        state: () => ReplayState;
     } {
+        const replayController = this.replayControllerByChartTileId[chartTileId] ?? null;
         return {
-            play: () => this.replayController?.play(),
-            pause: () => this.replayController?.pause(),
-            stop: () => this.replayController?.stop(),
-            stepBar: () => this.replayController?.stepBar() ?? null,
-            stepEvent: () => this.replayController?.stepEvent() ?? null,
-            seekTs: (ts: number) => this.replayController?.seekTs(ts),
+            play: () => replayController?.play(),
+            pause: () => replayController?.pause(),
+            stop: () => replayController?.stop(),
+            stepBar: () => replayController?.stepBar() ?? null,
+            stepEvent: () => replayController?.stepEvent() ?? null,
+            seekTs: (ts: number) => replayController?.seekTs(ts),
             state: () =>
-                this.replayController?.state() ?? {
-                    playing: false,
-                    cursor_ts: null
-                }
+                replayController?.state() ?? this.getChartTileReplayState(chartTileId)
         };
+    }
+
+    getChartTileReplayState(chartTileId: WorkspaceChartTileId): ReplayState {
+        return this.replayStateByChartTileId[chartTileId] ?? { playing: false, cursor_ts: null };
     }
 
     /* --- Pane Layout Controller APIs --- */
@@ -758,6 +788,7 @@ export class WorkspaceController {
         const session = TileSessionController.snapshot(this.state, this.chartTileIndicatorTokens, tileId);
         if (!session) return;
         this.state.activeChartTileId = tileId;
+        this.state.replay = this.getChartTileReplayState(tileId);
         const activeTab =
             session.chartTile.tabs.find((tab) => tab.id === session.chartTile.activeTabId) ??
             session.chartTile.tabs[0];
@@ -767,6 +798,7 @@ export class WorkspaceController {
 
     setActiveChartTab(chartTileId: WorkspaceChartTileId, tabId: WorkspaceChartTabId): void {
         this.state = TileSessionController.setActiveTab(this.state, chartTileId, tabId);
+        this.state.replay = this.getChartTileReplayState(chartTileId);
         this.notify();
     }
 
@@ -1024,6 +1056,7 @@ export class WorkspaceController {
         }
         this.normalizeWorkspaceTileRatios();
         this.repairChartTileIndicatorTokens();
+        this.repairReplayTileState();
     }
 
     private repairChartTileIndicatorTokens(): void {
@@ -1032,6 +1065,23 @@ export class WorkspaceController {
             next[tileId] = normalizeIndicatorIds(this.chartTileIndicatorTokens[tileId] ?? []);
         }
         this.chartTileIndicatorTokens = next;
+    }
+
+    private repairReplayTileState(): void {
+        const chartTileIds = new Set(Object.keys(this.state.chartTiles));
+        for (const tileId of Object.keys(this.replayControllerByChartTileId)) {
+            if (chartTileIds.has(tileId)) continue;
+            this.replayUnsubscribeByChartTileId[tileId]?.();
+            delete this.replayUnsubscribeByChartTileId[tileId];
+            delete this.replayControllerByChartTileId[tileId];
+            delete this.replayStateByChartTileId[tileId];
+        }
+        for (const tileId of chartTileIds) {
+            if (!this.replayStateByChartTileId[tileId]) {
+                this.replayStateByChartTileId[tileId] = { playing: false, cursor_ts: null };
+            }
+        }
+        this.state.replay = this.getChartTileReplayState(this.state.activeChartTileId);
     }
 
     private findLastChartPaneId(): string {

@@ -1,4 +1,4 @@
-import { getActiveTab } from "../services/chartTileSelection.js";
+import { getActiveTab } from "../services/chartTileService.js";
 import type { WorkspaceLayoutNode } from "../../state/schema.js";
 import { collectWorkspaceTileOrder } from "../services/workspaceTileOrder.js";
 

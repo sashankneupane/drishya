@@ -6,6 +6,7 @@ import type {
   WorkspaceTileSpec,
 } from "./types.js";
 import type { WorkspaceState } from "../controllers/WorkspaceController.js";
+import type { ReplayState } from "../../wasm/contracts.js";
 
 export interface WorkspaceGraphState {
   activeChartTileId: WorkspaceChartTileId;
@@ -20,6 +21,7 @@ export interface TileSessionState {
   tabs: WorkspaceState["chartTiles"][string]["tabs"];
   indicatorTokens: string[];
   paneSources: Record<WorkspacePaneId, WorkspaceState["chartPaneSources"][string]>;
+  replay: ReplayState;
 }
 
 export function assertWorkspaceGraphState(graph: WorkspaceGraphState): void {

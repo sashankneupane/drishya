@@ -1,5 +1,5 @@
 import type { DrishyaChartClient } from "../../wasm/client.js";
-import { getActiveTab } from "./chartTileSelection.js";
+import { getActiveTab } from "./chartTileService.js";
 import type { WorkspaceState } from "../controllers/WorkspaceController.js";
 
 export function getActiveChartForTileFromState(

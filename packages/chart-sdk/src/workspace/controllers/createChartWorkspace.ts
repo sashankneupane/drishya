@@ -32,17 +32,20 @@ import { reconcilePaneSpecsForRuntime } from "../services/paneSpecReconcile.js";
 import { createTileObjectTreeHandle } from "../views/objectTreeHandleFactory.js";
 import { getActiveChartForTileFromState, getChartsForTileFromState } from "../services/runtimeSelection.js";
 import { projectTileIndicators } from "../projectors/projectIndicators.js";
-import { initializeChartTileSourceState } from "../services/chartTileSourceInit.js";
 import { syncChartTileShellWidths } from "../services/tileWidthSync.js";
 import { buildPersistedChartTiles } from "../services/workspacePersistenceSnapshot.js";
-import { closeChartTabOrTile } from "../services/chartTabActions.js";
-import { resolveChartTileHeaderContext } from "../services/chartTileHeaderContext.js";
+import {
+  addChartTabForSymbol,
+  addChartTabWithInheritedSource,
+  closeChartTab,
+  initializeChartTileSourceState,
+  removeWorkspaceTileByChartTileId,
+  resolveChartTileHeaderContext,
+} from "../services/chartTileService.js";
 import { restorePersistedWorkspace } from "../services/restorePersistedWorkspace.js";
 import { serializeWorkspacePersistenceEnvelope } from "../services/workspacePersistEnvelope.js";
 import { createChartFacade } from "../adapters/chartFacade.js";
 import { createPersistenceScheduler } from "../services/persistenceScheduler.js";
-import { addChartTabForSymbol, addChartTabWithInheritedSource } from "../services/chartTabCreation.js";
-import { removeWorkspaceTileByChartTileId } from "../services/chartTileRemoval.js";
 import { toggleChartTileObjectTree } from "../views/objectTreeToggle.js";
 import { attachTileHeaderDragReorder } from "../services/tileHeaderDragReorder.js";
 import { attachTileResizerDrag } from "../services/tileResizerDrag.js";
@@ -179,8 +182,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     latestCandlesByPane.set("price", { latest: candle, prevClose });
   };
   const chartRuntimes = new Map<string, ChartPaneRuntime>();
-  const replay = new ReplayController(primaryChart);
-  controller.setReplayController(replay);
   primaryChart.setTheme(controller.getState().theme);
   chartRuntimes.set("price", {
     paneId: "price",
@@ -241,6 +242,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const getChartsForTile = (chartTileId: string): DrishyaChartClient[] => {
     return getChartsForTileFromState(controller.getState(), chartTileId, getRuntime);
+  };
+  const replayByChartTileId = new Map<string, ReplayController>();
+  const ensureReplayForTile = (chartTileId: string) => {
+    const chart = getActiveChartForTile(chartTileId) ?? getChartsForTile(chartTileId)[0] ?? null;
+    if (!chart) return null;
+    const existing = replayByChartTileId.get(chartTileId);
+    if (existing) return existing;
+    const replay = new ReplayController(chart);
+    replayByChartTileId.set(chartTileId, replay);
+    controller.setTileReplayController(chartTileId, replay);
+    return replay;
+  };
+  const replaceReplayForTile = (chartTileId: string) => {
+    replayByChartTileId.get(chartTileId)?.destroy();
+    replayByChartTileId.delete(chartTileId);
+    controller.setTileReplayController(chartTileId, null);
+    return ensureReplayForTile(chartTileId);
   };
 
   const buildWorkspaceLayoutTreeFromControllerState = (): WorkspaceLayoutNode => {
@@ -433,6 +451,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   if (restoreResult.restoredObjectTreeWidth !== null) {
     restoredObjectTreeWidth = restoreResult.restoredObjectTreeWidth;
   }
+  for (const chartTileId of Object.keys(controller.getState().chartTiles)) {
+    ensureReplayForTile(chartTileId);
+  }
 
   const DEBOUNCE_PERSIST_MS = options.persistence?.debounceMs ?? 400;
   const persistNow = () => {
@@ -520,6 +541,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     onAddChartTile: async () => {
       const chartTileId = controller.addChartTile();
       await initializeChartTileSource(chartTileId);
+      ensureReplayForTile(chartTileId);
       draw();
     },
     symbols: options.marketControls?.symbols ?? [],
@@ -558,6 +580,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     onAddChartTile: async () => {
       const chartTileId = controller.addChartTile();
       await initializeChartTileSource(chartTileId);
+      ensureReplayForTile(chartTileId);
       draw();
     },
     onOpenSettings: () => {
@@ -665,8 +688,18 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const tabStrip = chartTileTabById.get(chartTileId);
     if (!tabStrip) return;
     const chartTile = controller.getState().chartTiles[chartTileId];
-    const closeTabOrTile = (tabId: string) => {
-      if (!closeChartTabOrTile(controller, chartTileId, tabId)) return;
+    const closeTab = (tabId: string) => {
+      const result = closeChartTab(controller, chartTileId, tabId);
+      if (result === "tab_closed") {
+        replaceReplayForTile(chartTileId);
+      } else if (result === "last_tab_remaining") {
+        if (!removeWorkspaceTileByChartTileId(controller, chartTileId)) return;
+        replayByChartTileId.get(chartTileId)?.destroy();
+        replayByChartTileId.delete(chartTileId);
+        controller.setTileReplayController(chartTileId, null);
+      } else {
+        return;
+      }
       draw();
     };
     const renderHeaderActions = (actionsContainer: HTMLDivElement) => {
@@ -765,10 +798,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         };
         actionsContainer.appendChild(indBtn);
 
-        const replayState = controller.getState().replay;
+        const replayState = controller.getChartTileReplayState(chartTileId);
         const replayBtn = mkHeaderBtn("Replay");
         replayBtn.prepend(makeSvgIcon("play", "h-3.5 w-3.5"));
-        replayBtn.onclick = () => controller.replay().play();
+        replayBtn.onclick = () => {
+          ensureReplayForTile(chartTileId);
+          controller.replay(chartTileId).play();
+        };
         actionsContainer.appendChild(replayBtn);
         if (replayState.playing) {
           const mkReplayIconBtn = (icon: string, onClick: () => void) => {
@@ -780,10 +816,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             return btn;
           };
           actionsContainer.append(
-            mkReplayIconBtn("pause", () => controller.replay().pause()),
-            mkReplayIconBtn("stop", () => controller.replay().stop()),
-            mkReplayIconBtn("step-forward", () => { controller.replay().stepBar(); }),
-            mkReplayIconBtn("skip-forward", () => { controller.replay().stepEvent(); })
+            mkReplayIconBtn("pause", () => controller.replay(chartTileId).pause()),
+            mkReplayIconBtn("stop", () => controller.replay(chartTileId).stop()),
+            mkReplayIconBtn("step-forward", () => { controller.replay(chartTileId).stepBar(); }),
+            mkReplayIconBtn("skip-forward", () => { controller.replay(chartTileId).stepEvent(); })
           );
         }
       }
@@ -804,6 +840,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
             applyIndicatorSetToTile,
           });
           if (!tabId) return;
+          replaceReplayForTile(chartTileId);
           draw();
           return;
         }
@@ -820,6 +857,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
               applyIndicatorSetToTile,
             });
             if (!created) return;
+            replaceReplayForTile(chartTileId);
             await options.marketControls?.onChartPaneSourceChange?.(created.paneId, {
               symbol,
               timeframe: created.timeframe
@@ -850,6 +888,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         event.preventDefault();
         event.stopPropagation();
         if (!removeWorkspaceTileByChartTileId(controller, chartTileId)) return;
+        replayByChartTileId.get(chartTileId)?.destroy();
+        replayByChartTileId.delete(chartTileId);
+        controller.setTileReplayController(chartTileId, null);
         draw();
       };
       actionsContainer.append(addBtn, treeBtn, removeTileBtn);
@@ -866,9 +907,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       },
       onTabActivate: (tabId) => {
         controller.setActiveChartTab(chartTileId, tabId);
+        replaceReplayForTile(chartTileId);
         applyIndicatorSetToTile(chartTileId);
       },
-      onCloseTabOrTile: closeTabOrTile,
+      onCloseTabOrTile: closeTab,
       appendActions: (strip) => {
         const actions = document.createElement("div");
         actions.className = "ml-auto h-7 flex items-center gap-0.5";
@@ -980,6 +1022,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     });
     const chartTileId = controller.addChartTile();
     await initializeChartTileSource(chartTileId);
+    ensureReplayForTile(chartTileId);
     const after = collectWorkspaceChartTileOrder({
       layoutTree: workspaceEngine.getState().workspace.layoutTree,
       workspaceTileOrder: controller.getState().workspaceTileOrder,
@@ -1551,6 +1594,37 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const getAppearanceConfig = () => getActiveRuntime()?.chart.getAppearanceConfig() ?? getPrimaryRuntime()?.chart.getAppearanceConfig() ?? null;
+  const replayHandle = {
+    play: (chartTileId?: string) => {
+      const target = chartTileId ?? controller.getState().activeChartTileId;
+      ensureReplayForTile(target);
+      controller.replay(target).play();
+    },
+    pause: (chartTileId?: string) => {
+      const target = chartTileId ?? controller.getState().activeChartTileId;
+      controller.replay(target).pause();
+    },
+    stop: (chartTileId?: string) => {
+      const target = chartTileId ?? controller.getState().activeChartTileId;
+      controller.replay(target).stop();
+    },
+    stepBar: (chartTileId?: string) => {
+      const target = chartTileId ?? controller.getState().activeChartTileId;
+      return controller.replay(target).stepBar();
+    },
+    stepEvent: (chartTileId?: string) => {
+      const target = chartTileId ?? controller.getState().activeChartTileId;
+      return controller.replay(target).stepEvent();
+    },
+    seekTs: (ts: number, chartTileId?: string) => {
+      const target = chartTileId ?? controller.getState().activeChartTileId;
+      controller.replay(target).seekTs(ts);
+    },
+    state: (chartTileId?: string) => {
+      const target = chartTileId ?? controller.getState().activeChartTileId;
+      return controller.replay(target).state();
+    },
+  };
 
   return {
     root: root as HTMLDivElement,
@@ -1560,7 +1634,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       return treeHandleByChartTileId.get(activeTileId)?.root ?? document.createElement("div");
     })(),
     controller,
-    replay,
+    replay: replayHandle,
     draw,
     applyAppearanceConfig,
     getAppearanceConfig,
@@ -1581,8 +1655,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     destroy: () => {
       if (configPanelEl) configPanelEl.remove();
       unsubscribe();
-      replay.destroy();
-      controller.setReplayController(null);
+      for (const [chartTileId, replay] of replayByChartTileId.entries()) {
+        replay.destroy();
+        controller.setTileReplayController(chartTileId, null);
+      }
+      replayByChartTileId.clear();
       topHandle.destroy();
       stripHandle.destroy();
       for (const handle of treeHandleByChartTileId.values()) {

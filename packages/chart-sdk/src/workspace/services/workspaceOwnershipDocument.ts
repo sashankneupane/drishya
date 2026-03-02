@@ -72,6 +72,7 @@ export function toTileSessionStates(
       tabs: chartTile.tabs,
       indicatorTokens: chartTileIndicatorTokens[chartTileId] ?? [],
       paneSources,
+      replay: state.activeChartTileId === chartTileId ? state.replay : { playing: false, cursor_ts: null },
     };
   }
   return out;

@@ -1,7 +1,7 @@
 import type { DrawingToolId } from "./drawingTool.js";
 import type { ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../../wasm/contracts.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
-import type { ReplayController } from "../replay/ReplayController.js";
+import type { ReplayState } from "../../wasm/contracts.js";
 import type { ChartPaneRuntime } from "./runtimeTypes.js";
 
 export type WorkspaceTheme = "dark" | "light";
@@ -64,7 +64,15 @@ export interface ChartWorkspaceHandle {
   strip: HTMLElement;
   tree: HTMLElement;
   controller: WorkspaceController;
-  replay: ReplayController;
+  replay: {
+    play: (chartTileId?: WorkspaceChartTileId) => void;
+    pause: (chartTileId?: WorkspaceChartTileId) => void;
+    stop: (chartTileId?: WorkspaceChartTileId) => void;
+    stepBar: (chartTileId?: WorkspaceChartTileId) => number | null;
+    stepEvent: (chartTileId?: WorkspaceChartTileId) => number | null;
+    seekTs: (ts: number, chartTileId?: WorkspaceChartTileId) => void;
+    state: (chartTileId?: WorkspaceChartTileId) => ReplayState;
+  };
   draw: () => void;
   resize: () => void;
   setTool: (toolId: DrawingToolId) => void;
