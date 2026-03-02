@@ -1,13 +1,13 @@
-import type { WorkspaceController } from "../controllers/WorkspaceController.js";
+import type { WorkspaceTileDropTarget } from "./tilePlacement.js";
 
 interface AttachTileHeaderDragReorderOptions {
   header: HTMLDivElement;
   shell: HTMLDivElement;
   tileId: string;
-  controller: WorkspaceController;
-  tileShellById: Map<string, HTMLDivElement>;
-  getOrderedTileIds: () => string[];
-  onReordered: () => void;
+  resolveDropTarget: (clientX: number, clientY: number, draggedTileId: string) => WorkspaceTileDropTarget | null;
+  onPreview: (target: WorkspaceTileDropTarget | null) => void;
+  onDrop: (draggedTileId: string, target: WorkspaceTileDropTarget) => void;
+  onDragEnd: () => void;
 }
 
 export function attachTileHeaderDragReorder(
@@ -18,38 +18,24 @@ export function attachTileHeaderDragReorder(
     const target = event.target as HTMLElement | null;
     if (target?.closest("[data-no-tile-drag='1']")) return;
     const startX = event.clientX;
+    const startY = event.clientY;
     let dragging = false;
-    let didReorder = false;
+    let dropTarget: WorkspaceTileDropTarget | null = null;
     const draggedShell = options.shell;
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     document.body.style.userSelect = "none";
     document.body.style.cursor = "grabbing";
     const onMove = (moveEvent: PointerEvent) => {
       const dx = moveEvent.clientX - startX;
-      if (!dragging && Math.abs(dx) > 10) dragging = true;
+      const dy = moveEvent.clientY - startY;
+      if (!dragging && Math.hypot(dx, dy) > 10) dragging = true;
       if (!dragging) return;
-      draggedShell.style.transform = `translateX(${dx}px)`;
+      draggedShell.style.transform = `translate(${dx}px, ${dy}px)`;
       draggedShell.style.zIndex = "30";
       draggedShell.style.opacity = "0.92";
       draggedShell.style.pointerEvents = "none";
-      const orderedIds = options.getOrderedTileIds();
-      const centers = orderedIds.map((id) => {
-        const el = options.tileShellById.get(id);
-        const rect = el?.getBoundingClientRect();
-        return rect ? rect.left + rect.width / 2 : Number.POSITIVE_INFINITY;
-      });
-      let targetIndex = orderedIds.length - 1;
-      for (let i = 0; i < centers.length; i += 1) {
-        if (moveEvent.clientX < centers[i]) {
-          targetIndex = i;
-          break;
-        }
-      }
-      const currentIndex = orderedIds.indexOf(options.tileId);
-      if (currentIndex >= 0 && targetIndex !== currentIndex) {
-        options.controller.moveWorkspaceTile(options.tileId, targetIndex);
-        didReorder = true;
-      }
+      dropTarget = options.resolveDropTarget(moveEvent.clientX, moveEvent.clientY, options.tileId);
+      options.onPreview(dropTarget);
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -60,7 +46,11 @@ export function attachTileHeaderDragReorder(
       draggedShell.style.pointerEvents = "";
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
-      if (didReorder) options.onReordered();
+      if (dragging && dropTarget) {
+        options.onDrop(options.tileId, dropTarget);
+      }
+      options.onPreview(null);
+      options.onDragEnd();
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);

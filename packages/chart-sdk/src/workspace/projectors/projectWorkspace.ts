@@ -66,7 +66,7 @@ export function projectWorkspace(args: ProjectWorkspaceArgs): void {
     attachTileResizer: args.attachTileResizer,
   });
 
-  args.projectRuntimeLayout();
-
   args.afterProject?.();
+
+  args.projectRuntimeLayout();
 }

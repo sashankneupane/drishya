@@ -108,6 +108,7 @@ export function projectWorkspaceTiles(args: ProjectWorkspaceTilesArgs): void {
       shell.append(header, body);
       maps.tileShellById.set(tileId, shell);
     }
+    shell.dataset.workspaceTileId = tileId;
     const header = maps.tileHeaderById.get(tileId);
     if (!header) continue;
     header.onclick = () => {

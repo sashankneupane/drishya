@@ -9,8 +9,8 @@ const DEFAULT_BINANCE_SYMBOL = "BTCUSDT";
 const DEFAULT_BINANCE_INTERVAL = "1m";
 const BINANCE_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT"];
 const BINANCE_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"];
-const DEMO_PERSIST_KEY = "drishya-playground-config-v5";
-const PLAYGROUND_RESET_STAMP = "drishya-playground-reset-v5";
+const DEMO_PERSIST_KEY = "drishya-playground-config-v6";
+const PLAYGROUND_RESET_STAMP = "drishya-playground-reset-v6";
 
 function cleanupDemoStorage() {
   try {
@@ -18,10 +18,11 @@ function cleanupDemoStorage() {
     for (let i = localStorage.length - 1; i >= 0; i -= 1) {
       const key = localStorage.key(i);
       if (!key) continue;
-      const isLegacyPlayground = key.startsWith("drishya-playground-config-") && key !== DEMO_PERSIST_KEY;
       const shouldHardResetPlayground = !hasReset && key.startsWith("drishya-playground-config-");
       const isLegacyWorkspace = key === "drishya-config";
-      if (isLegacyPlayground || shouldHardResetPlayground || isLegacyWorkspace) {
+      const isOldResetStamp =
+        !hasReset && key.startsWith("drishya-playground-reset-") && key !== PLAYGROUND_RESET_STAMP;
+      if (shouldHardResetPlayground || isLegacyWorkspace || isOldResetStamp) {
         localStorage.removeItem(key);
       }
     }

@@ -6,15 +6,12 @@ import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "../models/const
 import { createDrawingConfigPanel } from "../views/components/DrawingConfigPanel.js";
 import { createConfigModal } from "../views/ConfigModal.js";
 import { createLeftStrip } from "../views/leftStrip.js";
-import { computeIndicatorRectsForChartPane } from "../layout/index.js";
 import { makeSvgIcon } from "../views/icons.js";
 import { createSymbolSearchModal } from "../views/SymbolSearchModal.js";
 import {
   applyIndicatorSetToChart,
 } from "../services/indicatorRuntime.js";
-import { canonicalRuntimePaneId } from "../models/paneSpec.js";
 import { ReplayController } from "../replay/ReplayController.js";
-import type { ChartPaneRuntime } from "../models/runtimeTypes.js";
 import { createWorkspaceIntentController } from "./workspaceIntentController.js";
 import { WorkspaceController } from "./WorkspaceController.js";
 import { syncChartPaneContracts } from "../services/paneContracts.js";
@@ -36,8 +33,11 @@ import { restorePersistedWorkspace } from "../services/restorePersistedWorkspace
 import { serializeWorkspacePersistenceEnvelope } from "../services/workspacePersistEnvelope.js";
 import { createPersistenceScheduler } from "../services/persistenceScheduler.js";
 import { attachTileHeaderDragReorder } from "../services/tileHeaderDragReorder.js";
-import { attachTileResizerDrag } from "../services/tileResizerDrag.js";
-import { placeNewChartTileAtPointer } from "../services/tilePlacement.js";
+import {
+  applyWorkspaceTileDrop,
+  resolveWorkspaceTileDropTarget,
+  type WorkspaceTileDropTarget,
+} from "../services/tilePlacement.js";
 import { collectWorkspaceChartTileOrder, collectWorkspaceTileOrder } from "../services/workspaceTileOrder.js";
 import { parseChartTabDragPayload } from "../services/chartTabDnd.js";
 import { renderIndicatorOverlays as renderIndicatorOverlayRows } from "../views/indicatorOverlays.js";
@@ -84,6 +84,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let restoredIndicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>> = {};
   const drawingsByAsset = new Map<string, ChartStateSnapshot>();
   const drawingSignatureByAsset = new Map<string, string>();
+  const drawingAppliedSignatureByPane = new Map<string, string>();
   const latestCandlesByPane = new Map<string, { latest: Candle; prevClose: number | null }>();
   const paneHostByPaneId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
 
@@ -96,6 +97,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   mainRow.className = "flex flex-1 min-h-0 min-w-0 relative";
   const tilesRow = document.createElement("div");
   tilesRow.className = "flex flex-1 min-h-0 min-w-0 relative overflow-hidden";
+  const tileSplitHandleLayer = document.createElement("div");
+  tileSplitHandleLayer.className = "absolute inset-0 pointer-events-none z-50";
 
   const stage = document.createElement("div");
   stage.className = "min-h-0 min-w-0 bg-chart-bg flex-shrink-0 relative overflow-hidden flex-1";
@@ -132,6 +135,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   // Mount elements to documented DOM before WASM initialization
   mainRow.appendChild(tilesRow);
+  tilesRow.appendChild(tileSplitHandleLayer);
   // Keep a mounted stage so wasm chart creation always has a DOM canvas target.
   stage.style.display = "none";
   tilesRow.appendChild(stage);
@@ -157,6 +161,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const afterIndicatorIds = primarySnapshotIndicatorIds();
     if (beforeIndicatorIds.length && afterIndicatorIds.length === 0) {
       applyIndicatorSetToChart(primaryChart, beforeIndicatorIds);
+      syncPaneContractsFromState();
     }
   };
   const primaryAppendCandle = primaryChart.appendCandle.bind(primaryChart);
@@ -172,6 +177,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let renderWorkspaceTiles: () => void = () => {};
   let setupCanvasBackingStore: () => void = () => {};
   let applyIndicatorSetToTile: (chartTileId: string) => void = () => {};
+  let syncPaneContractsFromState: (state?: ReturnType<typeof controller.getState>) => void = () => {};
   let tileChartOrchestrator: ReturnType<typeof createTileChartOrchestrator>;
   const tileRuntimeOrchestrator = createTileRuntimeOrchestrator({
     controller,
@@ -207,6 +213,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     redraw: () => draw(),
     redrawFast: (paneId) => scheduleFastDrawPane(paneId),
     bindRuntimeSource: (paneId) => tileChartOrchestrator.bindRuntimeSource(paneId),
+    onIndicatorsReapplied: () => {
+      syncPaneContractsFromState();
+    },
   });
   const chartRuntimes = tileRuntimeOrchestrator.chartRuntimes;
   primaryChart.setTheme(controller.getState().theme);
@@ -215,6 +224,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     tileRuntimeOrchestrator.getActiveRuntime();
   const getRuntime = (paneId: string) => tileRuntimeOrchestrator.getRuntime(paneId);
   const getPrimaryRuntime = () => tileRuntimeOrchestrator.getPrimaryRuntime();
+  syncPaneContractsFromState = (state = controller.getState()) => {
+    syncChartPaneContracts({
+      state,
+      chartRuntimes,
+      paneHostByPaneId,
+    });
+    tileRuntimeOrchestrator.updateLayout();
+  };
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
     for (const runtime of chartRuntimes.values()) {
@@ -292,6 +309,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return { ...node, first, second };
   };
 
+  const dedupeLayoutTreeLeaves = (
+    node: WorkspaceLayoutNode,
+    seen: Set<string> = new Set()
+  ): WorkspaceLayoutNode | null => {
+    if (node.type === "leaf") {
+      if (seen.has(node.tileId)) return null;
+      seen.add(node.tileId);
+      return node;
+    }
+    const first = dedupeLayoutTreeLeaves(node.first, seen);
+    const second = dedupeLayoutTreeLeaves(node.second, seen);
+    if (!first && !second) return null;
+    if (!first) return second;
+    if (!second) return first;
+    return { ...node, first, second };
+  };
+
   const appendLeafToLayoutTree = (
     tree: WorkspaceLayoutNode,
     tileId: string
@@ -318,6 +352,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (!layoutTreeOverride) return buildWorkspaceLayoutTreeFromControllerState();
       const allowed = new Set(orderedTileIds);
       let next = pruneLayoutTree(layoutTreeOverride, allowed) ?? {
+        type: "leaf",
+        tileId: orderedTileIds[0]!,
+      };
+      next = dedupeLayoutTreeLeaves(next) ?? {
         type: "leaf",
         tileId: orderedTileIds[0]!,
       };
@@ -442,6 +480,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     setupCanvasBackingStore: () => setupCanvasBackingStore(),
     savePersistedState: () => savePersistedState(),
     savePersistedStateImmediate: () => savePersistedStateImmediate(),
+    onIndicatorSetApplied: () => {
+      syncPaneContractsFromState();
+      draw();
+    },
   });
   applyIndicatorSetToTile = tileChartOrchestrator.applyIndicatorSetToTile;
 
@@ -466,6 +508,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   });
   if (restoreResult.restoredObjectTreeWidth !== null) {
     tileChartOrchestrator.setObjectTreeWidth(restoreResult.restoredObjectTreeWidth);
+  }
+  if (restoreResult.restoredWorkspaceLayoutTree) {
+    workspaceEngine.setState(
+      buildWorkspaceDocumentFromControllerState(restoreResult.restoredWorkspaceLayoutTree)
+    );
   }
 
   const DEBOUNCE_PERSIST_MS = options.persistence?.debounceMs ?? 400;
@@ -566,7 +613,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         ...controller.getState(),
         workspaceLayoutTree: workspaceEngine.getState().workspace.layoutTree,
       },
-      tileShellById
+      tileShellById,
+      tilesRow
     );
   };
 
@@ -796,15 +844,23 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           header,
           shell,
           tileId,
-          controller,
-          tileShellById,
-          getOrderedTileIds: () =>
-            collectWorkspaceTileOrder({
-              layoutTree: workspaceEngine.getState().workspace.layoutTree,
-              workspaceTileOrder: controller.getState().workspaceTileOrder,
-              workspaceTiles: controller.getState().workspaceTiles,
+          resolveDropTarget: (clientX, clientY, draggedTileId) =>
+            resolveWorkspaceTileDropTarget({
+              orderedChartTileIds: collectWorkspaceChartTileOrder({
+                layoutTree: workspaceEngine.getState().workspace.layoutTree,
+                workspaceTileOrder: controller.getState().workspaceTileOrder,
+                workspaceTiles: controller.getState().workspaceTiles,
+              }),
+              tileShellById,
+              clientX,
+              clientY,
+              excludeTileId: draggedTileId,
             }),
-          onReordered: () => savePersistedState(),
+          onPreview: (target) => setWorkspaceDropPreview(target),
+          onDrop: (draggedTileId, target) => {
+            moveExistingTileToDropTarget(draggedTileId, target);
+          },
+          onDragEnd: () => setWorkspaceDropPreview(null),
         });
       },
       ensureChartTabStrip: (chartTileId) => {
@@ -824,74 +880,381 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       moveChartTab: (sourceChartTileId, tabId, targetChartTileId, targetIndex) => {
         controller.moveChartTab(sourceChartTileId, tabId, targetChartTileId, targetIndex);
       },
-      attachTileResizer: ({ shell, tileId, visibleChartOrder }) => {
-        let resizer = shell.querySelector("[data-tile-resizer='1']") as HTMLDivElement | null;
-        if (!resizer) {
-          resizer = document.createElement("div");
-          resizer.dataset.tileResizer = "1";
-          resizer.className = "absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-zinc-700/60 transition-colors";
-          shell.style.position = "relative";
-          shell.appendChild(resizer);
-        }
-        const tile = state.workspaceTiles[tileId];
-        const visibleIndex = visibleChartOrder.indexOf(tileId);
-        resizer.style.display =
-          tile?.kind === "chart" && visibleIndex >= 0 && visibleIndex < visibleChartOrder.length - 1
-            ? "block"
-            : "none";
-        if (resizer.style.display === "block") {
-          const nextTileId = visibleChartOrder[visibleIndex + 1];
-          const nextShell = nextTileId ? tileShellById.get(nextTileId) ?? null : null;
-          if (!nextShell) {
-            resizer.onpointerdown = null;
-            return;
-          }
-          attachTileResizerDrag({
-            resizer,
-            leftShell: shell,
-            rightShell: nextShell,
-            tileId,
-            nextTileId,
-            controller,
-            onResizeEnd: () => savePersistedState(),
-          });
-        } else {
-          resizer.onpointerdown = null;
+      attachTileResizer: ({ shell }) => {
+        const resizer = shell.querySelector("[data-tile-resizer='1']") as HTMLDivElement | null;
+        if (resizer) {
+          resizer.remove();
         }
       },
       projectRuntimeLayout: () => tileRuntimeOrchestrator.updateLayout(),
       afterProject: () => {
         syncTileWidths();
+        renderWorkspaceSplitHandles();
         renderIndicatorOverlays();
       },
     });
   };
 
-  const addChartTileAtPointer = async (clientX: number) => {
-    const before = collectWorkspaceChartTileOrder({
-      layoutTree: workspaceEngine.getState().workspace.layoutTree,
-      workspaceTileOrder: controller.getState().workspaceTileOrder,
-      workspaceTiles: controller.getState().workspaceTiles,
-    });
-    const chartTileId = controller.addChartTile();
-    await initializeChartTileSource(chartTileId);
-    ensureReplayForTile(chartTileId);
-    const after = collectWorkspaceChartTileOrder({
-      layoutTree: workspaceEngine.getState().workspace.layoutTree,
-      workspaceTileOrder: controller.getState().workspaceTileOrder,
-      workspaceTiles: controller.getState().workspaceTiles,
-    });
-    const newTileId = after.find((id) => !before.includes(id));
-    if (!newTileId) return;
-    placeNewChartTileAtPointer({
-      orderedChartTileIds: after,
-      tileShellById,
-      clientX,
-      newTileId,
-      moveWorkspaceTile: (tileId, nextIndex) => controller.moveWorkspaceTile(tileId, nextIndex),
-    });
+  let suppressLayoutSync = false;
+
+  const treeContainsTile = (node: WorkspaceLayoutNode, tileId: string): boolean => {
+    if (node.type === "leaf") return node.tileId === tileId;
+    return treeContainsTile(node.first, tileId) || treeContainsTile(node.second, tileId);
+  };
+
+  const resolveWorkspaceLayoutRectAtPath = (
+    node: WorkspaceLayoutNode,
+    path: readonly number[],
+    rect: { x: number; y: number; w: number; h: number },
+    depth = 0
+  ): { x: number; y: number; w: number; h: number } | null => {
+    if (depth === path.length) return rect;
+    if (node.type === "leaf") return null;
+    const ratio = Math.max(0.05, Math.min(0.95, node.ratio));
+    if (node.direction === "row") {
+      const firstW = Math.max(1, Math.floor(rect.w * ratio));
+      const secondW = Math.max(1, rect.w - firstW);
+      const branch = path[depth] === 0 ? node.first : node.second;
+      const nextRect =
+        path[depth] === 0
+          ? { x: rect.x, y: rect.y, w: firstW, h: rect.h }
+          : { x: rect.x + firstW, y: rect.y, w: secondW, h: rect.h };
+      return resolveWorkspaceLayoutRectAtPath(branch, path, nextRect, depth + 1);
+    }
+    const firstH = Math.max(1, Math.floor(rect.h * ratio));
+    const secondH = Math.max(1, rect.h - firstH);
+    const branch = path[depth] === 0 ? node.first : node.second;
+    const nextRect =
+      path[depth] === 0
+        ? { x: rect.x, y: rect.y, w: rect.w, h: firstH }
+        : { x: rect.x, y: rect.y + firstH, w: rect.w, h: secondH };
+    return resolveWorkspaceLayoutRectAtPath(branch, path, nextRect, depth + 1);
+  };
+
+  const setWorkspaceSplitRatioAtPath = (
+    node: WorkspaceLayoutNode,
+    path: readonly number[],
+    ratio: number,
+    depth = 0
+  ): WorkspaceLayoutNode => {
+    const clampedRatio = Math.max(0.05, Math.min(0.95, ratio));
+    if (depth === path.length) {
+      if (node.type === "leaf") return node;
+      return { ...node, ratio: clampedRatio };
+    }
+    if (node.type === "leaf") return node;
+    if (path[depth] === 0) {
+      return {
+        ...node,
+        first: setWorkspaceSplitRatioAtPath(node.first, path, clampedRatio, depth + 1),
+      };
+    }
+    return {
+      ...node,
+      second: setWorkspaceSplitRatioAtPath(node.second, path, clampedRatio, depth + 1),
+    };
+  };
+
+  const getWorkspaceLayoutNodeAtPath = (
+    node: WorkspaceLayoutNode,
+    path: readonly number[],
+    depth = 0
+  ): WorkspaceLayoutNode | null => {
+    if (depth === path.length) return node;
+    if (node.type === "leaf") return null;
+    const branch = path[depth] === 0 ? node.first : node.second;
+    return getWorkspaceLayoutNodeAtPath(branch, path, depth + 1);
+  };
+
+  const getRenderableWorkspaceLayoutTree = (): WorkspaceLayoutNode => {
+    const state = controller.getState();
+    const fullTree = workspaceEngine.getState().workspace.layoutTree;
+    const orderedChartTileIds = collectWorkspaceTileOrder({
+      layoutTree: fullTree,
+      workspaceTileOrder: state.workspaceTileOrder,
+      workspaceTiles: state.workspaceTiles,
+    }).filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart");
+    if (!orderedChartTileIds.length) {
+      return { type: "leaf", tileId: "tile-chart-1" };
+    }
+    const allowed = new Set(orderedChartTileIds);
+    let next = pruneLayoutTree(fullTree, allowed) ?? {
+      type: "leaf",
+      tileId: orderedChartTileIds[0]!,
+    };
+    next = dedupeLayoutTreeLeaves(next) ?? {
+      type: "leaf",
+      tileId: orderedChartTileIds[0]!,
+    };
+    const existingLeafIds = new Set(collectLayoutLeafTileIds(next));
+    for (const tileId of orderedChartTileIds) {
+      if (existingLeafIds.has(tileId)) continue;
+      next = appendLeafToLayoutTree(next, tileId);
+      existingLeafIds.add(tileId);
+    }
+    return next;
+  };
+
+  const renderWorkspaceSplitHandles = () => {
+    tileSplitHandleLayer.innerHTML = "";
+    const layoutTree = getRenderableWorkspaceLayoutTree();
+    if (layoutTree.type === "leaf") return;
+    const rowRect = tilesRow.getBoundingClientRect();
+    const rootRect = {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Math.floor(rowRect.width)),
+      h: Math.max(1, Math.floor(rowRect.height)),
+    };
+    if (rootRect.w <= 1 || rootRect.h <= 1) return;
+    const minRatio = 0.08;
+    const appendHandles = (
+      node: WorkspaceLayoutNode,
+      path: number[],
+      rect: { x: number; y: number; w: number; h: number }
+    ) => {
+      if (node.type === "leaf") return;
+      const ratio = Math.max(0.05, Math.min(0.95, node.ratio));
+      if (node.direction === "row") {
+        const firstW = Math.max(1, Math.floor(rect.w * ratio));
+        const secondW = Math.max(1, rect.w - firstW);
+        const splitX = rect.x + firstW;
+        const handle = document.createElement("div");
+        handle.className =
+          "absolute pointer-events-auto cursor-col-resize bg-zinc-700/25 hover:bg-zinc-700/60 transition-colors";
+        handle.style.left = `${Math.round(splitX) - 4}px`;
+        handle.style.top = `${rect.y}px`;
+        handle.style.width = "8px";
+        handle.style.height = `${rect.h}px`;
+        handle.onpointerdown = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          let rafId: number | null = null;
+          let pendingClientX: number | null = null;
+          let pendingClientY: number | null = null;
+          const activePath = [...path];
+          const applyPending = () => {
+            rafId = null;
+            if (pendingClientX === null || pendingClientY === null) return;
+            const clientX = pendingClientX;
+            const clientY = pendingClientY;
+            pendingClientX = null;
+            pendingClientY = null;
+            const activeTree = getRenderableWorkspaceLayoutTree();
+            const activeNode = getWorkspaceLayoutNodeAtPath(activeTree, activePath);
+            if (!activeNode || activeNode.type === "leaf") return;
+            const activeRowRect = tilesRow.getBoundingClientRect();
+            const activeRootRect = {
+              x: 0,
+              y: 0,
+              w: Math.max(1, Math.floor(activeRowRect.width)),
+              h: Math.max(1, Math.floor(activeRowRect.height)),
+            };
+            const splitRect = resolveWorkspaceLayoutRectAtPath(activeTree, activePath, activeRootRect);
+            if (!splitRect || splitRect.w <= 1 || splitRect.h <= 1) return;
+            const localX = clientX - activeRowRect.left;
+            const localY = clientY - activeRowRect.top;
+            const ratioByX = (localX - splitRect.x) / Math.max(1, splitRect.w);
+            const ratioByY = (localY - splitRect.y) / Math.max(1, splitRect.h);
+            const ratio =
+              activeNode.direction === "row"
+                ? Math.max(minRatio, Math.min(1 - minRatio, ratioByX))
+                : Math.max(minRatio, Math.min(1 - minRatio, ratioByY));
+            const nextTree = setWorkspaceSplitRatioAtPath(activeTree, activePath, ratio);
+            workspaceEngine.setState(buildWorkspaceDocumentFromControllerState(nextTree));
+            renderWorkspaceTiles();
+            draw();
+          };
+          const queueApply = (clientX: number, clientY: number) => {
+            pendingClientX = clientX;
+            pendingClientY = clientY;
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(applyPending);
+          };
+          const onMove = (moveEvent: PointerEvent) => {
+            queueApply(moveEvent.clientX, moveEvent.clientY);
+          };
+          const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+            if (rafId !== null) {
+              cancelAnimationFrame(rafId);
+              rafId = null;
+            }
+            if (pendingClientX !== null && pendingClientY !== null) {
+              applyPending();
+            }
+            savePersistedState();
+          };
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+          window.addEventListener("pointercancel", onUp);
+        };
+        tileSplitHandleLayer.appendChild(handle);
+        appendHandles(node.first, [...path, 0], { x: rect.x, y: rect.y, w: firstW, h: rect.h });
+        appendHandles(node.second, [...path, 1], {
+          x: rect.x + firstW,
+          y: rect.y,
+          w: secondW,
+          h: rect.h,
+        });
+        return;
+      }
+      const firstH = Math.max(1, Math.floor(rect.h * ratio));
+      const secondH = Math.max(1, rect.h - firstH);
+      const splitY = rect.y + firstH;
+      const handle = document.createElement("div");
+      handle.className =
+        "absolute pointer-events-auto cursor-row-resize bg-zinc-700/25 hover:bg-zinc-700/60 transition-colors";
+      handle.style.left = `${rect.x}px`;
+      handle.style.top = `${Math.round(splitY) - 4}px`;
+      handle.style.width = `${rect.w}px`;
+      handle.style.height = "8px";
+      handle.onpointerdown = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        let rafId: number | null = null;
+        let pendingClientX: number | null = null;
+        let pendingClientY: number | null = null;
+        const activePath = [...path];
+        const applyPending = () => {
+          rafId = null;
+          if (pendingClientX === null || pendingClientY === null) return;
+          const clientX = pendingClientX;
+          const clientY = pendingClientY;
+          pendingClientX = null;
+          pendingClientY = null;
+          const activeTree = getRenderableWorkspaceLayoutTree();
+          const activeNode = getWorkspaceLayoutNodeAtPath(activeTree, activePath);
+          if (!activeNode || activeNode.type === "leaf") return;
+          const activeRowRect = tilesRow.getBoundingClientRect();
+          const activeRootRect = {
+            x: 0,
+            y: 0,
+            w: Math.max(1, Math.floor(activeRowRect.width)),
+            h: Math.max(1, Math.floor(activeRowRect.height)),
+          };
+          const splitRect = resolveWorkspaceLayoutRectAtPath(activeTree, activePath, activeRootRect);
+          if (!splitRect || splitRect.w <= 1 || splitRect.h <= 1) return;
+          const localX = clientX - activeRowRect.left;
+          const localY = clientY - activeRowRect.top;
+          const ratioByX = (localX - splitRect.x) / Math.max(1, splitRect.w);
+          const ratioByY = (localY - splitRect.y) / Math.max(1, splitRect.h);
+          const ratio =
+            activeNode.direction === "row"
+              ? Math.max(minRatio, Math.min(1 - minRatio, ratioByX))
+              : Math.max(minRatio, Math.min(1 - minRatio, ratioByY));
+          const nextTree = setWorkspaceSplitRatioAtPath(activeTree, activePath, ratio);
+          workspaceEngine.setState(buildWorkspaceDocumentFromControllerState(nextTree));
+          renderWorkspaceTiles();
+          draw();
+        };
+        const queueApply = (clientX: number, clientY: number) => {
+          pendingClientX = clientX;
+          pendingClientY = clientY;
+          if (rafId !== null) return;
+          rafId = requestAnimationFrame(applyPending);
+        };
+        const onMove = (moveEvent: PointerEvent) => {
+          queueApply(moveEvent.clientX, moveEvent.clientY);
+        };
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("pointercancel", onUp);
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          if (pendingClientX !== null && pendingClientY !== null) {
+            applyPending();
+          }
+          savePersistedState();
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+      };
+      tileSplitHandleLayer.appendChild(handle);
+      appendHandles(node.first, [...path, 0], { x: rect.x, y: rect.y, w: rect.w, h: firstH });
+      appendHandles(node.second, [...path, 1], {
+        x: rect.x,
+        y: rect.y + firstH,
+        w: rect.w,
+        h: secondH,
+      });
+    };
+    appendHandles(layoutTree, [], rootRect);
+  };
+
+  const getCanonicalLayoutTree = (): WorkspaceLayoutNode =>
+    buildWorkspaceDocumentFromControllerState(workspaceEngine.getState().workspace.layoutTree).workspace.layoutTree;
+
+  const commitLayoutTree = (tree: WorkspaceLayoutNode) => {
+    workspaceEngine.setState(buildWorkspaceDocumentFromControllerState(tree));
+    renderWorkspaceTiles();
     draw();
     savePersistedState();
+  };
+
+  const addChartTileAtDropTarget = async (target: WorkspaceTileDropTarget | null) => {
+    const treeBefore = getCanonicalLayoutTree();
+
+    suppressLayoutSync = true;
+    try {
+      const chartTileId = controller.addChartTile();
+      await initializeChartTileSource(chartTileId);
+      ensureReplayForTile(chartTileId);
+    } finally {
+      suppressLayoutSync = false;
+    }
+
+    const postAddState = controller.getState();
+    const treeAfterAdd = buildWorkspaceDocumentFromControllerState(treeBefore).workspace.layoutTree;
+    const allTileIds = collectWorkspaceTileOrder({
+      layoutTree: treeAfterAdd,
+      workspaceTileOrder: postAddState.workspaceTileOrder,
+      workspaceTiles: postAddState.workspaceTiles,
+    });
+    const leafIdsBefore = new Set(collectLayoutLeafTileIds(treeBefore));
+    const newTileId = allTileIds.find((id) => !leafIdsBefore.has(id) && postAddState.workspaceTiles[id]?.kind === "chart");
+    if (!newTileId) {
+      commitLayoutTree(treeAfterAdd);
+      return;
+    }
+
+    if (!target) {
+      commitLayoutTree(treeAfterAdd);
+      return;
+    }
+
+    const baseTree = buildWorkspaceDocumentFromControllerState(treeBefore).workspace.layoutTree;
+    let treeWithNewLeaf = baseTree;
+    if (!treeContainsTile(treeWithNewLeaf, newTileId)) {
+      treeWithNewLeaf = appendLeafToLayoutTree(treeWithNewLeaf, newTileId);
+    }
+
+    const finalTree = applyWorkspaceTileDrop({
+      layoutTree: treeWithNewLeaf,
+      tileId: newTileId,
+      targetTileId: target.tileId,
+      side: target.side,
+    });
+
+    commitLayoutTree(finalTree);
+  };
+
+  const moveExistingTileToDropTarget = (draggedTileId: string, target: WorkspaceTileDropTarget) => {
+    const currentTree = getCanonicalLayoutTree();
+    const nextTree = applyWorkspaceTileDrop({
+      layoutTree: currentTree,
+      tileId: draggedTileId,
+      targetTileId: target.tileId,
+      side: target.side,
+    });
+    if (nextTree === currentTree) return;
+    commitLayoutTree(nextTree);
   };
 
   const tileShellById = new Map<string, HTMLDivElement>();
@@ -900,6 +1263,27 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const chartTileTabById = new Map<string, HTMLDivElement>();
   const chartTileStageByChartTileId = new Map<string, { stage: HTMLDivElement; chartLayer: HTMLDivElement }>();
   const indicatorOverlayByPaneId = new Map<string, HTMLDivElement>();
+  let pendingAddTileDropTarget: WorkspaceTileDropTarget | null = null;
+  const workspaceDropPreview = document.createElement("div");
+  workspaceDropPreview.className =
+    "absolute pointer-events-none z-40 border border-sky-400/90 bg-sky-500/20 rounded-sm transition-all";
+  workspaceDropPreview.style.display = "none";
+
+  const setWorkspaceDropPreview = (target: WorkspaceTileDropTarget | null) => {
+    pendingAddTileDropTarget = target;
+    if (!target) {
+      workspaceDropPreview.style.display = "none";
+      return;
+    }
+    const rowRect = tilesRow.getBoundingClientRect();
+    const localX = target.previewRect.x - rowRect.left;
+    const localY = target.previewRect.y - rowRect.top;
+    workspaceDropPreview.style.display = "";
+    workspaceDropPreview.style.left = `${Math.round(localX)}px`;
+    workspaceDropPreview.style.top = `${Math.round(localY)}px`;
+    workspaceDropPreview.style.width = `${Math.max(1, Math.round(target.previewRect.w))}px`;
+    workspaceDropPreview.style.height = `${Math.max(1, Math.round(target.previewRect.h))}px`;
+  };
 
   const createChartTabStrip = (chartTileId: string) => {
     const strip = createChartTabStripElement();
@@ -925,16 +1309,43 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   // Final assembly of UI pieces
   mainRow.insertBefore(stripHandle.root, tilesRow);
+  tilesRow.appendChild(workspaceDropPreview);
   tilesRow.ondragover = (event) => {
     const isAddTileDrag = event.dataTransfer?.types?.includes("application/x-drishya-add-chart-tile");
     if (!isAddTileDrag) return;
     event.preventDefault();
+    const target = resolveWorkspaceTileDropTarget({
+      orderedChartTileIds: collectWorkspaceChartTileOrder({
+        layoutTree: workspaceEngine.getState().workspace.layoutTree,
+        workspaceTileOrder: controller.getState().workspaceTileOrder,
+        workspaceTiles: controller.getState().workspaceTiles,
+      }),
+      tileShellById,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    setWorkspaceDropPreview(target);
+  };
+  tilesRow.ondragleave = (event) => {
+    const rect = tilesRow.getBoundingClientRect();
+    const pointerOutside =
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom;
+    const next = event.relatedTarget as Node | null;
+    if (pointerOutside || (!next && event.clientX === 0 && event.clientY === 0)) {
+      setWorkspaceDropPreview(null);
+    }
   };
   tilesRow.ondrop = (event) => {
     const isAddTileDrop = event.dataTransfer?.types?.includes("application/x-drishya-add-chart-tile");
     if (!isAddTileDrop) return;
     event.preventDefault();
-    void addChartTileAtPointer(event.clientX);
+    const target = pendingAddTileDropTarget;
+    pendingAddTileDropTarget = null;
+    workspaceDropPreview.style.display = "none";
+    void addChartTileAtDropTarget(target);
   };
 
   setupCanvasBackingStore = () => {
@@ -1053,6 +1464,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       chartRuntimes,
       snapshotsByAsset: drawingsByAsset,
       signatureByAsset: drawingSignatureByAsset,
+      appliedSignatureByPane: drawingAppliedSignatureByPane,
+      getCandlesForPane: (paneId) => tileChartOrchestrator.getCandlesForPane(paneId),
     });
     tileChartOrchestrator.refreshOpenTrees();
     refreshConfigPanel();
@@ -1093,23 +1506,38 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   let lastLayoutJson = "";
+  let lastSourceSyncJson = "";
   const unsubscribe = controller.subscribe((state) => {
-    workspaceEngine.setState(
-      buildWorkspaceDocumentFromControllerState(workspaceEngine.getState().workspace.layoutTree)
-    );
+    if (!suppressLayoutSync) {
+      workspaceEngine.setState(
+        buildWorkspaceDocumentFromControllerState(workspaceEngine.getState().workspace.layoutTree)
+      );
+    }
     const orderedTileIds = collectWorkspaceTileOrder({
       layoutTree: workspaceEngine.getState().workspace.layoutTree,
       workspaceTileOrder: state.workspaceTileOrder,
       workspaceTiles: state.workspaceTiles,
     });
     const layout = state.paneLayout;
+    const currentSourceSyncJson = JSON.stringify({
+      chartPaneSources: state.chartPaneSources,
+      chartPanes: Object.keys(state.chartPanes).sort(),
+      chartTiles: Object.fromEntries(
+        Object.entries(state.chartTiles).map(([chartTileId, chartTile]) => [
+          chartTileId,
+          {
+            activeTabId: chartTile.activeTabId,
+            tabPaneIds: chartTile.tabs.map((tab) => tab.chartPaneId),
+          },
+        ])
+      ),
+    });
     const currentLayoutJson = JSON.stringify({
       theme: state.theme,
       tool: state.activeTool,
       cursor: state.cursorMode,
       axis: state.priceAxisMode,
       activeChartPaneId: state.activeChartPaneId,
-      chartPaneSources: state.chartPaneSources,
       objectTreeOpen: state.isObjectTreeOpen,
       workspaceTileOrder: orderedTileIds,
       workspaceTileRatios: Object.fromEntries(
@@ -1134,14 +1562,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       activeChart.setCursorMode(state.cursorMode);
       activeChart.setPriceAxisMode(state.priceAxisMode);
       renderWorkspaceTiles();
-      syncChartPaneContracts({
-        state,
-        chartRuntimes,
-        paneHostByPaneId,
-      });
+      syncPaneContractsFromState(state);
       syncReadoutSourceLabel(state);
-      tileChartOrchestrator.syncSources();
-      tileRuntimeOrchestrator.updateLayout();
+      if (currentSourceSyncJson !== lastSourceSyncJson) {
+        lastSourceSyncJson = currentSourceSyncJson;
+        tileChartOrchestrator.syncSources();
+      }
 
       draw();
       savePersistedState();
@@ -1286,6 +1712,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     chartRuntimes,
     snapshotsByAsset: drawingsByAsset,
     signatureByAsset: drawingSignatureByAsset,
+    appliedSignatureByPane: drawingAppliedSignatureByPane,
+    getCandlesForPane: (paneId) => tileChartOrchestrator.getCandlesForPane(paneId),
   });
   setupCanvasBackingStore();
   tileChartOrchestrator.syncSources();
