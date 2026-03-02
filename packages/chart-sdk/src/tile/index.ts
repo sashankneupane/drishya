@@ -1,4 +1,6 @@
 export * from "./controllers/TileSessionController.js";
+export * from "./controllers/createTileChartOrchestrator.js";
+export * from "./controllers/createTileObjectTreeOrchestrator.js";
 export * from "./controllers/createTileSourceOrchestrator.js";
 export * from "./controllers/createTileRuntimeOrchestrator.js";
 export * from "./runtime/runtimeRegistry.js";
