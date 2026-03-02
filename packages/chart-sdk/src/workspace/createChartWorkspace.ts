@@ -1,7 +1,6 @@
 import type { DrawingToolId } from "../toolbar/model.js";
 import type { SeriesStyleOverride } from "../wasm/contracts.js";
 import type { Candle } from "../wasm/contracts.js";
-import type { LayoutRect } from "../layout/splitTree.js";
 import { DrishyaChartClient } from "../wasm/client.js";
 import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "./constants.js";
 import { createDrawingConfigPanel } from "./components/DrawingConfigPanel.js";
@@ -31,7 +30,6 @@ import { WorkspaceController } from "./WorkspaceController.js";
 import { syncChartPaneContracts } from "./paneContracts.js";
 import { reconcilePaneSpecsForRuntime } from "./paneSpecReconcile.js";
 import { createTileObjectTreeHandle } from "./objectTreeHandleFactory.js";
-import { getActiveTab } from "./chartTileSelection.js";
 import { getActiveChartForTileFromState, getChartsForTileFromState } from "./runtimeSelection.js";
 import { applyIndicatorsToTileCharts } from "./indicatorTileSync.js";
 import { initializeChartTileSourceState } from "./chartTileSourceInit.js";
@@ -54,6 +52,9 @@ import { resolvePaneRuntimeIdentity } from "./runtimeIdentity.js";
 import { renderIndicatorOverlays as renderIndicatorOverlayRows } from "./indicatorOverlays.js";
 import { createOpenIndicatorConfig } from "./indicatorConfigFlow.js";
 import { snapshotIndicatorTokensFromReadout } from "./indicatorTokenSnapshot.js";
+import { projectChartTabs } from "./projector/projectTabs.js";
+import { projectPanes } from "./projector/projectPanes.js";
+import { projectWorkspace } from "./projector/projectWorkspace.js";
 import {
   createChartTabStripElement,
   createTileHeaderElement,
@@ -482,427 +483,297 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const renderChartTabs = (chartTileId: string) => {
     const tabStrip = chartTileTabById.get(chartTileId);
     if (!tabStrip) return;
-    tabStrip.innerHTML = "";
-    const clearDropPreview = () => {
-      tabStrip.style.boxShadow = "";
-    };
-    tabStrip.ondragover = (event) => {
-      event.preventDefault();
-      tabStrip.style.boxShadow = "inset 0 0 0 1px rgba(161,161,170,0.45)";
-    };
-    tabStrip.ondragleave = () => clearDropPreview();
-    tabStrip.ondrop = (event) => {
-      event.preventDefault();
-      clearDropPreview();
-      const payload = parseChartTabDragPayload(event.dataTransfer);
-      if (!payload) return;
-      controller.moveChartTab(
-        payload.sourceChartTileId,
-        payload.tabId,
-        chartTileId,
-        Number.MAX_SAFE_INTEGER
-      );
-    };
     const chartTile = controller.getState().chartTiles[chartTileId];
-    if (!chartTile) return;
     const closeTabOrTile = (tabId: string) => {
       if (!closeChartTabOrTile(controller, chartTileId, tabId)) return;
       draw();
     };
-    for (const tab of chartTile.tabs) {
-      const tabBtn = document.createElement("button");
-      const active = tab.id === chartTile.activeTabId;
-      tabBtn.className = `h-7 px-3 rounded-none text-[11px] font-medium normal-case border-none transition-colors ${active ? "text-zinc-100 bg-zinc-800/40" : "text-zinc-500 bg-transparent hover:text-zinc-100 hover:bg-zinc-900/50"} cursor-pointer`;
-      tabBtn.textContent = "";
-      tabBtn.dataset.noTileDrag = "1";
-      tabBtn.draggable = true;
-      tabBtn.style.boxShadow = "";
-      const tabLabel = document.createElement("span");
-      const tabSource = controller.getState().chartPaneSources[tab.chartPaneId];
-      tabLabel.textContent = tabSource?.symbol || tab.title;
-      tabBtn.appendChild(tabLabel);
-      const closeInline = document.createElement("button");
-      closeInline.type = "button";
-      closeInline.className = "ml-2 h-4 w-4 inline-flex items-center justify-center text-zinc-600 hover:text-zinc-100 border-none bg-transparent cursor-pointer";
-      closeInline.title = chartTile.tabs.length > 1 ? "Close tab" : "Close chart tile";
-      closeInline.dataset.noTileDrag = "1";
-      closeInline.draggable = false;
-      closeInline.appendChild(makeSvgIcon("close", "h-3 w-3"));
-      closeInline.onpointerdown = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      };
-      closeInline.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        closeTabOrTile(tab.id);
-      };
-      tabBtn.appendChild(closeInline);
-      tabBtn.ondragstart = (event) => {
-        event.dataTransfer?.setData(
-          "application/x-drishya-tab",
-          JSON.stringify({ sourceChartTileId: chartTileId, tabId: tab.id })
-        );
-        event.dataTransfer!.effectAllowed = "move";
-      };
-      tabBtn.ondragover = (event) => {
-        event.preventDefault();
-        tabBtn.style.boxShadow = "inset 2px 0 0 rgba(161,161,170,0.7)";
-      };
-      tabBtn.ondragleave = () => {
-        tabBtn.style.boxShadow = "";
-      };
-      tabBtn.ondrop = (event) => {
-        event.preventDefault();
-        tabBtn.style.boxShadow = "";
-        clearDropPreview();
-        const payload = parseChartTabDragPayload(event.dataTransfer);
-        if (!payload) return;
-        const targetIndex = chartTile.tabs.findIndex((candidate) => candidate.id === tab.id);
-        controller.moveChartTab(payload.sourceChartTileId, payload.tabId, chartTileId, targetIndex);
-      };
-      tabBtn.onclick = () => {
-        controller.setActiveChartTab(chartTileId, tab.id);
-        applyIndicatorSetToTile(chartTileId);
-      };
-      tabStrip.appendChild(tabBtn);
-    }
-    const actions = document.createElement("div");
-    actions.className = "ml-auto h-7 flex items-center gap-0.5";
-    actions.dataset.noTileDrag = "1";
-    const { activePaneId, activeSource, activeRuntime } = resolveChartTileHeaderContext(
-      controller.getState(),
-      chartTileId,
-      getRuntime
-    );
+    const renderHeaderActions = (actionsContainer: HTMLDivElement) => {
+      const { activePaneId, activeSource, activeRuntime } = resolveChartTileHeaderContext(
+        controller.getState(),
+        chartTileId,
+        getRuntime
+      );
 
-    const mkHeaderBtn = (label: string) => {
-      const btn = document.createElement("button");
-      btn.dataset.noTileDrag = "1";
-      btn.className = "h-7 px-2 rounded-none inline-flex items-center justify-center gap-1 leading-none text-[11px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
-      btn.textContent = label;
-      return btn;
-    };
-    const createDropdown = (owner: HTMLElement, items: { label: string; value: string }[], onSelect: (val: string) => void) => {
-      const dropdown = document.createElement("div");
-      dropdown.className = "fixed bg-zinc-950 border border-workspace-border py-1 shadow-2xl z-50 flex flex-col min-w-[100px]";
-      const rect = owner.getBoundingClientRect();
-      dropdown.style.top = `${rect.bottom}px`;
-      dropdown.style.left = `${rect.left}px`;
-      items.forEach((item) => {
+      const mkHeaderBtn = (label: string) => {
         const btn = document.createElement("button");
-        btn.className = "px-4 py-2 text-left text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors border-none outline-none bg-transparent cursor-pointer";
-        btn.textContent = item.label;
-        btn.onclick = () => {
-          onSelect(item.value);
-          dropdown.remove();
-        };
-        dropdown.appendChild(btn);
-      });
-      const close = () => {
-        dropdown.remove();
-        window.removeEventListener("click", close);
+        btn.dataset.noTileDrag = "1";
+        btn.className = "h-7 px-2 rounded-none inline-flex items-center justify-center gap-1 leading-none text-[11px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
+        btn.textContent = label;
+        return btn;
       };
-      window.addEventListener("click", close);
-      document.body.appendChild(dropdown);
-    };
-
-    if (activePaneId) {
-      const tfLabel =
-        activeSource.timeframe ??
-        options.marketControls?.selectedTimeframe ??
-        options.marketControls?.timeframes?.[0] ??
-        "TF";
-      const tfBtn = mkHeaderBtn(tfLabel);
-      tfBtn.onclick = (event) => {
-        event.stopPropagation();
-        createDropdown(tfBtn, (options.marketControls?.timeframes ?? []).map((t) => ({ label: t, value: t })), async (tf) => {
-          controller.setChartPaneSource(activePaneId, { timeframe: tf });
-          const symbol = controller.getState().chartPaneSources[activePaneId]?.symbol;
-          if (symbol) {
-            await options.marketControls?.onChartPaneSourceChange?.(activePaneId, { symbol, timeframe: tf });
-          }
-          await options.marketControls?.onTimeframeChange?.(tf);
-        });
-      };
-      actions.appendChild(tfBtn);
-
-      const compareBtn = mkHeaderBtn("+ Compare");
-      compareBtn.onclick = (event) => {
-        event.stopPropagation();
-        createSymbolSearchModal({
-          symbols: options.marketControls?.symbols ?? [],
-          onSelect: async (sym) => options.marketControls?.onCompareSymbol?.(sym),
-          onClose: () => { }
-        });
-      };
-      actions.appendChild(compareBtn);
-
-      const indBtn = mkHeaderBtn("Indicators");
-      indBtn.onclick = (event) => {
-        event.stopPropagation();
-        if (!activeRuntime) return;
-        createIndicatorModal({
-          chart: activeRuntime.chart,
-          controller,
-          getTargetCharts: () => {
-            const charts = getChartsForTile(chartTileId);
-            return charts.length ? charts : [activeRuntime.chart];
-          },
-          onIndicatorSelected: (indicatorId) => {
-            const current = chartTileIndicatorState.get(chartTileId) ?? [];
-            const base = canonicalIndicatorId(indicatorId);
-            const existingCount = current.filter((t) => decodeIndicatorToken(t).indicatorId === base).length;
-            const token = defaultIndicatorToken(activeRuntime.chart, base, existingCount);
-            chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds([...current, token]));
-            applyIndicatorSetToTile(chartTileId);
-            savePersistedStateImmediate();
-            draw();
-          },
-          onApply: () => draw(),
-          onClose: () => { }
-        });
-      };
-      actions.appendChild(indBtn);
-
-      const replayState = controller.getState().replay;
-      const replayBtn = mkHeaderBtn("Replay");
-      replayBtn.prepend(makeSvgIcon("play", "h-3.5 w-3.5"));
-      replayBtn.onclick = () => controller.replay().play();
-      actions.appendChild(replayBtn);
-      if (replayState.playing) {
-        const mkReplayIconBtn = (icon: string, onClick: () => void) => {
+      const createDropdown = (owner: HTMLElement, items: { label: string; value: string }[], onSelect: (val: string) => void) => {
+        const dropdown = document.createElement("div");
+        dropdown.className = "fixed bg-zinc-950 border border-workspace-border py-1 shadow-2xl z-50 flex flex-col min-w-[100px]";
+        const rect = owner.getBoundingClientRect();
+        dropdown.style.top = `${rect.bottom}px`;
+        dropdown.style.left = `${rect.left}px`;
+        items.forEach((item) => {
           const btn = document.createElement("button");
-          btn.dataset.noTileDrag = "1";
-          btn.className = "h-7 w-7 rounded-none text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
-          btn.appendChild(makeSvgIcon(icon, "h-3.5 w-3.5"));
-          btn.onclick = onClick;
-          return btn;
-        };
-        actions.append(
-          mkReplayIconBtn("pause", () => controller.replay().pause()),
-          mkReplayIconBtn("stop", () => controller.replay().stop()),
-          mkReplayIconBtn("step-forward", () => { controller.replay().stepBar(); }),
-          mkReplayIconBtn("skip-forward", () => { controller.replay().stepEvent(); })
-        );
-      }
-    }
-
-    const addBtn = document.createElement("button");
-    addBtn.dataset.noTileDrag = "1";
-    addBtn.className = "h-7 w-7 rounded-none inline-flex items-center justify-center leading-none text-[13px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
-    addBtn.textContent = "+";
-    addBtn.title = "Add tab";
-    addBtn.onclick = () => {
-      const symbols = options.marketControls?.symbols ?? [];
-      if (!symbols.length) {
-        const tabId = addChartTabWithInheritedSource({
-          chartTileId,
-          controller,
-          selectedSymbol: options.marketControls?.selectedSymbol,
-          selectedTimeframe: options.marketControls?.selectedTimeframe,
-          availableTimeframes: options.marketControls?.timeframes,
-          applyIndicatorSetToTile,
+          btn.className = "px-4 py-2 text-left text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors border-none outline-none bg-transparent cursor-pointer";
+          btn.textContent = item.label;
+          btn.onclick = () => {
+            onSelect(item.value);
+            dropdown.remove();
+          };
+          dropdown.appendChild(btn);
         });
-        if (!tabId) return;
-        draw();
-        return;
+        const close = () => {
+          dropdown.remove();
+          window.removeEventListener("click", close);
+        };
+        window.addEventListener("click", close);
+        document.body.appendChild(dropdown);
+      };
+
+      if (activePaneId) {
+        const tfLabel =
+          activeSource.timeframe ??
+          options.marketControls?.selectedTimeframe ??
+          options.marketControls?.timeframes?.[0] ??
+          "TF";
+        const tfBtn = mkHeaderBtn(tfLabel);
+        tfBtn.onclick = (event) => {
+          event.stopPropagation();
+          createDropdown(tfBtn, (options.marketControls?.timeframes ?? []).map((t) => ({ label: t, value: t })), async (tf) => {
+            controller.setChartPaneSource(activePaneId, { timeframe: tf });
+            const symbol = controller.getState().chartPaneSources[activePaneId]?.symbol;
+            if (symbol) {
+              await options.marketControls?.onChartPaneSourceChange?.(activePaneId, { symbol, timeframe: tf });
+            }
+            await options.marketControls?.onTimeframeChange?.(tf);
+          });
+        };
+        actionsContainer.appendChild(tfBtn);
+
+        const compareBtn = mkHeaderBtn("+ Compare");
+        compareBtn.onclick = (event) => {
+          event.stopPropagation();
+          createSymbolSearchModal({
+            symbols: options.marketControls?.symbols ?? [],
+            onSelect: async (sym) => options.marketControls?.onCompareSymbol?.(sym),
+            onClose: () => { }
+          });
+        };
+        actionsContainer.appendChild(compareBtn);
+
+        const indBtn = mkHeaderBtn("Indicators");
+        indBtn.onclick = (event) => {
+          event.stopPropagation();
+          if (!activeRuntime) return;
+          createIndicatorModal({
+            chart: activeRuntime.chart,
+            controller,
+            getTargetCharts: () => {
+              const charts = getChartsForTile(chartTileId);
+              return charts.length ? charts : [activeRuntime.chart];
+            },
+            onIndicatorSelected: (indicatorId) => {
+              const current = chartTileIndicatorState.get(chartTileId) ?? [];
+              const base = canonicalIndicatorId(indicatorId);
+              const existingCount = current.filter((t) => decodeIndicatorToken(t).indicatorId === base).length;
+              const token = defaultIndicatorToken(activeRuntime.chart, base, existingCount);
+              chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds([...current, token]));
+              applyIndicatorSetToTile(chartTileId);
+              savePersistedStateImmediate();
+              draw();
+            },
+            onApply: () => draw(),
+            onClose: () => { }
+          });
+        };
+        actionsContainer.appendChild(indBtn);
+
+        const replayState = controller.getState().replay;
+        const replayBtn = mkHeaderBtn("Replay");
+        replayBtn.prepend(makeSvgIcon("play", "h-3.5 w-3.5"));
+        replayBtn.onclick = () => controller.replay().play();
+        actionsContainer.appendChild(replayBtn);
+        if (replayState.playing) {
+          const mkReplayIconBtn = (icon: string, onClick: () => void) => {
+            const btn = document.createElement("button");
+            btn.dataset.noTileDrag = "1";
+            btn.className = "h-7 w-7 rounded-none text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
+            btn.appendChild(makeSvgIcon(icon, "h-3.5 w-3.5"));
+            btn.onclick = onClick;
+            return btn;
+          };
+          actionsContainer.append(
+            mkReplayIconBtn("pause", () => controller.replay().pause()),
+            mkReplayIconBtn("stop", () => controller.replay().stop()),
+            mkReplayIconBtn("step-forward", () => { controller.replay().stepBar(); }),
+            mkReplayIconBtn("skip-forward", () => { controller.replay().stepEvent(); })
+          );
+        }
       }
-      createSymbolSearchModal({
-        symbols,
-        onSelect: async (symbol) => {
-          const created = addChartTabForSymbol({
+      const addBtn = document.createElement("button");
+      addBtn.dataset.noTileDrag = "1";
+      addBtn.className = "h-7 w-7 rounded-none inline-flex items-center justify-center leading-none text-[13px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors";
+      addBtn.textContent = "+";
+      addBtn.title = "Add tab";
+      addBtn.onclick = () => {
+        const symbols = options.marketControls?.symbols ?? [];
+        if (!symbols.length) {
+          const tabId = addChartTabWithInheritedSource({
             chartTileId,
             controller,
-            symbol,
             selectedSymbol: options.marketControls?.selectedSymbol,
             selectedTimeframe: options.marketControls?.selectedTimeframe,
             availableTimeframes: options.marketControls?.timeframes,
             applyIndicatorSetToTile,
           });
-          if (!created) return;
-          await options.marketControls?.onChartPaneSourceChange?.(created.paneId, {
-            symbol,
-            timeframe: created.timeframe
-          });
-          await options.marketControls?.onSymbolChange?.(symbol);
+          if (!tabId) return;
           draw();
-        },
-        onClose: () => { }
-      });
+          return;
+        }
+        createSymbolSearchModal({
+          symbols,
+          onSelect: async (symbol) => {
+            const created = addChartTabForSymbol({
+              chartTileId,
+              controller,
+              symbol,
+              selectedSymbol: options.marketControls?.selectedSymbol,
+              selectedTimeframe: options.marketControls?.selectedTimeframe,
+              availableTimeframes: options.marketControls?.timeframes,
+              applyIndicatorSetToTile,
+            });
+            if (!created) return;
+            await options.marketControls?.onChartPaneSourceChange?.(created.paneId, {
+              symbol,
+              timeframe: created.timeframe
+            });
+            await options.marketControls?.onSymbolChange?.(symbol);
+            draw();
+          },
+          onClose: () => { }
+        });
+      };
+      const treeBtn = document.createElement("button");
+      treeBtn.dataset.noTileDrag = "1";
+      treeBtn.className = "h-7 w-7 rounded-none text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
+      treeBtn.title = "Object Tree";
+      treeBtn.appendChild(makeSvgIcon("panels", "h-3.5 w-3.5"));
+      treeBtn.onclick = () => {
+        toggleChartTileObjectTree(chartTileTreeOpen, chartTileId);
+        renderWorkspaceTiles();
+        setupCanvasBackingStore();
+        draw();
+      };
+      const removeTileBtn = document.createElement("button");
+      removeTileBtn.dataset.noTileDrag = "1";
+      removeTileBtn.className = "h-7 w-7 rounded-none text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
+      removeTileBtn.title = "Close chart tile";
+      removeTileBtn.appendChild(makeSvgIcon("close", "h-3.5 w-3.5"));
+      removeTileBtn.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!removeWorkspaceTileByChartTileId(controller, chartTileId)) return;
+        draw();
+      };
+      actionsContainer.append(addBtn, treeBtn, removeTileBtn);
     };
-    const treeBtn = document.createElement("button");
-    treeBtn.dataset.noTileDrag = "1";
-    treeBtn.className = "h-7 w-7 rounded-none text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
-    treeBtn.title = "Object Tree";
-    treeBtn.appendChild(makeSvgIcon("panels", "h-3.5 w-3.5"));
-    treeBtn.onclick = () => {
-      toggleChartTileObjectTree(chartTileTreeOpen, chartTileId);
-      renderWorkspaceTiles();
-      setupCanvasBackingStore();
-      draw();
-    };
-    const removeTileBtn = document.createElement("button");
-    removeTileBtn.dataset.noTileDrag = "1";
-    removeTileBtn.className = "h-7 w-7 rounded-none text-[12px] text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900/50 border-none bg-transparent cursor-pointer transition-colors inline-flex items-center justify-center";
-    removeTileBtn.title = "Close chart tile";
-    removeTileBtn.appendChild(makeSvgIcon("close", "h-3.5 w-3.5"));
-    removeTileBtn.onclick = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!removeWorkspaceTileByChartTileId(controller, chartTileId)) return;
-      draw();
-    };
-    actions.append(addBtn, treeBtn, removeTileBtn);
-    tabStrip.appendChild(actions);
+
+    projectChartTabs({
+      chartTileId,
+      chartTile,
+      tabStrip,
+      chartPaneSources: controller.getState().chartPaneSources,
+      parseChartTabDragPayload,
+      onTabMove: (sourceChartTileId, tabId, targetChartTileId, targetIndex) => {
+        controller.moveChartTab(sourceChartTileId, tabId, targetChartTileId, targetIndex);
+      },
+      onTabActivate: (tabId) => {
+        controller.setActiveChartTab(chartTileId, tabId);
+        applyIndicatorSetToTile(chartTileId);
+      },
+      onCloseTabOrTile: closeTabOrTile,
+      appendActions: (strip) => {
+        const actions = document.createElement("div");
+        actions.className = "ml-auto h-7 flex items-center gap-0.5";
+        actions.dataset.noTileDrag = "1";
+        renderHeaderActions(actions);
+        strip.appendChild(actions);
+      },
+    });
   };
 
   const renderWorkspaceTiles = () => {
     const state = controller.getState();
-    const order = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
-    const visibleChartOrder = order.filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart");
-    paneHostByPaneId.clear();
-    const seen = new Set(order);
-    for (const existing of Array.from(tileShellById.keys())) {
-      if (seen.has(existing)) continue;
-      tileShellById.get(existing)?.remove();
-      tileShellById.delete(existing);
-      tileHeaderById.delete(existing);
-    }
-
-    for (let index = 0; index < order.length; index += 1) {
-      const tileId = order[index];
-      const tile = state.workspaceTiles[tileId];
-      if (!tile) continue;
-      let shell = tileShellById.get(tileId);
-      if (!shell) {
-        shell = document.createElement("div");
-        shell.className = "h-full min-h-0 min-w-0 flex flex-col border-r border-zinc-900/80 bg-zinc-950/60";
-        const header = createTileHeaderElement(tile.title);
-        tileHeaderById.set(tileId, header);
-        const body = document.createElement("div");
-        body.className = "flex-1 min-h-0 min-w-0";
-        shell.append(header, body);
-        tileShellById.set(tileId, shell);
-      }
-      const header = tileHeaderById.get(tileId)!;
-      header.onclick = () => {
-        if (tile.kind === "chart" && tile.chartTileId) {
-          controller.setActiveChartTile(tile.chartTileId);
-        }
-      };
-      attachTileHeaderDragReorder({
-        header,
-        shell,
-        tileId,
-        controller,
+    projectWorkspace({
+      state,
+      tilesRow,
+      maps: {
         tileShellById,
-        onReordered: () => savePersistedState(),
-      });
-      const body = shell.children[1] as HTMLDivElement;
-      body.innerHTML = "";
-      if (tile.kind === "chart" && tile.chartTileId) {
-        let tabs = chartTileTabById.get(tile.chartTileId);
-        if (!tabs) {
-          tabs = createChartTabStrip(tile.chartTileId);
-        }
-        if (!header.contains(tabs)) {
-          header.appendChild(tabs);
-        }
-        header.ondragover = (event) => {
-          event.preventDefault();
-          if (tabs) tabs.style.boxShadow = "inset 0 0 0 1px rgba(161,161,170,0.45)";
-        };
-        header.ondragleave = () => {
-          if (tabs) tabs.style.boxShadow = "";
-        };
-        header.ondrop = (event) => {
-          event.preventDefault();
-          if (tabs) tabs.style.boxShadow = "";
-          const payload = parseChartTabDragPayload(event.dataTransfer);
-          if (!payload) return;
-          controller.moveChartTab(
-            payload.sourceChartTileId,
-            payload.tabId,
-            tile.chartTileId!,
-            Number.MAX_SAFE_INTEGER
-          );
-        };
-        let tileBody = chartTileBodyByChartTileId.get(tile.chartTileId);
-        if (!tileBody) {
-          tileBody = document.createElement("div");
-          tileBody.className = "h-full w-full min-h-0 min-w-0 flex flex-col";
-          chartTileBodyByChartTileId.set(tile.chartTileId, tileBody);
-        }
-        while (tileBody.children.length > 0) {
-          tileBody.removeChild(tileBody.lastChild!);
-        }
-        const stageHost = ensureChartTileStage(tile.chartTileId);
-        const tileTree = ensureTreeHandleForTile(tile.chartTileId);
-        const contentRow = document.createElement("div");
-        contentRow.className = "flex-1 min-h-0 min-w-0 flex";
-        stageHost.stage.classList.add("flex-1");
-        contentRow.appendChild(stageHost.stage);
-        if (chartTileTreeOpen.get(tile.chartTileId) === true) {
-          tileTree.root.style.display = "flex";
-          tileTree.root.style.width = "320px";
-          tileTree.root.style.minWidth = "280px";
-          contentRow.appendChild(tileTree.root);
-        } else {
-          tileTree.root.style.display = "none";
-        }
-        tileBody.appendChild(contentRow);
-        const chartTile = state.chartTiles[tile.chartTileId];
-        const activeTab = getActiveTab(chartTile);
-        if (activeTab) {
-          paneHostByPaneId.set(activeTab.chartPaneId, stageHost);
-          const runtime = getRuntime(activeTab.chartPaneId);
-          if (runtime && runtime.container.parentElement !== stageHost.chartLayer) {
-            runtime.container.parentElement?.removeChild(runtime.container);
-            stageHost.chartLayer.appendChild(runtime.container);
-          }
-        }
-        body.appendChild(tileBody);
-        renderChartTabs(tile.chartTileId);
-      } else {
-        // objects tile is intentionally hidden; object tree renders within chart tile.
-        header.ondragover = null;
-        header.ondragleave = null;
-        header.ondrop = null;
-      }
-      if (tilesRow.children[index] !== shell) {
-        if (index >= tilesRow.children.length) {
-          tilesRow.appendChild(shell);
-        } else {
-          tilesRow.insertBefore(shell, tilesRow.children[index]);
-        }
-      }
-      let resizer = shell.querySelector("[data-tile-resizer='1']") as HTMLDivElement | null;
-      if (!resizer) {
-        resizer = document.createElement("div");
-        resizer.dataset.tileResizer = "1";
-        resizer.className = "absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-zinc-700/60 transition-colors";
-        shell.style.position = "relative";
-        shell.appendChild(resizer);
-      }
-      const visibleIndex = visibleChartOrder.indexOf(tileId);
-      resizer.style.display = tile.kind === "chart" && visibleIndex >= 0 && visibleIndex < visibleChartOrder.length - 1 ? "block" : "none";
-      if (resizer.style.display === "block") {
-        const nextTileId = visibleChartOrder[visibleIndex + 1];
-        attachTileResizerDrag({
-          resizer,
-          tilesRow,
+        tileHeaderById,
+        chartTileBodyByChartTileId,
+      },
+      paneHostByPaneId,
+      chartRuntimes,
+      createTileHeader: createTileHeaderElement,
+      attachTileHeaderDragReorder: ({ header, shell, tileId }) => {
+        attachTileHeaderDragReorder({
+          header,
+          shell,
           tileId,
-          nextTileId,
           controller,
-          onResizeEnd: () => savePersistedState(),
+          tileShellById,
+          onReordered: () => savePersistedState(),
         });
-      } else {
-        resizer.onpointerdown = null;
-      }
-    }
-    syncTileWidths();
-    renderIndicatorOverlays();
+      },
+      ensureChartTabStrip: (chartTileId) => {
+        let tabs = chartTileTabById.get(chartTileId);
+        if (!tabs) {
+          tabs = createChartTabStrip(chartTileId);
+        }
+        return tabs;
+      },
+      renderChartTabs,
+      ensureChartTileStage,
+      ensureTreeHandleForTile,
+      isChartTileTreeOpen: (chartTileId) => chartTileTreeOpen.get(chartTileId) === true,
+      getRuntime,
+      onChartTileHeaderClick: (chartTileId) => controller.setActiveChartTile(chartTileId),
+      parseChartTabDragPayload,
+      moveChartTab: (sourceChartTileId, tabId, targetChartTileId, targetIndex) => {
+        controller.moveChartTab(sourceChartTileId, tabId, targetChartTileId, targetIndex);
+      },
+      attachTileResizer: ({ shell, tileId, visibleChartOrder }) => {
+        let resizer = shell.querySelector("[data-tile-resizer='1']") as HTMLDivElement | null;
+        if (!resizer) {
+          resizer = document.createElement("div");
+          resizer.dataset.tileResizer = "1";
+          resizer.className = "absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-zinc-700/60 transition-colors";
+          shell.style.position = "relative";
+          shell.appendChild(resizer);
+        }
+        const tile = state.workspaceTiles[tileId];
+        const visibleIndex = visibleChartOrder.indexOf(tileId);
+        resizer.style.display =
+          tile?.kind === "chart" && visibleIndex >= 0 && visibleIndex < visibleChartOrder.length - 1
+            ? "block"
+            : "none";
+        if (resizer.style.display === "block") {
+          const nextTileId = visibleChartOrder[visibleIndex + 1];
+          attachTileResizerDrag({
+            resizer,
+            tilesRow,
+            tileId,
+            nextTileId,
+            controller,
+            onResizeEnd: () => savePersistedState(),
+          });
+        } else {
+          resizer.onpointerdown = null;
+        }
+      },
+      createRuntimeForPane,
+      ensureRuntimeInteractions,
+      afterProject: () => {
+        syncTileWidths();
+        renderIndicatorOverlays();
+      },
+    });
   };
 
   const addChartTileAtPointer = async (clientX: number) => {
@@ -1117,53 +988,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const updateChartRuntimeLayout = () => {
-    const state = controller.getState();
-    const activePaneIds = new Set<string>();
-
-    for (const [paneId, host] of paneHostByPaneId) {
-      if (state.chartPanes[paneId]?.visible === false) continue;
-      const stageRect = host.stage.getBoundingClientRect();
-      const rect: LayoutRect = {
-        x: 0,
-        y: 0,
-        w: Math.max(1, Math.floor(stageRect.width)),
-        h: Math.max(1, Math.floor(stageRect.height))
-      };
-      activePaneIds.add(paneId);
-      let runtime = chartRuntimes.get(paneId);
-      if (!runtime) {
-        runtime = createRuntimeForPane(paneId);
-        chartRuntimes.set(paneId, runtime);
-      }
-      ensureRuntimeInteractions(runtime);
-      if (runtime.container.parentElement !== host.chartLayer) {
-        runtime.container.parentElement?.removeChild(runtime.container);
-        host.chartLayer.appendChild(runtime.container);
-      }
-      runtime.container.style.left = "0px";
-      runtime.container.style.top = "0px";
-      runtime.container.style.width = `${rect.w}px`;
-      runtime.container.style.height = `${rect.h}px`;
-      runtime.viewport = rect;
-
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const width = Math.max(300, Math.floor(rect.w));
-      const height = Math.max(300, Math.floor(rect.h));
-      runtime.canvas.width = Math.floor(width * dpr);
-      runtime.canvas.height = Math.floor(height * dpr);
-      const ctx = runtime.canvas.getContext("2d");
-      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      runtime.resize(width, height);
-    }
-
-    for (const [paneId, runtime] of chartRuntimes) {
-      if (activePaneIds.has(paneId)) continue;
-      // Keep inactive tab runtimes alive so switching tabs is instant and stateful.
-      // We only detach their DOM host; runtime/chart state remains in memory.
-      if (runtime.container.parentElement) {
-        runtime.container.parentElement.removeChild(runtime.container);
-      }
-    }
+    projectPanes({
+      state: controller.getState(),
+      paneHostByPaneId,
+      chartRuntimes,
+      createRuntimeForPane,
+      ensureRuntimeInteractions,
+    });
   };
 
   const clearDrawings = () => {
