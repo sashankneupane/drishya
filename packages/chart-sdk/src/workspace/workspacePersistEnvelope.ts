@@ -1,6 +1,7 @@
 import type { WorkspaceState } from "./WorkspaceController.js";
 import type { ChartAppearanceConfig } from "../wasm/contracts.js";
 import type { PersistedChartTileStoredShape } from "./persistenceHelpers.js";
+import type { ChartStateSnapshot } from "../wasm/contracts.js";
 
 interface PersistedWorkspaceEnvelopeOptions {
   state: WorkspaceState;
@@ -8,6 +9,7 @@ interface PersistedWorkspaceEnvelopeOptions {
   candleStyle?: string | null;
   appearance?: ChartAppearanceConfig | null;
   chartTiles: Record<string, PersistedChartTileStoredShape>;
+  drawingsByAsset?: Record<string, ChartStateSnapshot>;
 }
 
 export function buildPersistedWorkspaceEnvelope(
@@ -25,6 +27,7 @@ export function buildPersistedWorkspaceEnvelope(
     workspaceTiles: options.state.workspaceTiles,
     workspaceTileOrder: options.state.workspaceTileOrder,
     chartTiles: options.chartTiles,
+    drawingsByAsset: options.drawingsByAsset ?? {},
     activeChartTileId: options.state.activeChartTileId,
     paneLayout: options.state.paneLayout,
   };

@@ -8,6 +8,7 @@ import {
 import { applyPersistedTileConfigs } from "./persistedTileConfigApply.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import type { SeriesStyleOverride } from "../wasm/contracts.js";
+import type { ChartStateSnapshot } from "../wasm/contracts.js";
 
 interface RestoredWorkspaceShape {
   theme?: "dark" | "light";
@@ -19,6 +20,7 @@ interface RestoredWorkspaceShape {
   workspaceTiles?: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
   workspaceTileOrder?: string[];
   chartTiles?: Record<string, PersistedChartTileStoredShape>;
+  drawingsByAsset?: Record<string, ChartStateSnapshot>;
   activeChartTileId?: string;
   paneLayout?: unknown;
   appearance?: { background: string; candle_up: string; candle_down: string };
@@ -36,6 +38,7 @@ interface RestorePersistedWorkspaceOptions {
   getRuntimeChartByPaneId: (paneId: string) => { chart: { setTheme: (theme: "dark" | "light") => void; setSeriesStyleOverride: (seriesId: string, style: SeriesStyleOverride) => void } } | null;
   getPrimaryChart: () => { setCursorMode: (mode: string) => void; setPriceAxisMode: (mode: "linear" | "log" | "percent") => void; setCandleStyle: (style: "solid" | "hollow" | "bars" | "volume") => void } | null;
   applyAppearance: (config: { background: string; candle_up: string; candle_down: string }) => void;
+  setDrawingsByAsset: (next: Record<string, ChartStateSnapshot>) => void;
 }
 
 export function restorePersistedWorkspace(
@@ -72,6 +75,7 @@ export function restorePersistedWorkspace(
     if (saved.paneLayout) {
       options.controller.loadPaneLayout(saved.paneLayout as any);
     }
+    options.setDrawingsByAsset(saved.drawingsByAsset ?? {});
     const persistedChartTiles = normalizePersistedChartTiles(saved.chartTiles);
     if (
       saved.workspaceTiles &&

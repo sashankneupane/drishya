@@ -55,8 +55,10 @@ import { snapshotIndicatorTokensFromReadout } from "./indicatorTokenSnapshot.js"
 import { projectChartTabs } from "./projector/projectTabs.js";
 import { projectPanes } from "./projector/projectPanes.js";
 import { projectWorkspace } from "./projector/projectWorkspace.js";
+import { projectAssetScopedDrawings, restoreAssetScopedDrawings } from "./projector/projectDrawings.js";
 import { createWorkspaceEngine } from "./api.js";
 import type { WorkspaceDocument, WorkspaceLayoutNode } from "../state/schema.js";
+import type { ChartStateSnapshot } from "../wasm/contracts.js";
 import {
   createChartTabStripElement,
   createTileHeaderElement,
@@ -94,6 +96,8 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let restoredObjectTreeWidth: number | null = null;
   let restoredPaneStatesByPane: Record<string, string | null> = {};
   let restoredIndicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>> = {};
+  const drawingsByAsset = new Map<string, ChartStateSnapshot>();
+  const drawingSignatureByAsset = new Map<string, string>();
   const latestCandlesByPane = new Map<string, { latest: Candle; prevClose: number | null }>();
   const chartTileTreeOpen = new Map<string, boolean>();
 
@@ -365,6 +369,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     getRuntimeChartByPaneId: (paneId) => chartRuntimes.get(paneId) ?? null,
     getPrimaryChart: () => getPrimaryRuntime()?.chart ?? null,
     applyAppearance,
+    setDrawingsByAsset: (next) => {
+      drawingsByAsset.clear();
+      for (const [assetId, snapshot] of Object.entries(next)) {
+        drawingsByAsset.set(assetId, snapshot);
+      }
+    },
   });
   if (restoreResult.restoredObjectTreeWidth !== null) {
     restoredObjectTreeWidth = restoreResult.restoredObjectTreeWidth;
@@ -394,6 +404,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           getPrimaryRuntime()?.chart.getAppearanceConfig() ??
           undefined,
         chartTiles: persistedChartTiles,
+        drawingsByAsset: Object.fromEntries(drawingsByAsset.entries()),
       });
       localStorage.setItem(persistKey, JSON.stringify(state));
     } catch {
@@ -1190,6 +1201,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     for (const runtime of chartRuntimes.values()) {
       runtime.draw();
     }
+    projectAssetScopedDrawings({
+      controller,
+      chartRuntimes,
+      snapshotsByAsset: drawingsByAsset,
+      signatureByAsset: drawingSignatureByAsset,
+    });
     for (const [chartTileId, handle] of treeHandleByChartTileId) {
       if (chartTileTreeOpen.get(chartTileId) === true) {
         handle.refresh();
@@ -1416,6 +1433,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   for (const chartTileId of Object.keys(controller.getState().chartTiles)) {
     applyIndicatorSetToTile(chartTileId);
   }
+  restoreAssetScopedDrawings({
+    controller,
+    chartRuntimes,
+    snapshotsByAsset: drawingsByAsset,
+    signatureByAsset: drawingSignatureByAsset,
+  });
   setupCanvasBackingStore();
   syncReadoutSourceLabel(controller.getState());
   getActiveRuntime()?.chart.setDrawingTool(controller.getState().activeTool);
