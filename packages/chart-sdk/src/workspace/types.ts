@@ -158,6 +158,7 @@ export interface WorkspaceChartTileSpec {
   id: WorkspaceChartTileId;
   tabs: WorkspaceChartTabSpec[];
   activeTabId: WorkspaceChartTabId;
+  indicatorTokens?: string[];
 }
 
 export interface WorkspaceCrosshairReadout {

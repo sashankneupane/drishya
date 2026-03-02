@@ -8,7 +8,6 @@ import {
 interface PersistedTileConfigApplyOptions {
   persistedChartTiles: Record<string, PersistedChartTileStoredShape>;
   chartTileTreeOpen: Map<string, boolean>;
-  chartTileIndicatorState: Map<string, string[]>;
   controller: WorkspaceController;
   selectedTimeframe?: string;
   availableTimeframes?: readonly string[];
@@ -24,7 +23,7 @@ export function applyPersistedTileConfigs(options: PersistedTileConfigApplyOptio
   for (const [chartTileId, tile] of Object.entries(options.persistedChartTiles)) {
     const tileCfg = normalizePersistedChartTileConfig(tile.config);
     options.chartTileTreeOpen.set(chartTileId, tileCfg.treeOpen === true);
-    options.chartTileIndicatorState.set(chartTileId, tileCfg.indicators ?? []);
+    options.controller.setChartTileIndicatorTokens(chartTileId, tileCfg.indicators ?? []);
     for (const [paneId, source] of Object.entries(tileCfg.paneSourcesByPane ?? {})) {
       options.controller.setChartPaneSource(paneId, {
         symbol: source?.symbol,

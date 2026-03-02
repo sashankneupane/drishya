@@ -92,7 +92,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   let restoredObjectTreeWidth: number | null = null;
   let restoredPaneStatesByPane: Record<string, string | null> = {};
   let restoredIndicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>> = {};
-  const chartTileIndicatorState = new Map<string, string[]>();
   const latestCandlesByPane = new Map<string, { latest: Candle; prevClose: number | null }>();
   const chartTileTreeOpen = new Map<string, boolean>();
 
@@ -219,7 +218,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   applyAppearance(DEFAULT_APPEARANCE_CONFIG);
 
   const applyIndicatorSetToTile = (chartTileId: string) => {
-    const ids = chartTileIndicatorState.get(chartTileId) ?? [];
+    const ids = controller.getChartTileIndicatorTokens(chartTileId);
     const chartTile = controller.getState().chartTiles[chartTileId];
     applyIndicatorsToTileCharts({
       chartTile,
@@ -241,7 +240,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const workspaceIntents = createWorkspaceIntentController({
     controller,
-    chartTileIndicatorState,
     getChartForTile: getActiveChartForTile,
     getChartsForTile,
     applyIndicatorSetToTile,
@@ -255,7 +253,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     selectedTimeframe: options.marketControls?.selectedTimeframe,
     availableTimeframes: options.marketControls?.timeframes,
     chartTileTreeOpen,
-    chartTileIndicatorState,
     restoredPaneStatesByPane,
     restoredIndicatorStyleOverridesByPane,
     getRuntimeChartByPaneId: (paneId) => chartRuntimes.get(paneId) ?? null,
@@ -274,7 +271,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const persistedChartTiles = buildPersistedChartTiles({
         state: stateNow,
         chartRuntimes,
-        chartTileIndicatorState,
         chartTileTreeOpen,
         selectedTimeframe: options.marketControls?.selectedTimeframe,
         availableTimeframes: options.marketControls?.timeframes,
@@ -410,7 +406,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const treeHandleByChartTileId = new Map<string, ObjectTreePanelHandle>();
   const openIndicatorConfig = createOpenIndicatorConfig({
     chartRuntimes,
-    chartTileIndicatorState,
     controller,
     getRuntime,
     draw: () => draw(),
@@ -569,11 +564,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
               return charts.length ? charts : [activeRuntime.chart];
             },
             onIndicatorSelected: (indicatorId) => {
-              const current = chartTileIndicatorState.get(chartTileId) ?? [];
+              const current = controller.getChartTileIndicatorTokens(chartTileId);
               const base = canonicalIndicatorId(indicatorId);
               const existingCount = current.filter((t) => decodeIndicatorToken(t).indicatorId === base).length;
               const token = defaultIndicatorToken(activeRuntime.chart, base, existingCount);
-              chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds([...current, token]));
+              controller.setChartTileIndicatorTokens(chartTileId, normalizeIndicatorIds([...current, token]));
               applyIndicatorSetToTile(chartTileId);
               savePersistedStateImmediate();
               draw();
@@ -814,7 +809,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const renderIndicatorOverlays = () => {
     renderIndicatorOverlayRows({
       controller,
-      chartTileIndicatorState,
       paneHostByPaneId,
       indicatorOverlayByPaneId,
       getRuntime,
@@ -868,7 +862,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       paneChart.setSeriesStyleOverride(seriesId, style);
     }
     const snapshotIndicatorIds = () =>
-      chartTileId ? normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? []) : [];
+      chartTileId ? controller.getChartTileIndicatorTokens(chartTileId) : [];
     paneChart.setCandles = ((orig) => (candles: Candle[]) => {
       const beforeIndicatorIds = snapshotIndicatorIds();
       orig(candles);
@@ -884,7 +878,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       if (beforeIndicatorIds.length && afterIndicatorIds.length === 0) {
         applyIndicatorSetToChart(paneChart, beforeIndicatorIds);
         if (chartTileId) {
-          chartTileIndicatorState.set(chartTileId, beforeIndicatorIds);
+          controller.setChartTileIndicatorTokens(chartTileId, beforeIndicatorIds);
         }
       }
     })(paneChart.setCandles.bind(paneChart));
@@ -904,7 +898,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       paneChart.restorePaneStateJson(restoredPaneState);
     }
     const restoredIndicators = chartTileId
-      ? normalizeIndicatorIds(chartTileIndicatorState.get(chartTileId) ?? [])
+      ? controller.getChartTileIndicatorTokens(chartTileId)
       : [];
     applyIndicatorSetToChart(paneChart, restoredIndicators);
     reconcilePaneSpecsForRuntime({ ownerChartPaneId: paneId, chart: paneChart, controller });

@@ -19,7 +19,6 @@ interface StageHost {
 
 interface RenderIndicatorOverlaysOptions {
   controller: WorkspaceController;
-  chartTileIndicatorState: Map<string, string[]>;
   paneHostByPaneId: Map<string, StageHost>;
   indicatorOverlayByPaneId: Map<string, HTMLDivElement>;
   getRuntime: (paneId: string) => { chart: DrishyaChartClient } | null;
@@ -34,7 +33,6 @@ interface RenderIndicatorOverlaysOptions {
 
 export const renderIndicatorOverlays = ({
   controller,
-  chartTileIndicatorState,
   paneHostByPaneId,
   indicatorOverlayByPaneId,
   getRuntime,
@@ -50,7 +48,7 @@ export const renderIndicatorOverlays = ({
     const runtime = getRuntime(paneId);
     if (!runtime) continue;
     const chartTileId = paneToTileId.get(paneId);
-    const indicatorTokens = chartTileId ? (chartTileIndicatorState.get(chartTileId) ?? []) : [];
+    const indicatorTokens = chartTileId ? controller.getChartTileIndicatorTokens(chartTileId) : [];
     let overlay = indicatorOverlayByPaneId.get(paneId);
     if (!overlay) {
       overlay = document.createElement("div");

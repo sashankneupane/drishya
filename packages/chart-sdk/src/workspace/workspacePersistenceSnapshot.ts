@@ -8,7 +8,6 @@ import { getActiveTab } from "./chartTileSelection.js";
 interface BuildPersistedChartTilesOptions {
   state: WorkspaceState;
   chartRuntimes: Map<string, ChartPaneRuntime>;
-  chartTileIndicatorState: Map<string, string[]>;
   chartTileTreeOpen: Map<string, boolean>;
   selectedTimeframe?: string;
   availableTimeframes?: readonly string[];
@@ -28,9 +27,7 @@ export function buildPersistedChartTiles(
         .map((tab) => options.chartRuntimes.get(tab.chartPaneId))
         .find((value): value is ChartPaneRuntime => !!value) ?? null;
     const tilePaneState = runtime?.chart.getPaneStateJson() ?? null;
-    const tileIndicators = normalizeIndicatorIds(
-      options.chartTileIndicatorState.get(chartTileId) ?? []
-    );
+    const tileIndicators = normalizeIndicatorIds(chartTile.indicatorTokens ?? []);
     const paneSourcesByPane: Record<string, { symbol?: string; timeframe?: string }> = {};
     const paneStateByPane: Record<string, string | null> = {};
     const indicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>> = {};

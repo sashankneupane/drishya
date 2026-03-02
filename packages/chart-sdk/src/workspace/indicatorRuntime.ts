@@ -10,8 +10,6 @@ import {
   withInstanceParam,
 } from "./indicatorIdentity.js";
 
-export type IndicatorTokenStore = Map<string, string[]>;
-
 export const defaultIndicatorParams = (
   targetChart: DrishyaChartClient,
   id: string
@@ -111,14 +109,13 @@ export const applyIndicatorParams = (
 };
 
 export const findTokenParamsForSeriesId = (
-  chartTileIndicatorState: IndicatorTokenStore,
-  chartTileId: string | undefined,
+  indicatorTokens: readonly string[],
   indicatorId: string,
   seriesId?: string
 ): Record<string, unknown> => {
-  if (!chartTileId || !seriesId) return {};
+  if (!seriesId) return {};
   const targetInstance = indicatorInstanceFromSeriesId(seriesId);
-  const current = chartTileIndicatorState.get(chartTileId) ?? [];
+  const current = indicatorTokens;
   if (targetInstance) {
     const byInstance = current.find((token) => {
       const decoded = decodeIndicatorToken(token);

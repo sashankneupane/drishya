@@ -26,7 +26,6 @@ interface OpenIndicatorConfigTarget {
 
 interface IndicatorConfigFlowOptions {
   chartRuntimes: Map<string, ChartPaneRuntime>;
-  chartTileIndicatorState: Map<string, string[]>;
   controller: WorkspaceController;
   getRuntime: (paneId: string) => ChartPaneRuntime | null;
   draw: () => void;
@@ -37,7 +36,6 @@ interface IndicatorConfigFlowOptions {
 
 export const createOpenIndicatorConfig = ({
   chartRuntimes,
-  chartTileIndicatorState,
   controller,
   getRuntime,
   draw,
@@ -70,8 +68,7 @@ export const createOpenIndicatorConfig = ({
       indicatorId.toUpperCase();
 
     const initialTokenParams = findTokenParamsForSeriesId(
-      chartTileIndicatorState,
-      runtime?.chartTileId,
+      runtime?.chartTileId ? controller.getChartTileIndicatorTokens(runtime.chartTileId) : [],
       indicatorId,
       target.seriesId
     );
@@ -123,7 +120,7 @@ export const createOpenIndicatorConfig = ({
         }
 
         if (anyApplied && runtime?.chartTileId) {
-          const current = chartTileIndicatorState.get(runtime.chartTileId) ?? [];
+          const current = controller.getChartTileIndicatorTokens(runtime.chartTileId);
           const targetParams = parseIndicatorParamsFromSeriesId(indicatorId, target.seriesId);
           let replaced = false;
           const next = current.map((token) => {
@@ -145,7 +142,7 @@ export const createOpenIndicatorConfig = ({
           if (!replaced) {
             next.push(encodeIndicatorToken(indicatorId, nextWithInstance as Record<string, unknown>));
           }
-          chartTileIndicatorState.set(runtime.chartTileId, normalizeIndicatorIds(next));
+          controller.setChartTileIndicatorTokens(runtime.chartTileId, normalizeIndicatorIds(next));
         }
 
         if (anyApplied) {

@@ -31,7 +31,6 @@ interface RestorePersistedWorkspaceOptions {
   selectedTimeframe?: string;
   availableTimeframes?: readonly string[];
   chartTileTreeOpen: Map<string, boolean>;
-  chartTileIndicatorState: Map<string, string[]>;
   restoredPaneStatesByPane: Record<string, string | null>;
   restoredIndicatorStyleOverridesByPane: Record<string, Record<string, SeriesStyleOverride>>;
   getRuntimeChartByPaneId: (paneId: string) => { chart: { setTheme: (theme: "dark" | "light") => void; setSeriesStyleOverride: (seriesId: string, style: SeriesStyleOverride) => void } } | null;
@@ -96,6 +95,7 @@ export function restorePersistedWorkspace(
             id: tile.id,
             tabs: tile.tabs,
             activeTabId: tile.activeTabId,
+            indicatorTokens: tile.config?.indicators ?? [],
           },
         ])
       );
@@ -109,7 +109,6 @@ export function restorePersistedWorkspace(
     applyPersistedTileConfigs({
       persistedChartTiles,
       chartTileTreeOpen: options.chartTileTreeOpen,
-      chartTileIndicatorState: options.chartTileIndicatorState,
       controller: options.controller,
       selectedTimeframe: options.selectedTimeframe,
       availableTimeframes: options.availableTimeframes,

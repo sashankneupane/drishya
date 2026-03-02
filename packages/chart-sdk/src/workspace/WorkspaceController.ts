@@ -19,6 +19,7 @@ import type {
 import type { CursorMode, ReplayState, ObjectTreeState } from "../wasm/contracts.js";
 import type { ReplayController } from "./replay/ReplayController.js";
 import { PRICE_PANE_ID, DEFAULT_INDICATOR_PANE_RATIO, DEFAULT_CHART_SPLIT_RATIO } from "./constants.js";
+import { normalizeIndicatorIds } from "./indicatorIdentity.js";
 
 export interface WorkspaceState {
     theme: WorkspaceTheme;
@@ -151,7 +152,8 @@ export class WorkspaceController {
                             chartPaneId: PRICE_PANE_ID
                         }
                     ],
-                    activeTabId: "tab-price"
+                    activeTabId: "tab-price",
+                    indicatorTokens: []
                 }
             },
             activeChartTileId: initial.activeChartTileId ?? "chart-tile-1",
@@ -472,7 +474,8 @@ export class WorkspaceController {
             "chart-tile-1": {
                 id: "chart-tile-1",
                 tabs: [{ id: "tab-price", title: "Main", chartPaneId: PRICE_PANE_ID }],
-                activeTabId: "tab-price"
+                activeTabId: "tab-price",
+                indicatorTokens: []
             }
         };
         this.state.workspaceTiles = {
@@ -572,7 +575,15 @@ export class WorkspaceController {
     ): void {
         this.state.workspaceTiles = { ...workspaceTiles };
         this.state.workspaceTileOrder = [...workspaceTileOrder];
-        this.state.chartTiles = { ...chartTiles };
+        this.state.chartTiles = Object.fromEntries(
+            Object.entries(chartTiles).map(([tileId, tile]) => [
+                tileId,
+                {
+                    ...tile,
+                    indicatorTokens: normalizeIndicatorIds(tile.indicatorTokens ?? [])
+                }
+            ])
+        );
         if (activeChartTileId) {
             this.state.activeChartTileId = activeChartTileId;
         }
@@ -766,6 +777,25 @@ export class WorkspaceController {
         this.notify();
     }
 
+    getChartTileIndicatorTokens(chartTileId: WorkspaceChartTileId): string[] {
+        return normalizeIndicatorIds(this.state.chartTiles[chartTileId]?.indicatorTokens ?? []);
+    }
+
+    setChartTileIndicatorTokens(chartTileId: WorkspaceChartTileId, tokens: readonly string[]): void {
+        const tile = this.state.chartTiles[chartTileId];
+        if (!tile) return;
+        const next = normalizeIndicatorIds(tokens);
+        if (JSON.stringify(tile.indicatorTokens ?? []) === JSON.stringify(next)) return;
+        this.state.chartTiles = {
+            ...this.state.chartTiles,
+            [chartTileId]: {
+                ...tile,
+                indicatorTokens: next
+            }
+        };
+        this.notify();
+    }
+
     addChartTab(chartTileId: WorkspaceChartTileId): WorkspaceChartTabId | null {
         const tile = this.state.chartTiles[chartTileId];
         if (!tile) return null;
@@ -908,7 +938,8 @@ export class WorkspaceController {
             [chartTileId]: {
                 id: chartTileId,
                 tabs: [{ id: tabId, title: "Main", chartPaneId: paneId }],
-                activeTabId: tabId
+                activeTabId: tabId,
+                indicatorTokens: []
             }
         };
         const tileId = this.nextWorkspaceTileId();
@@ -1069,7 +1100,12 @@ export class WorkspaceController {
                 tabs.push({ id: this.nextChartTabId(), title: "Main", chartPaneId: PRICE_PANE_ID });
             }
             const activeTabId = tabs.some((tab) => tab.id === tile.activeTabId) ? tile.activeTabId : tabs[0].id;
-            this.state.chartTiles[tileId] = { ...tile, tabs, activeTabId };
+            this.state.chartTiles[tileId] = {
+                ...tile,
+                tabs,
+                activeTabId,
+                indicatorTokens: normalizeIndicatorIds(tile.indicatorTokens ?? [])
+            };
         }
 
         const nextTiles: Record<string, WorkspaceTileSpec> = {};

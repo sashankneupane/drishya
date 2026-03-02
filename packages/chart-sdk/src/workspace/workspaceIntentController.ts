@@ -14,7 +14,6 @@ type NodeKind = "pane" | "series" | "drawing" | "layer" | "group";
 
 interface WorkspaceIntentControllerOptions {
   controller: WorkspaceController;
-  chartTileIndicatorState: Map<string, string[]>;
   getChartForTile: (chartTileId: string) => DrishyaChartClient | null;
   getChartsForTile: (chartTileId: string) => DrishyaChartClient[];
   applyIndicatorSetToTile: (chartTileId: string) => void;
@@ -80,7 +79,7 @@ export const createWorkspaceIntentController = (
     chartTileId: string,
     seriesIds: readonly string[]
   ): boolean => {
-    const current = options.chartTileIndicatorState.get(chartTileId) ?? [];
+    const current = options.controller.getChartTileIndicatorTokens(chartTileId);
     if (!current.length || !seriesIds.length) return false;
     const targets = new Map<string, { indicatorId: string; instance: string | null }>();
     for (const seriesId of seriesIds) {
@@ -115,7 +114,7 @@ export const createWorkspaceIntentController = (
       }
     }
     if (changed) {
-      options.chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds(next));
+      options.controller.setChartTileIndicatorTokens(chartTileId, normalizeIndicatorIds(next));
     }
     return changed;
   };
@@ -124,7 +123,7 @@ export const createWorkspaceIntentController = (
     chartTileId: string,
     chart: DrishyaChartClient
   ): boolean => {
-    const current = options.chartTileIndicatorState.get(chartTileId) ?? [];
+    const current = options.controller.getChartTileIndicatorTokens(chartTileId);
     if (!current.length) return false;
     const runtimeSeriesIds = chart
       .objectTreeState()
@@ -135,7 +134,7 @@ export const createWorkspaceIntentController = (
       tokenMatchesVisibleRuntimeSeries(token, runtimeSeriesIds)
     );
     if (next.length === current.length) return false;
-    options.chartTileIndicatorState.set(chartTileId, normalizeIndicatorIds(next));
+    options.controller.setChartTileIndicatorTokens(chartTileId, normalizeIndicatorIds(next));
     return true;
   };
 

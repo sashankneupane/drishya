@@ -58,12 +58,9 @@ function testMovePaneInTileUsesControllerOrder() {
   controller.setPaneOrder(["price", "rsi", "macd"]);
 
   const chart = new FakeChart(["price-pane", "rsi-pane", "macd-pane"], []);
-  const chartTileIndicatorState = new Map<string, string[]>();
-  chartTileIndicatorState.set("chart-tile-1", []);
 
   const intents = createWorkspaceIntentController({
     controller,
-    chartTileIndicatorState,
     getChartForTile: () => chart as any,
     getChartsForTile: () => [chart as any],
     applyIndicatorSetToTile: () => {},
@@ -90,6 +87,7 @@ function testDeletePaneInTileRemovesPaneAndSeries() {
   const controller = new WorkspaceController({});
   controller.registerPane({ id: "rsi", kind: "indicator", title: "RSI", parentChartPaneId: "price" });
   controller.setPaneOrder(["price", "rsi"]);
+  controller.setChartTileIndicatorTokens("chart-tile-1", ["rsi"]);
 
   const chart = new FakeChart(
     ["price-pane", "rsi-pane"],
@@ -98,13 +96,10 @@ function testDeletePaneInTileRemovesPaneAndSeries() {
       { id: "candles", pane_id: "price-pane" },
     ]
   );
-  const chartTileIndicatorState = new Map<string, string[]>();
-  chartTileIndicatorState.set("chart-tile-1", ["rsi"]);
   let appliedCount = 0;
 
   const intents = createWorkspaceIntentController({
     controller,
-    chartTileIndicatorState,
     getChartForTile: () => chart as any,
     getChartsForTile: () => [chart as any],
     applyIndicatorSetToTile: () => {
