@@ -59,6 +59,7 @@ import { attachTileResizerDrag } from "./tileResizerDrag.js";
 import { placeNewChartTileAtPointer } from "./tilePlacement.js";
 import { parseChartTabDragPayload } from "./chartTabDnd.js";
 import { indicatorLabel, indicatorReadoutColor } from "./indicatorPresentation.js";
+import { buildPaneToTileOwnershipMap } from "./paneOwnership.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -1104,12 +1105,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const renderIndicatorOverlays = () => {
     const state = controller.getState();
-    const paneToTileId = new Map<string, string>();
-    for (const [chartTileId, chartTile] of Object.entries(state.chartTiles)) {
-      for (const tab of chartTile.tabs) {
-        paneToTileId.set(tab.chartPaneId, chartTileId);
-      }
-    }
+    const paneToTileId = buildPaneToTileOwnershipMap(state.chartTiles);
 
     for (const [paneId, hostPane] of paneHostByPaneId) {
       const runtime = getRuntime(paneId);
