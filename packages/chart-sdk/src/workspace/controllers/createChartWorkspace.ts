@@ -5,7 +5,6 @@ import { DrishyaChartClient } from "../../wasm/client.js";
 import { DEFAULT_APPEARANCE_CONFIG, WORKSPACE_DRAW_TOOLS } from "../models/constants.js";
 import { createDrawingConfigPanel } from "../views/components/DrawingConfigPanel.js";
 import { createConfigModal } from "../views/ConfigModal.js";
-import { bindWorkspaceInteractions } from "../views/interactions.js";
 import { createLeftStrip } from "../views/leftStrip.js";
 import { computeIndicatorRectsForChartPane } from "../layout/index.js";
 import type { ObjectTreePanelHandle } from "../views/objectTreePanel.js";
@@ -43,6 +42,10 @@ import {
   resolveChartTileHeaderContext,
 } from "../../tile/services/chartTileService.js";
 import { createTileRuntimeRegistry } from "../../tile/runtime/runtimeRegistry.js";
+import {
+  attachTilePaneRuntimeInteractions,
+  createTilePaneRuntime,
+} from "../../tile/runtime/paneRuntimeLifecycle.js";
 import { restorePersistedWorkspace } from "../services/restorePersistedWorkspace.js";
 import { serializeWorkspacePersistenceEnvelope } from "../services/workspacePersistEnvelope.js";
 import { createChartFacade } from "../adapters/chartFacade.js";
@@ -53,7 +56,6 @@ import { attachTileResizerDrag } from "../services/tileResizerDrag.js";
 import { placeNewChartTileAtPointer } from "../services/tilePlacement.js";
 import { collectWorkspaceChartTileOrder, collectWorkspaceTileOrder } from "../services/workspaceTileOrder.js";
 import { parseChartTabDragPayload } from "../services/chartTabDnd.js";
-import { resolvePaneRuntimeIdentity } from "../services/runtimeIdentity.js";
 import { renderIndicatorOverlays as renderIndicatorOverlayRows } from "../views/indicatorOverlays.js";
 import { createOpenIndicatorConfig } from "../services/indicatorConfigFlow.js";
 import { snapshotIndicatorTokensFromReadout } from "../services/indicatorTokenSnapshot.js";
@@ -1082,83 +1084,18 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const createRuntimeForPane = (paneId: string): ChartPaneRuntime => {
-    const state = controller.getState();
-    const { chartTileId, chartTabId, runtimeKey } = resolvePaneRuntimeIdentity(
+    const runtime = createTilePaneRuntime({
       paneId,
-      state.chartTiles
-    );
-    const container = document.createElement("div");
-    container.className = "absolute overflow-hidden";
-    const paneCanvas = document.createElement("canvas");
-    paneCanvas.className = "block h-full w-full bg-transparent absolute inset-0";
-    const paneCanvasId = `drishya-canvas-${paneId}-${Math.random().toString(36).slice(2, 10)}`;
-    paneCanvas.id = paneCanvasId;
-    container.appendChild(paneCanvas);
-    const host = paneHostByPaneId.get(paneId);
-    const mountLayer = host?.chartLayer && host.chartLayer.isConnected ? host.chartLayer : chartLayer;
-    mountLayer.appendChild(container);
-
-    const paneRaw = createWasmChart(paneCanvasId, 300, 300);
-    const paneChart = new DrishyaChartClient(paneRaw);
-    const restoredStyleMap = restoredIndicatorStyleOverridesByPane[paneId] ?? {};
-    for (const [seriesId, style] of Object.entries(restoredStyleMap)) {
-      paneChart.setSeriesStyleOverride(seriesId, style);
-    }
-    const snapshotIndicatorIds = () =>
-      chartTileId ? controller.getChartTileIndicatorTokens(chartTileId) : [];
-    paneChart.setCandles = ((orig) => (candles: Candle[]) => {
-      const beforeIndicatorIds = snapshotIndicatorIds();
-      orig(candles);
-      if (!candles.length) {
-        latestCandlesByPane.delete(paneId);
-      } else {
-        latestCandlesByPane.set(paneId, {
-          latest: candles[candles.length - 1],
-          prevClose: candles.length > 1 ? candles[candles.length - 2].close : null
-        });
-      }
-      const afterIndicatorIds = snapshotIndicatorIds();
-      if (beforeIndicatorIds.length && afterIndicatorIds.length === 0) {
-        applyIndicatorSetToChart(paneChart, beforeIndicatorIds);
-        if (chartTileId) {
-          controller.setChartTileIndicatorTokens(chartTileId, beforeIndicatorIds);
-        }
-      }
-    })(paneChart.setCandles.bind(paneChart));
-    paneChart.appendCandle = ((orig) => (candle: Candle) => {
-      const prevClose = latestCandlesByPane.get(paneId)?.latest.close ?? null;
-      orig(candle);
-      latestCandlesByPane.set(paneId, { latest: candle, prevClose });
-    })(paneChart.appendCandle.bind(paneChart));
-    paneChart.setTheme(controller.getState().theme);
-    try {
-      paneChart.setAppearanceConfig(DEFAULT_APPEARANCE_CONFIG);
-    } catch {
-      // ignore unsupported appearance config in older wasm
-    }
-    const restoredPaneState = restoredPaneStatesByPane[paneId] ?? null;
-    if (restoredPaneState) {
-      paneChart.restorePaneStateJson(restoredPaneState);
-    }
-    const restoredIndicators = chartTileId
-      ? controller.getChartTileIndicatorTokens(chartTileId)
-      : [];
-    applyIndicatorSetToChart(paneChart, restoredIndicators);
-    reconcilePaneSpecsForRuntime({ ownerChartPaneId: paneId, chart: paneChart, controller });
-
-    const runtime: ChartPaneRuntime = {
-      runtimeKey,
-      chartTileId,
-      chartTabId,
-      paneId,
-      container,
-      canvas: paneCanvas,
-      viewport: { x: 0, y: 0, w: 0, h: 0 },
-      rawChart: paneRaw,
-      chart: paneChart,
-      draw: () => paneChart.draw(),
-      resize: (width: number, height: number) => paneChart.resize(width, height)
-    };
+      controller,
+      paneHostByPaneId,
+      fallbackChartLayer: chartLayer,
+      createWasmChart,
+      chartTiles: controller.getState().chartTiles,
+      restoredIndicatorStyleOverridesByPane,
+      restoredPaneStatesByPane,
+      latestCandlesByPane,
+      reconcilePaneSpecsForRuntime,
+    });
     ensureRuntimeInteractions(runtime);
     return runtime;
   };
@@ -1183,43 +1120,29 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   };
 
   const ensureRuntimeInteractions = (runtime: ChartPaneRuntime) => {
-    if (runtime.unbindInteractions) return;
-    const paneId = runtime.paneId;
-    runtime.unbindInteractions = bindWorkspaceInteractions({
-      canvas: runtime.canvas,
-      chart: runtime.chart,
-      rawChart: runtime.rawChart,
-      redraw: draw,
-      redrawFast: () => scheduleFastDrawPane(paneId),
-      getPaneLayouts: () => runtime.chart.paneLayouts(),
+    const symbols = options.marketControls?.symbols ?? [];
+    attachTilePaneRuntimeInteractions({
+      runtime,
       controller,
-      paneId,
-      getPaneViewport: () => runtime.viewport ?? null,
-      getWorkspaceViewport: () => {
-        const hostStage = paneHostByPaneId.get(paneId)?.stage ?? stage;
-        const stageRect = hostStage.getBoundingClientRect();
-        return {
-          x: 0,
-          y: 0,
-          w: Math.max(1, Math.floor(stageRect.width)),
-          h: Math.max(1, Math.floor(stageRect.height))
-        };
-      },
-      onSourceReadoutClick: () => {
-        const symbols = options.marketControls?.symbols ?? [];
+      paneHostByPaneId,
+      fallbackStage: stage,
+      redraw: draw,
+      redrawFast: () => scheduleFastDrawPane(runtime.paneId),
+      openSymbolSearch: (onSelect) => {
         if (symbols.length === 0) return;
         createSymbolSearchModal({
           symbols,
-          onSelect: async (nextSymbol) => {
-            controller.setChartPaneSource(paneId, { symbol: nextSymbol });
-            await options.marketControls?.onChartPaneSourceChange?.(paneId, {
-              symbol: nextSymbol,
-              timeframe: controller.getState().chartPaneSources[paneId]?.timeframe
-            });
-            await options.marketControls?.onSymbolChange?.(nextSymbol);
-          },
-          onClose: () => { }
+          onSelect,
+          onClose: () => {},
         });
+      },
+      onPaneSymbolSelect: async (paneId, nextSymbol) => {
+        controller.setChartPaneSource(paneId, { symbol: nextSymbol });
+        await options.marketControls?.onChartPaneSourceChange?.(paneId, {
+          symbol: nextSymbol,
+          timeframe: controller.getState().chartPaneSources[paneId]?.timeframe,
+        });
+        await options.marketControls?.onSymbolChange?.(nextSymbol);
       },
     });
   };
