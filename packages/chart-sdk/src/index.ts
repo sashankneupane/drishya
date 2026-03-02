@@ -13,6 +13,16 @@ export {
 export { reduceWorkspaceDocument, reduceWorkspaceState } from "./state/reducer.js";
 export type { WorkspaceIntent } from "./state/intents.js";
 export {
+  materializeExplicitIndicatorPayload,
+  materializeIndicatorInstanceState,
+} from "./state/defaults.js";
+export {
+  defaultProfileForIndicator,
+  inferDefaultFromParamShape,
+  DEFAULT_INDICATOR_PARAM_PROFILE,
+  DEFAULT_INDICATOR_STYLE_BY_KIND,
+} from "./state/defaultProfiles.js";
+export {
   selectWorkspaceState,
   selectTiles,
   selectTile,
