@@ -27,6 +27,64 @@ interface RestoredWorkspaceShape {
   candleStyle?: string;
 }
 
+function deriveWorkspaceTilesFromPersistedState(
+  saved: RestoredWorkspaceShape,
+  persistedChartTiles: Record<string, PersistedChartTileStoredShape>
+): {
+  workspaceTiles: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
+  workspaceTileOrder: string[];
+  activeWorkspaceTileId: string | undefined;
+} {
+  const chartTileIds = Object.keys(persistedChartTiles);
+  const oldWorkspaceTiles = saved.workspaceTiles ?? {};
+  const oldChartTileByChartTileId = new Map<string, { widthRatio: number; title: string }>();
+  for (const tile of Object.values(oldWorkspaceTiles)) {
+    if (tile.kind === "chart" && tile.chartTileId) {
+      oldChartTileByChartTileId.set(tile.chartTileId, { widthRatio: tile.widthRatio, title: tile.title });
+    }
+  }
+
+  const workspaceTiles: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }> = {};
+  const workspaceTileOrder: string[] = [];
+  const defaultChartWidth = chartTileIds.length > 0 ? 1 / chartTileIds.length : 1;
+  let activeWorkspaceTileId: string | undefined;
+
+  chartTileIds.forEach((chartTileId, index) => {
+    const workspaceTileId = `tile-chart-${index + 1}`;
+    const old = oldChartTileByChartTileId.get(chartTileId);
+    const chartTile = persistedChartTiles[chartTileId];
+    workspaceTiles[workspaceTileId] = {
+      id: workspaceTileId,
+      kind: "chart",
+      title: old?.title ?? chartTile.tabs.find((tab) => tab.id === chartTile.activeTabId)?.title ?? "Chart",
+      widthRatio: old?.widthRatio ?? defaultChartWidth,
+      chartTileId,
+    };
+    workspaceTileOrder.push(workspaceTileId);
+    if (saved.activeChartTileId === chartTileId) {
+      activeWorkspaceTileId = workspaceTileId;
+    }
+  });
+
+  const existingObjectTile = Object.values(oldWorkspaceTiles).find((tile) => tile.kind === "objects");
+  const objectsTileId = existingObjectTile?.id ?? "tile-objects";
+  workspaceTiles[objectsTileId] = {
+    id: objectsTileId,
+    kind: "objects",
+    title: existingObjectTile?.title ?? "Objects",
+    widthRatio: existingObjectTile?.widthRatio ?? 0,
+  };
+  if (!workspaceTileOrder.includes(objectsTileId)) {
+    workspaceTileOrder.push(objectsTileId);
+  }
+
+  return {
+    workspaceTiles,
+    workspaceTileOrder,
+    activeWorkspaceTileId,
+  };
+}
+
 interface RestorePersistedWorkspaceOptions {
   persistedState?: unknown;
   controller: WorkspaceController;
@@ -75,11 +133,7 @@ export function restorePersistedWorkspace(
     }
     options.setDrawingsByAsset(saved.drawingsByAsset ?? {});
     const persistedChartTiles = normalizePersistedChartTiles(saved.chartTiles);
-    if (
-      saved.workspaceTiles &&
-      saved.workspaceTileOrder &&
-      Object.keys(persistedChartTiles).length > 0
-    ) {
+    if (Object.keys(persistedChartTiles).length > 0) {
       const derivedChartPanes = deriveChartPanesFromPersistedTiles(persistedChartTiles);
       const derivedActivePaneId = deriveActivePaneIdFromPersistedTiles(
         persistedChartTiles,
@@ -100,11 +154,12 @@ export function restorePersistedWorkspace(
           },
         ])
       );
+      const derivedWorkspace = deriveWorkspaceTilesFromPersistedState(saved, persistedChartTiles);
       options.controller.loadWorkspaceTiles?.(
-        saved.workspaceTiles as any,
-        saved.workspaceTileOrder,
+        derivedWorkspace.workspaceTiles as any,
+        derivedWorkspace.workspaceTileOrder,
         runtimeChartTiles as any,
-        saved.activeChartTileId
+        derivedWorkspace.activeWorkspaceTileId
       );
     }
     applyPersistedTileConfigs({

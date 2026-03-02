@@ -144,7 +144,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   // Mount elements to documented DOM before WASM initialization
   mainRow.appendChild(tilesRow);
-  // Keep a mounted fallback stage so wasm chart creation always has a DOM canvas target.
+  // Keep a mounted stage so wasm chart creation always has a DOM canvas target.
   stage.style.display = "none";
   tilesRow.appendChild(stage);
   root.appendChild(mainRow);
@@ -252,7 +252,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     for (let i = 1; i < orderedTileIds.length; i += 1) {
       tree = {
         type: "split",
-        id: `legacy-workspace-split-${i}`,
+        id: `workspace-split-${i}`,
         direction: "row",
         ratio: 0.5,
         first: tree,

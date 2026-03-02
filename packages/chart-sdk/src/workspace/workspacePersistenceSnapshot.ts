@@ -27,7 +27,6 @@ export function buildPersistedChartTiles(
       orderedTabs
         .map((tab) => options.chartRuntimes.get(tab.chartPaneId))
         .find((value): value is ChartPaneRuntime => !!value) ?? null;
-    const tilePaneState = runtime?.chart.getPaneStateJson() ?? null;
     const tileIndicators = normalizeIndicatorIds(
       options.controller.getChartTileIndicatorTokens(chartTileId)
     );
@@ -37,14 +36,11 @@ export function buildPersistedChartTiles(
     for (const tab of chartTile.tabs) {
       const src = options.state.chartPaneSources[tab.chartPaneId] ?? {};
       paneSourcesByPane[tab.chartPaneId] = {
-        symbol: src.symbol ?? tab.title,
-        timeframe:
-          src.timeframe ??
-          options.selectedTimeframe ??
-          options.availableTimeframes?.[0],
+        symbol: src.symbol,
+        timeframe: src.timeframe,
       };
       paneStateByPane[tab.chartPaneId] =
-        options.chartRuntimes.get(tab.chartPaneId)?.chart.getPaneStateJson() ?? tilePaneState;
+        options.chartRuntimes.get(tab.chartPaneId)?.chart.getPaneStateJson() ?? null;
       indicatorStyleOverridesByPane[tab.chartPaneId] =
         options.chartRuntimes.get(tab.chartPaneId)?.chart.allSeriesStyleOverrides() ?? {};
     }
