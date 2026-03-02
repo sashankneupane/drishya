@@ -22,9 +22,7 @@ import { createTopStrip } from "./topStrip.js";
 import {
   canonicalIndicatorId,
   decodeIndicatorToken,
-  encodeIndicatorToken,
   normalizeIndicatorIds,
-  parseIndicatorParamsFromSeriesId,
 } from "./indicatorIdentity.js";
 import { ReplayController } from "./replay/ReplayController.js";
 import type { ChartPaneRuntime } from "./runtimeTypes.js";
@@ -55,6 +53,7 @@ import { parseChartTabDragPayload } from "./chartTabDnd.js";
 import { resolvePaneRuntimeIdentity } from "./runtimeIdentity.js";
 import { renderIndicatorOverlays as renderIndicatorOverlayRows } from "./indicatorOverlays.js";
 import { createOpenIndicatorConfig } from "./indicatorConfigFlow.js";
+import { snapshotIndicatorTokensFromReadout } from "./indicatorTokenSnapshot.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -146,21 +145,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const primaryRawChart = createWasmChart(canvasId, 300, 300);
   const primaryChart = new DrishyaChartClient(primaryRawChart);
   const primarySetCandles = primaryChart.setCandles.bind(primaryChart);
-  const primarySnapshotIndicatorIds = () => {
-    const indicators = primaryChart.readoutSnapshot()?.indicators ?? [];
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const item of indicators) {
-      const id = canonicalIndicatorId(item.id.split(":")[0] ?? "");
-      if (!id) continue;
-      const token = encodeIndicatorToken(id, parseIndicatorParamsFromSeriesId(id, item.id));
-      if (!seen.has(token)) {
-        seen.add(token);
-        out.push(token);
-      }
-    }
-    return out;
-  };
+  const primarySnapshotIndicatorIds = () => snapshotIndicatorTokensFromReadout(primaryChart);
   primaryChart.setCandles = (candles: Candle[]) => {
     const beforeIndicatorIds = primarySnapshotIndicatorIds();
     primarySetCandles(candles);
