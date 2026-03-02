@@ -1,4 +1,5 @@
 import { getActiveTab } from "../chartTileSelection.js";
+import type { WorkspaceLayoutNode } from "../../state/schema.js";
 
 type WorkspaceTile = {
   id: string;
@@ -11,6 +12,7 @@ type WorkspaceStateLike = {
   workspaceTileOrder: string[];
   workspaceTiles: Record<string, WorkspaceTile>;
   chartTiles: Record<string, { tabs: { id: string; chartPaneId: string }[]; activeTabId: string }>;
+  workspaceLayoutTree?: WorkspaceLayoutNode;
 };
 
 export interface TileShellMaps {
@@ -74,7 +76,13 @@ export function projectWorkspaceTiles(args: ProjectWorkspaceTilesArgs): void {
     attachTileResizer,
   } = args;
 
-  const order = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+  const orderFromLayoutTree = state.workspaceLayoutTree
+    ? collectLayoutLeafTileIds(state.workspaceLayoutTree).filter((tileId) => state.workspaceTiles[tileId])
+    : [];
+  const order =
+    orderFromLayoutTree.length > 0
+      ? orderFromLayoutTree
+      : state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
   const visibleChartOrder = order.filter((tileId) => state.workspaceTiles[tileId]?.kind === "chart");
   paneHostByPaneId.clear();
 
@@ -185,4 +193,11 @@ export function projectWorkspaceTiles(args: ProjectWorkspaceTilesArgs): void {
     }
     attachTileResizer({ shell, tileId, visibleChartOrder });
   }
+}
+
+function collectLayoutLeafTileIds(node: WorkspaceLayoutNode): string[] {
+  if (node.type === "leaf") {
+    return [node.tileId];
+  }
+  return [...collectLayoutLeafTileIds(node.first), ...collectLayoutLeafTileIds(node.second)];
 }

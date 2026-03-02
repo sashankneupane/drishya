@@ -1,6 +1,7 @@
 import type { ChartPaneRuntime } from "../runtimeTypes.js";
 import { projectPanes } from "./projectPanes.js";
 import { projectWorkspaceTiles, type TileShellMaps } from "./projectTiles.js";
+import type { WorkspaceLayoutNode } from "../../state/schema.js";
 
 interface ProjectWorkspaceArgs {
   state: {
@@ -8,6 +9,7 @@ interface ProjectWorkspaceArgs {
     workspaceTiles: Record<string, { id: string; kind: "chart" | "objects"; title: string; chartTileId?: string }>;
     chartTiles: Record<string, { tabs: { id: string; chartPaneId: string }[]; activeTabId: string }>;
     chartPanes: Record<string, { visible: boolean }>;
+    workspaceLayoutTree?: WorkspaceLayoutNode;
   };
   tilesRow: HTMLDivElement;
   maps: TileShellMaps;

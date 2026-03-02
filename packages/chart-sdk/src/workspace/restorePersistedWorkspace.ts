@@ -95,7 +95,6 @@ export function restorePersistedWorkspace(
             id: tile.id,
             tabs: tile.tabs,
             activeTabId: tile.activeTabId,
-            indicatorTokens: tile.config?.indicators ?? [],
           },
         ])
       );

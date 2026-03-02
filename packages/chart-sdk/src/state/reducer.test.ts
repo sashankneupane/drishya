@@ -97,6 +97,7 @@ function testSplitAndResize() {
       },
     },
   });
+  assert(withSecondTile.workspace.layoutTree.type === "split", "Expected tile_added to update layoutTree.");
   const split = reduceWorkspaceDocument(withSecondTile, {
     type: "workspace/tile_split",
     payload: {
@@ -115,8 +116,16 @@ function testSplitAndResize() {
       ratio: 0.35,
     },
   });
-  assert(resized.workspace.layoutTree.type === "split", "Expected split root layout node.");
-  assert(resized.workspace.layoutTree.ratio === 0.35, "Expected split ratio to be updated.");
+  assert(resized.workspace.layoutTree.type === "split", "Expected split layout node.");
+  const root = resized.workspace.layoutTree;
+  const splitNode =
+    root.type === "split" && root.id === "split-root"
+      ? root
+      : root.type === "split" && root.first.type === "split" && root.first.id === "split-root"
+        ? root.first
+        : null;
+  assert(!!splitNode, "Expected split-root to exist after split and resize.");
+  assert(splitNode?.ratio === 0.35, "Expected split-root ratio to be updated.");
 }
 
 function testPaneMoveAndViewportScope() {

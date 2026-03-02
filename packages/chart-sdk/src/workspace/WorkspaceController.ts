@@ -86,6 +86,7 @@ export type WorkspaceListener = (state: WorkspaceState) => void;
  */
 export class WorkspaceController {
     private state: WorkspaceState;
+    private chartTileIndicatorTokens: Record<string, string[]> = {};
     private listeners: Set<WorkspaceListener> = new Set();
     private replayController: ReplayController | null = null;
     private replayUnsubscribe: (() => void) | null = null;
@@ -152,8 +153,7 @@ export class WorkspaceController {
                             chartPaneId: PRICE_PANE_ID
                         }
                     ],
-                    activeTabId: "tab-price",
-                    indicatorTokens: []
+                    activeTabId: "tab-price"
                 }
             },
             activeChartTileId: initial.activeChartTileId ?? "chart-tile-1",
@@ -161,6 +161,7 @@ export class WorkspaceController {
             crosshair: null
         };
         this.repairWorkspaceState();
+        this.repairChartTileIndicatorTokens();
     }
 
     getState(): WorkspaceState {
@@ -474,10 +475,10 @@ export class WorkspaceController {
             "chart-tile-1": {
                 id: "chart-tile-1",
                 tabs: [{ id: "tab-price", title: "Main", chartPaneId: PRICE_PANE_ID }],
-                activeTabId: "tab-price",
-                indicatorTokens: []
+                activeTabId: "tab-price"
             }
         };
+        this.chartTileIndicatorTokens = { "chart-tile-1": [] };
         this.state.workspaceTiles = {
             "tile-chart-1": {
                 id: "tile-chart-1",
@@ -575,19 +576,18 @@ export class WorkspaceController {
     ): void {
         this.state.workspaceTiles = { ...workspaceTiles };
         this.state.workspaceTileOrder = [...workspaceTileOrder];
-        this.state.chartTiles = Object.fromEntries(
-            Object.entries(chartTiles).map(([tileId, tile]) => [
-                tileId,
-                {
-                    ...tile,
-                    indicatorTokens: normalizeIndicatorIds(tile.indicatorTokens ?? [])
-                }
-            ])
-        );
+        this.state.chartTiles = { ...chartTiles };
+        const nextTokens: Record<string, string[]> = {};
+        for (const tileId of Object.keys(this.state.chartTiles)) {
+            const existing = this.chartTileIndicatorTokens[tileId];
+            nextTokens[tileId] = normalizeIndicatorIds(existing ?? []);
+        }
+        this.chartTileIndicatorTokens = nextTokens;
         if (activeChartTileId) {
             this.state.activeChartTileId = activeChartTileId;
         }
         this.repairWorkspaceState();
+        this.repairChartTileIndicatorTokens();
         this.notify();
     }
 
@@ -778,20 +778,17 @@ export class WorkspaceController {
     }
 
     getChartTileIndicatorTokens(chartTileId: WorkspaceChartTileId): string[] {
-        return normalizeIndicatorIds(this.state.chartTiles[chartTileId]?.indicatorTokens ?? []);
+        return normalizeIndicatorIds(this.chartTileIndicatorTokens[chartTileId] ?? []);
     }
 
     setChartTileIndicatorTokens(chartTileId: WorkspaceChartTileId, tokens: readonly string[]): void {
         const tile = this.state.chartTiles[chartTileId];
         if (!tile) return;
         const next = normalizeIndicatorIds(tokens);
-        if (JSON.stringify(tile.indicatorTokens ?? []) === JSON.stringify(next)) return;
-        this.state.chartTiles = {
-            ...this.state.chartTiles,
-            [chartTileId]: {
-                ...tile,
-                indicatorTokens: next
-            }
+        if (JSON.stringify(this.chartTileIndicatorTokens[chartTileId] ?? []) === JSON.stringify(next)) return;
+        this.chartTileIndicatorTokens = {
+            ...this.chartTileIndicatorTokens,
+            [chartTileId]: next
         };
         this.notify();
     }
@@ -938,9 +935,12 @@ export class WorkspaceController {
             [chartTileId]: {
                 id: chartTileId,
                 tabs: [{ id: tabId, title: "Main", chartPaneId: paneId }],
-                activeTabId: tabId,
-                indicatorTokens: []
+                activeTabId: tabId
             }
+        };
+        this.chartTileIndicatorTokens = {
+            ...this.chartTileIndicatorTokens,
+            [chartTileId]: []
         };
         const tileId = this.nextWorkspaceTileId();
         this.state.workspaceTiles = {
@@ -1103,8 +1103,7 @@ export class WorkspaceController {
             this.state.chartTiles[tileId] = {
                 ...tile,
                 tabs,
-                activeTabId,
-                indicatorTokens: normalizeIndicatorIds(tile.indicatorTokens ?? [])
+                activeTabId
             };
         }
 
@@ -1153,6 +1152,15 @@ export class WorkspaceController {
             this.state.activeChartPaneId = PRICE_PANE_ID;
         }
         this.normalizeWorkspaceTileRatios();
+        this.repairChartTileIndicatorTokens();
+    }
+
+    private repairChartTileIndicatorTokens(): void {
+        const next: Record<string, string[]> = {};
+        for (const tileId of Object.keys(this.state.chartTiles)) {
+            next[tileId] = normalizeIndicatorIds(this.chartTileIndicatorTokens[tileId] ?? []);
+        }
+        this.chartTileIndicatorTokens = next;
     }
 
     private findLastChartPaneId(): string {

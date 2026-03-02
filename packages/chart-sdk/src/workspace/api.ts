@@ -51,7 +51,14 @@ export function createWorkspaceEngine(options: {
   const validateMode = options.validate ?? "strict";
   const logger = options.logger;
 
-  assertValidWorkspaceDocument(options.initialState);
+  const initialValidation = validateWorkspaceDocument(options.initialState);
+  if (!initialValidation.ok && validateMode === "strict") {
+    assertValidWorkspaceDocument(options.initialState);
+  } else if (!initialValidation.ok) {
+    logger?.warn?.("Initial workspace state failed validation in strict_with_warnings mode", {
+      errors: initialValidation.errors,
+    });
+  }
 
   let state: WorkspaceDocument = options.initialState;
   const listeners = new Set<(state: WorkspaceDocument, patch: WorkspacePatch) => void>();
@@ -69,14 +76,14 @@ export function createWorkspaceEngine(options: {
     }
   };
 
-  const validateOrThrow = (doc: WorkspaceDocument): void => {
+  const validateState = (doc: WorkspaceDocument): boolean => {
     const result = validateWorkspaceDocument(doc);
-    if (result.ok) return;
+    if (result.ok) return true;
     if (validateMode === "strict_with_warnings") {
       logger?.warn?.("Workspace validation produced errors in strict_with_warnings mode", {
         errors: result.errors,
       });
-      throw new Error(formatValidationError(result));
+      return false;
     }
     throw new Error(formatValidationError(result));
   };
@@ -86,7 +93,7 @@ export function createWorkspaceEngine(options: {
       return state;
     },
     setState(next: WorkspaceDocument): void {
-      validateOrThrow(next);
+      validateState(next);
       const previous = state;
       state = next;
       notify({
@@ -97,7 +104,19 @@ export function createWorkspaceEngine(options: {
     },
     dispatch(intent: WorkspaceIntent): WorkspaceDocument {
       const previous = state;
-      const reduced = reduceWorkspaceDocument(state, intent);
+      let reduced: WorkspaceDocument;
+      try {
+        reduced = reduceWorkspaceDocument(state, intent);
+      } catch (error) {
+        if (validateMode !== "strict_with_warnings") {
+          throw error;
+        }
+        logger?.warn?.("Workspace reducer failed in strict_with_warnings mode", {
+          intent: intent.type,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return state;
+      }
       state = reduced;
       notify({
         kind: "state/reduced",

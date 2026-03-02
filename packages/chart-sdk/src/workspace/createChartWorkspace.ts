@@ -55,6 +55,8 @@ import { snapshotIndicatorTokensFromReadout } from "./indicatorTokenSnapshot.js"
 import { projectChartTabs } from "./projector/projectTabs.js";
 import { projectPanes } from "./projector/projectPanes.js";
 import { projectWorkspace } from "./projector/projectWorkspace.js";
+import { createWorkspaceEngine } from "./api.js";
+import type { WorkspaceDocument, WorkspaceLayoutNode } from "../state/schema.js";
 import {
   createChartTabStripElement,
   createTileHeaderElement,
@@ -238,6 +240,111 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     return getChartsForTileFromState(controller.getState(), chartTileId, getRuntime);
   };
 
+  const buildWorkspaceLayoutTreeFromControllerState = (): WorkspaceLayoutNode => {
+    const state = controller.getState();
+    const orderedTileIds = state.workspaceTileOrder.filter((tileId) => state.workspaceTiles[tileId]);
+    if (orderedTileIds.length <= 1) {
+      return { type: "leaf", tileId: orderedTileIds[0] ?? "tile-chart-1" };
+    }
+    let tree: WorkspaceLayoutNode = { type: "leaf", tileId: orderedTileIds[0]! };
+    for (let i = 1; i < orderedTileIds.length; i += 1) {
+      tree = {
+        type: "split",
+        id: `legacy-workspace-split-${i}`,
+        direction: "row",
+        ratio: 0.5,
+        first: tree,
+        second: { type: "leaf", tileId: orderedTileIds[i]! },
+      };
+    }
+    return tree;
+  };
+
+  const buildWorkspaceDocumentFromControllerState = (): WorkspaceDocument => {
+    const state = controller.getState();
+    const tiles: WorkspaceDocument["workspace"]["tiles"] = {};
+    for (const [tileId, tileSpec] of Object.entries(state.workspaceTiles)) {
+      if (tileSpec.kind === "chart" && tileSpec.chartTileId) {
+        const chartTile = state.chartTiles[tileSpec.chartTileId];
+        const tabOrder = (chartTile?.tabs ?? []).map((tab) => tab.id);
+        const tabs = Object.fromEntries(
+          (chartTile?.tabs ?? []).map((tab) => [
+            tab.id,
+            {
+              id: tab.id,
+              title: tab.title,
+              source: {
+                assetId: state.chartPaneSources[tab.chartPaneId]?.symbol ?? tab.title ?? "UNKNOWN",
+                timeframe: state.chartPaneSources[tab.chartPaneId]?.timeframe ?? "1h",
+              },
+            },
+          ])
+        );
+        const paneOrder = state.paneLayout.order;
+        const panes = Object.fromEntries(
+          paneOrder
+            .map((paneId) => state.paneLayout.panes[paneId])
+            .filter((pane): pane is NonNullable<typeof pane> => !!pane)
+            .map((pane) => [
+              pane.id,
+              {
+                id: pane.id,
+                kind: (pane.kind === "indicator" ? "indicator" : "price") as "price" | "indicator",
+                title: pane.title ?? pane.id,
+                visible: state.paneLayout.visibility[pane.id] ?? true,
+                ratio: Math.max(0.0001, state.paneLayout.ratios[pane.id] ?? 1),
+              },
+            ])
+        );
+        tiles[tileId] = {
+          id: tileId,
+          kind: "chart",
+          title: tileSpec.title,
+          chart: {
+            activeTabId: chartTile?.activeTabId ?? tabOrder[0] ?? "tab-price",
+            tabOrder,
+            tabs,
+            indicatorOrder: [],
+            indicators: {},
+            viewport: {
+              priceAxisMode: state.priceAxisMode,
+            },
+            paneOrder,
+            panes,
+          },
+        };
+      } else {
+        tiles[tileId] = {
+          id: tileId,
+          kind: "objects",
+          title: tileSpec.title,
+        };
+      }
+    }
+    return {
+      workspace: {
+        activeTileId:
+          state.workspaceTileOrder.find((tileId) => state.workspaceTiles[tileId]?.chartTileId === state.activeChartTileId) ??
+          state.workspaceTileOrder[0] ??
+          null,
+        layoutTree: buildWorkspaceLayoutTreeFromControllerState(),
+        tiles,
+        drawingsByAsset: {},
+        ui: {
+          theme: state.theme,
+          activeTool: state.activeTool,
+          isObjectTreeOpen: state.isObjectTreeOpen,
+          isLeftStripOpen: state.isLeftStripOpen,
+        },
+      },
+    };
+  };
+
+  const workspaceEngine = createWorkspaceEngine({
+    initialState: buildWorkspaceDocumentFromControllerState(),
+    validate: "strict_with_warnings",
+  });
+
   const workspaceIntents = createWorkspaceIntentController({
     controller,
     getChartForTile: getActiveChartForTile,
@@ -270,6 +377,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const stateNow = controller.getState();
       const persistedChartTiles = buildPersistedChartTiles({
         state: stateNow,
+        controller,
         chartRuntimes,
         chartTileTreeOpen,
         selectedTimeframe: options.marketControls?.selectedTimeframe,
@@ -696,7 +804,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const renderWorkspaceTiles = () => {
     const state = controller.getState();
     projectWorkspace({
-      state,
+      state: {
+        ...state,
+        workspaceLayoutTree: workspaceEngine.getState().workspace.layoutTree,
+      },
       tilesRow,
       maps: {
         tileShellById,
@@ -1129,6 +1240,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   let lastLayoutJson = "";
   const unsubscribe = controller.subscribe((state) => {
+    workspaceEngine.setState(buildWorkspaceDocumentFromControllerState());
     const layout = state.paneLayout;
     const currentLayoutJson = JSON.stringify({
       theme: state.theme,

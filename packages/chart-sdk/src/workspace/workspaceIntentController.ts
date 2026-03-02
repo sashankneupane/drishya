@@ -158,20 +158,25 @@ export const createWorkspaceIntentController = (
   };
 
   const movePaneInTile = (chartTileId: string, paneId: string, direction: PaneDirection): boolean => {
-    const chart = options.getChartForTile(chartTileId);
-    if (!chart) return false;
-    const runtimeOrder = chart.paneLayouts().map((pane) => canonicalRuntimePaneId(pane.id));
-    if (!runtimeOrder.length) return false;
-    const runtimeSet = new Set(runtimeOrder);
-    const currentGlobalOrder = options.controller
-      .getState()
-      .paneLayout.order
-      .map((id) => canonicalRuntimePaneId(id));
-    const currentScopedOrder = currentGlobalOrder.filter((id) => runtimeSet.has(id));
+    const state = options.controller.getState();
+    const chartTile = state.chartTiles[chartTileId];
+    if (!chartTile) return false;
+    const rootPaneIds = new Set(chartTile.tabs.map((tab) => canonicalRuntimePaneId(tab.chartPaneId)));
+    if (!rootPaneIds.size) return false;
+    const scopedPaneSet = new Set<string>(rootPaneIds);
+    for (const [paneKey, spec] of Object.entries(state.paneLayout.panes)) {
+      const canonicalPaneKey = canonicalRuntimePaneId(paneKey);
+      const parent = canonicalRuntimePaneId(spec.parentChartPaneId ?? "");
+      if (spec.kind === "indicator" && rootPaneIds.has(parent)) {
+        scopedPaneSet.add(canonicalPaneKey);
+      }
+    }
+    const currentGlobalOrder = state.paneLayout.order.map((id) => canonicalRuntimePaneId(id));
+    const currentScopedOrder = currentGlobalOrder.filter((id) => scopedPaneSet.has(id));
     if (!currentScopedOrder.length) return false;
 
     const targetPaneId = canonicalRuntimePaneId(paneId);
-    if (!runtimeSet.has(targetPaneId)) return false;
+    if (!scopedPaneSet.has(targetPaneId)) return false;
     const idx = currentScopedOrder.indexOf(targetPaneId);
     if (idx < 0) return false;
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
@@ -185,7 +190,7 @@ export const createWorkspaceIntentController = (
     const nextGlobalOrder = [...currentGlobalOrder];
     const scopedPositions: number[] = [];
     for (let i = 0; i < nextGlobalOrder.length; i += 1) {
-      if (runtimeSet.has(nextGlobalOrder[i]!)) scopedPositions.push(i);
+      if (scopedPaneSet.has(nextGlobalOrder[i]!)) scopedPositions.push(i);
     }
     for (let i = 0; i < scopedPositions.length; i += 1) {
       const position = scopedPositions[i]!;

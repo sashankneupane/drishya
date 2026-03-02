@@ -50,6 +50,40 @@ const replaceSplitNode = (
   };
 };
 
+const replaceLeafTile = (
+  node: WorkspaceLayoutNode,
+  targetTileId: string,
+  replacement: WorkspaceLayoutNode
+): { node: WorkspaceLayoutNode; replaced: boolean } => {
+  if (node.type === "leaf") {
+    if (node.tileId !== targetTileId) {
+      return { node, replaced: false };
+    }
+    return { node: replacement, replaced: true };
+  }
+  const first = replaceLeafTile(node.first, targetTileId, replacement);
+  if (first.replaced) {
+    return {
+      node: {
+        ...node,
+        first: first.node,
+      },
+      replaced: true,
+    };
+  }
+  const second = replaceLeafTile(node.second, targetTileId, replacement);
+  if (second.replaced) {
+    return {
+      node: {
+        ...node,
+        second: second.node,
+      },
+      replaced: true,
+    };
+  }
+  return { node, replaced: false };
+};
+
 const resizeSplitNode = (
   node: WorkspaceLayoutNode,
   splitNodeId: string,
@@ -116,8 +150,22 @@ export function reduceWorkspaceState(
     case "workspace/tile_added": {
       const { tileId, tile } = intent.payload;
       if (state.tiles[tileId]) throw new Error(`Tile '${tileId}' already exists.`);
+      const existingLeaf = state.layoutTree;
+      const nextLayout: WorkspaceLayoutNode = {
+        type: "split",
+        id: `auto-split-${tileId}`,
+        direction: "row",
+        ratio: 0.5,
+        first: existingLeaf,
+        second: {
+          type: "leaf",
+          tileId,
+        },
+      };
       return {
         ...state,
+        activeTileId: state.activeTileId ?? tileId,
+        layoutTree: nextLayout,
         tiles: {
           ...state.tiles,
           [tileId]: tile,
@@ -147,12 +195,16 @@ export function reduceWorkspaceState(
         first,
         second,
       };
+      const replacedByTarget = replaceLeafTile(state.layoutTree, targetTileId, nextNode);
+      if (replacedByTarget.replaced) {
+        return {
+          ...state,
+          layoutTree: replacedByTarget.node,
+        };
+      }
       return {
         ...state,
-        layoutTree:
-          state.layoutTree.type === "leaf" && state.layoutTree.tileId === targetTileId
-            ? nextNode
-            : replaceSplitNode(state.layoutTree, splitNodeId, nextNode),
+        layoutTree: replaceSplitNode(state.layoutTree, splitNodeId, nextNode),
       };
     }
     case "workspace/tile_moved": {
