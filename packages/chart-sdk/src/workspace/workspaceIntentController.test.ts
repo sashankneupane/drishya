@@ -118,5 +118,37 @@ function testDeletePaneInTileRemovesPaneAndSeries() {
   }
 }
 
+function testRuntimePaneOrderMatchesControllerAfterSequentialMoves() {
+  const controller = new WorkspaceController({});
+  controller.registerPane({ id: "rsi", kind: "indicator", title: "RSI", parentChartPaneId: "price" });
+  controller.registerPane({ id: "macd", kind: "indicator", title: "MACD", parentChartPaneId: "price" });
+  controller.setPaneOrder(["price", "rsi", "macd"]);
+
+  const chart = new FakeChart(["price-pane", "rsi-pane", "macd-pane"], []);
+  const intents = createWorkspaceIntentController({
+    controller,
+    getChartForTile: () => chart as any,
+    getChartsForTile: () => [chart as any],
+    applyIndicatorSetToTile: () => {},
+    savePersistedState: () => {},
+  });
+
+  const movedUp = intents.movePaneInTile("chart-tile-1", "macd", "up");
+  if (!movedUp) throw new Error("Expected MACD pane move up to succeed");
+  const movedUpAgain = intents.movePaneInTile("chart-tile-1", "macd", "up");
+  if (!movedUpAgain) throw new Error("Expected MACD second move up to succeed");
+
+  const controllerOrder = controller.getState().paneLayout.order.join(",");
+  if (controllerOrder !== "macd,price,rsi") {
+    throw new Error(`Expected controller pane order macd,price,rsi but got ${controllerOrder}`);
+  }
+
+  const runtimeOrder = chart.paneLayouts().map((pane) => pane.id).join(",");
+  if (runtimeOrder !== "macd-pane,price-pane,rsi-pane") {
+    throw new Error(`Expected runtime pane order macd-pane,price-pane,rsi-pane but got ${runtimeOrder}`);
+  }
+}
+
 testMovePaneInTileUsesControllerOrder();
 testDeletePaneInTileRemovesPaneAndSeries();
+testRuntimePaneOrderMatchesControllerAfterSequentialMoves();

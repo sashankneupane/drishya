@@ -196,3 +196,46 @@ fn appearance_restore_rejects_invalid_shape() {
         .expect_err("invalid appearance should fail");
     assert!(err.contains("Invalid background color"));
 }
+
+#[test]
+fn drawing_snapshot_roundtrip_is_deterministic() {
+    let mut chart = Chart::new(900.0, 500.0);
+    chart.set_data(vec![candle(1, 100.0), candle(2, 101.0), candle(3, 102.0)]);
+    chart
+        .restore_drawing_snapshots(&[
+            DrawingSnapshotDto {
+                id: 21,
+                kind: "hline".to_string(),
+                geometry: serde_json::json!({ "price": 105.0 }),
+                style: serde_json::json!({ "locked": false }),
+                layer_id: "drawings".to_string(),
+                group_id: None,
+                visible: true,
+                locked: false,
+            },
+            DrawingSnapshotDto {
+                id: 22,
+                kind: "vline".to_string(),
+                geometry: serde_json::json!({ "index": 2 }),
+                style: serde_json::json!({ "locked": false }),
+                layer_id: "drawings".to_string(),
+                group_id: None,
+                visible: true,
+                locked: false,
+            },
+        ])
+        .expect("drawing restore should pass");
+
+    let first = chart.export_drawing_snapshots();
+    let mut restored = Chart::new(900.0, 500.0);
+    restored.set_data(vec![candle(1, 100.0), candle(2, 101.0), candle(3, 102.0)]);
+    restored
+        .restore_drawing_snapshots(&first)
+        .expect("restored drawings should import");
+    let second = restored.export_drawing_snapshots();
+
+    assert_eq!(
+        serde_json::to_string(&first).expect("serialize first drawings"),
+        serde_json::to_string(&second).expect("serialize second drawings")
+    );
+}
