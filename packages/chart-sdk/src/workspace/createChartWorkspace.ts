@@ -60,6 +60,7 @@ import { placeNewChartTileAtPointer } from "./tilePlacement.js";
 import { parseChartTabDragPayload } from "./chartTabDnd.js";
 import { buildPaneToTileOwnershipMap } from "./paneOwnership.js";
 import { resolveReadoutColor, resolveReadoutLabel } from "./readoutStyle.js";
+import { resolvePaneRuntimeIdentity } from "./runtimeIdentity.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -1526,17 +1527,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   const createRuntimeForPane = (paneId: string): ChartPaneRuntime => {
     const state = controller.getState();
-    let chartTileId: string | undefined;
-    let chartTabId: string | undefined;
-    for (const [candidateTileId, chartTile] of Object.entries(state.chartTiles)) {
-      const tab = chartTile.tabs.find((candidate) => candidate.chartPaneId === paneId);
-      if (tab) {
-        chartTileId = candidateTileId;
-        chartTabId = tab.id;
-        break;
-      }
-    }
-    const runtimeKey = chartTileId && chartTabId ? `${chartTileId}:${chartTabId}` : paneId;
+    const { chartTileId, chartTabId, runtimeKey } = resolvePaneRuntimeIdentity(
+      paneId,
+      state.chartTiles
+    );
     const container = document.createElement("div");
     container.className = "absolute overflow-hidden";
     const paneCanvas = document.createElement("canvas");
