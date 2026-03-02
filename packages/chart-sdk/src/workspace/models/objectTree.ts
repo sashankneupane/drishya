@@ -1,5 +1,5 @@
-import type { ObjectTreeState } from "../wasm/contracts.js";
-import type { WorkspacePaneLayoutState } from "../workspace/models/types.js";
+import type { ObjectTreeState } from "../../wasm/contracts.js";
+import type { WorkspacePaneLayoutState } from "./types.js";
 
 export type ObjectTreeNodeKind = "pane" | "series" | "drawing" | "header" | "layer" | "group";
 
@@ -16,16 +16,16 @@ export interface ObjectTreeNode {
 
 export type ObjectTreeAction =
   | {
-    type: "toggle_visibility";
-    kind: "pane" | "series" | "drawing" | "layer" | "group";
-    id: string;
-    visible: boolean;
-  }
+      type: "toggle_visibility";
+      kind: "pane" | "series" | "drawing" | "layer" | "group";
+      id: string;
+      visible: boolean;
+    }
   | {
-    type: "delete";
-    kind: "series" | "drawing" | "layer" | "group";
-    id: string;
-  };
+      type: "delete";
+      kind: "series" | "drawing" | "layer" | "group";
+      id: string;
+    };
 
 function canonicalPaneId(id: string): string {
   const trimmed = String(id || "").trim();
@@ -45,7 +45,7 @@ export function buildObjectTreeNodes(
     id: "header:data",
     label: "Data",
     kind: "header",
-    depth: 0
+    depth: 0,
   });
 
   const panesById = new Map(state.panes.map((pane) => [canonicalPaneId(pane.id), pane] as const));
@@ -75,7 +75,7 @@ export function buildObjectTreeNodes(
       kind: "pane",
       paneKind: "custom",
       depth: 1,
-      deletable: false
+      deletable: false,
     });
 
     const scopedPaneOrder = orderedPaneIds.filter((paneId) => {
@@ -97,7 +97,7 @@ export function buildObjectTreeNodes(
           paneKind: paneSpecMap[rootId]?.kind ?? (rootId === "price" ? "price" : "chart"),
           depth: 2,
           visible: scopedPane.visible,
-          deletable: rootId !== "price"
+          deletable: rootId !== "price",
         });
       } else {
         const indicatorTitle = paneSpecMap[scopedPaneId]?.title ?? scopedPaneId.toUpperCase();
@@ -108,7 +108,7 @@ export function buildObjectTreeNodes(
           paneKind: paneSpecMap[scopedPaneId]?.kind ?? "indicator",
           depth: 2,
           visible: scopedPane.visible,
-          deletable: true
+          deletable: true,
         });
       }
       for (const series of state.series) {
@@ -119,7 +119,7 @@ export function buildObjectTreeNodes(
           kind: "series",
           depth: 3,
           visible: series.visible,
-          deletable: true
+          deletable: true,
         });
       }
     }
@@ -136,7 +136,7 @@ export function buildObjectTreeNodes(
         paneKind: paneSpecMap[paneId]?.kind ?? (paneId === "price" ? "price" : "custom"),
         depth: 1,
         visible: pane.visible,
-        deletable: paneId !== "price"
+        deletable: paneId !== "price",
       });
       for (const series of state.series) {
         if (series.deleted || canonicalPaneId(series.pane_id) !== paneId) continue;
@@ -146,7 +146,7 @@ export function buildObjectTreeNodes(
           kind: "series",
           depth: 2,
           visible: series.visible,
-          deletable: true
+          deletable: true,
         });
       }
     }
@@ -156,12 +156,10 @@ export function buildObjectTreeNodes(
     id: "header:drawings",
     label: "Drawings",
     kind: "header",
-    depth: 0
+    depth: 0,
   });
 
-  // Sort layers by order
   const sortedLayers = [...state.layers].sort((a, b) => b.order - a.order);
-
   for (const layer of sortedLayers) {
     out.push({
       id: layer.id,
@@ -170,19 +168,17 @@ export function buildObjectTreeNodes(
       depth: 1,
       visible: layer.visible,
       locked: layer.locked,
-      deletable: layer.id !== "default"
+      deletable: layer.id !== "default",
     });
 
-    // Groups in this layer with no parent
-    const topGroups = state.groups.filter(g => g.layer_id === layer.id && !g.parent_group_id)
+    const topGroups = state.groups
+      .filter((g) => g.layer_id === layer.id && !g.parent_group_id)
       .sort((a, b) => b.order - a.order);
-
     for (const group of topGroups) {
       addGroupsRecursively(group, 2, state, out);
     }
 
-    // Drawings in this layer with no group
-    const layerDrawings = state.drawings.filter(d => d.layer_id === layer.id && !d.group_id);
+    const layerDrawings = state.drawings.filter((d) => d.layer_id === layer.id && !d.group_id);
     for (const drawing of layerDrawings) {
       out.push({
         id: String(drawing.id),
@@ -191,7 +187,7 @@ export function buildObjectTreeNodes(
         depth: 2,
         visible: drawing.visible,
         locked: drawing.locked,
-        deletable: true
+        deletable: true,
       });
     }
   }
@@ -199,26 +195,36 @@ export function buildObjectTreeNodes(
   return out;
 }
 
-function addGroupsRecursively(group: any, depth: number, state: ObjectTreeState, out: ObjectTreeNode[]) {
+function addGroupsRecursively(
+  group: {
+    id: string;
+    name: string;
+    visible: boolean;
+    locked: boolean;
+    order: number;
+  },
+  depth: number,
+  state: ObjectTreeState,
+  out: ObjectTreeNode[]
+): void {
   out.push({
     id: group.id,
     label: group.name,
     kind: "group",
-    depth: depth,
+    depth,
     visible: group.visible,
     locked: group.locked,
-    deletable: true
+    deletable: true,
   });
 
-  // Subgroups
-  const subGroups = state.groups.filter(g => g.parent_group_id === group.id)
+  const subGroups = state.groups
+    .filter((g) => g.parent_group_id === group.id)
     .sort((a, b) => b.order - a.order);
   for (const sub of subGroups) {
     addGroupsRecursively(sub, depth + 1, state, out);
   }
 
-  // Drawings in this group
-  const groupDrawings = state.drawings.filter(d => d.group_id === group.id);
+  const groupDrawings = state.drawings.filter((d) => d.group_id === group.id);
   for (const drawing of groupDrawings) {
     out.push({
       id: String(drawing.id),
@@ -227,7 +233,7 @@ function addGroupsRecursively(group: any, depth: number, state: ObjectTreeState,
       depth: depth + 1,
       visible: drawing.visible,
       locked: drawing.locked,
-      deletable: true
+      deletable: true,
     });
   }
 }

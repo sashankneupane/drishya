@@ -5,7 +5,7 @@ import type {
   CreateChartWorkspaceOptions,
   WorkspaceTheme,
 } from "../models/types.js";
-import type { DrawingToolId } from "../../toolbar/model.js";
+import type { DrawingToolId } from "../models/drawingTool.js";
 
 export interface DrishyaWasmModule {
   default?: () => Promise<unknown> | unknown;

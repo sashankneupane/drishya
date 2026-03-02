@@ -1,7 +1,7 @@
 import type { DrishyaChartClient } from "../../wasm/client.js";
 import type { PaneLayout, WasmChartLike } from "../../wasm/contracts.js";
-import { isDrawingToolId } from "../../toolbar/model.js";
-import type { LayoutRect } from "../../layout/splitTree.js";
+import { isDrawingToolId } from "../models/drawingTool.js";
+import type { LayoutRect } from "../layout/types.js";
 import type { WorkspaceChartSplitDirection, WorkspaceChartSplitNode } from "../models/types.js";
 
 const PANE_GAP_PX = 4;

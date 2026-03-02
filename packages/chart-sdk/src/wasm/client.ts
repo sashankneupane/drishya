@@ -18,7 +18,7 @@ import type {
   WasmChartLike
 } from "./contracts.js";
 
-import type { ObjectTreeAction } from "../chrome/objectTree.js";
+import type { ObjectTreeAction } from "../workspace/models/objectTree.js";
 
 const EMPTY_OBJECT_TREE: ObjectTreeState = {
   panes: [],

@@ -40,7 +40,7 @@ export const DRAWING_TOOLS: readonly DrawingToolDef[] = [
   { id: "ellipse", label: "Ellipse", hotkey: "E" },
   { id: "text", label: "Text", hotkey: "X" },
   { id: "brush", label: "Brush", hotkey: "K" },
-  { id: "highlighter", label: "Marker", hotkey: "M" }
+  { id: "highlighter", label: "Marker", hotkey: "M" },
 ];
 
 export function isDrawingToolId(value: string): value is DrawingToolId {

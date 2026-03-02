@@ -1,5 +1,5 @@
-import type { LayoutRect } from "../../layout/splitTree.js";
-import { computePaneLayouts } from "../../chrome/layout.js";
+import type { LayoutRect } from "./types.js";
+import { computePaneLayouts } from "./computePaneLayouts.js";
 import type { WorkspacePaneLayoutState } from "../models/types.js";
 
 export interface PaneRect {

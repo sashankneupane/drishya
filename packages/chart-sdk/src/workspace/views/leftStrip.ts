@@ -1,7 +1,7 @@
 import { makeSvgIcon } from "./icons.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
 import type { WorkspaceToolDef } from "../models/types.js";
-import type { DrawingToolId } from "../../toolbar/model.js";
+import type { DrawingToolId } from "../models/drawingTool.js";
 
 interface LeftStripOptions {
   tools: readonly WorkspaceToolDef[];

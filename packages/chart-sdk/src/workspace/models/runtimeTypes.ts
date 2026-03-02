@@ -1,6 +1,6 @@
 import type { DrishyaChartClient } from "../../wasm/client.js";
 import type { WasmChartLike } from "../../wasm/contracts.js";
-import type { LayoutRect } from "../../layout/splitTree.js";
+import type { LayoutRect } from "../layout/types.js";
 
 export interface ChartPaneRuntime {
   runtimeKey?: string;

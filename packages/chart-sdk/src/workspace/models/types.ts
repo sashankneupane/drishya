@@ -1,4 +1,4 @@
-import type { DrawingToolId } from "../../toolbar/model.js";
+import type { DrawingToolId } from "./drawingTool.js";
 import type { ChartAppearanceConfig, DrawingConfig, WasmChartLike } from "../../wasm/contracts.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
 import type { ReplayController } from "../replay/ReplayController.js";

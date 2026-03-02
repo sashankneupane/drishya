@@ -1,4 +1,4 @@
-import type { DrawingToolId } from "../../toolbar/model.js";
+import type { DrawingToolId } from "../models/drawingTool.js";
 import type { SeriesStyleOverride } from "../../wasm/contracts.js";
 import type { Candle } from "../../wasm/contracts.js";
 import { DrishyaChartClient } from "../../wasm/client.js";

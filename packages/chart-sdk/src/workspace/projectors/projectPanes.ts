@@ -1,4 +1,4 @@
-import type { LayoutRect } from "../../layout/splitTree.js";
+import type { LayoutRect } from "../layout/types.js";
 import type { ChartPaneRuntime } from "../models/runtimeTypes.js";
 
 type WorkspaceStateLike = {

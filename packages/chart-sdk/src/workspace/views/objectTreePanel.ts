@@ -2,7 +2,7 @@ import { makeSvgIcon } from "./icons.js";
 import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import type { DrishyaChartClient } from "../../wasm/client.js";
 import type { WorkspaceController } from "../controllers/WorkspaceController.js";
-import { buildObjectTreeNodes } from "../../chrome/objectTree.js";
+import { buildObjectTreeNodes } from "../models/objectTree.js";
 import { canonicalRuntimePaneId } from "../models/paneSpec.js";
 
 interface ObjectTreePanelOptions {

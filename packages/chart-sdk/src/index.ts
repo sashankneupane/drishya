@@ -1,9 +1,7 @@
-export * from "./layout/splitTree.js";
-export * from "./chrome/layout.js";
-export * from "./chrome/objectTree.js";
-export * from "./chrome/topStrip.js";
-export * from "./tabs/model.js";
-export * from "./toolbar/model.js";
+export * from "./workspace/layout/types.js";
+export * from "./workspace/layout/computePaneLayouts.js";
+export * from "./workspace/models/objectTree.js";
+export * from "./workspace/models/drawingTool.js";
 export * from "./wasm/contracts.js";
 export * from "./wasm/client.js";
 export {
