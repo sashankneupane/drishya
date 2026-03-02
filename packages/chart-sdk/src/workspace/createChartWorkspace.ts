@@ -58,8 +58,8 @@ import { attachTileHeaderDragReorder } from "./tileHeaderDragReorder.js";
 import { attachTileResizerDrag } from "./tileResizerDrag.js";
 import { placeNewChartTileAtPointer } from "./tilePlacement.js";
 import { parseChartTabDragPayload } from "./chartTabDnd.js";
-import { indicatorLabel, indicatorReadoutColor } from "./indicatorPresentation.js";
 import { buildPaneToTileOwnershipMap } from "./paneOwnership.js";
+import { resolveReadoutColor, resolveReadoutLabel } from "./readoutStyle.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -1147,6 +1147,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       }
       const paneOffsets = new Map<string, number>();
       const rowHeight = 24;
+      const styleBySeriesId = new Map(
+        runtime.chart.seriesStyleSnapshot().map((item) => [item.series_id, item] as const)
+      );
       const mkOverlayIconBtn = (
         icon: "eye" | "eye-off" | "settings" | "trash" | "chevron-up" | "chevron-down",
         title: string,
@@ -1388,9 +1391,13 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
           label.style.textOverflow = "ellipsis";
           const nameEl = document.createElement("span");
           nameEl.style.color = !snapshotItem.visible ? "#71717a" : "#d4d4d8";
-          nameEl.textContent = `${snapshotItem.name || indicatorLabel(indicatorId)} `;
+          nameEl.textContent = `${resolveReadoutLabel(snapshotItem.id, snapshotItem.name)} `;
           const valueEl = document.createElement("span");
-          valueEl.style.color = !snapshotItem.visible ? "#71717a" : indicatorReadoutColor(snapshotItem.id);
+          valueEl.style.color = resolveReadoutColor(
+            snapshotItem.id,
+            styleBySeriesId,
+            snapshotItem.visible
+          );
           valueEl.textContent = Number.isFinite(snapshotItem.value) ? snapshotItem.value.toFixed(2) : "--";
           label.append(nameEl, valueEl);
           left.appendChild(label);
@@ -1465,7 +1472,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
                 {
                   paneId: indicatorPaneId,
                   seriesId: snapshotItem.id,
-                  indicatorId
+                  indicatorId: snapshotItem.id.split(":")[0]
                 },
                 runtime.chart
               );
