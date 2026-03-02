@@ -12,6 +12,7 @@ import type {
   ReplayState,
   SeriesStyleOverride,
   SeriesStyleSnapshot,
+  StrictIndicatorStyleSlotConfig,
   RestoreChartStateOptions,
   ReadoutSnapshot,
   WasmChartLike
@@ -292,6 +293,27 @@ export class DrishyaChartClient {
 
   addIndicator(indicatorId: string, params: Record<string, unknown> = {}): void {
     this.wasm.add_indicator_json?.(indicatorId, JSON.stringify(params ?? {}));
+  }
+
+  addIndicatorStrict(
+    indicatorId: string,
+    params: Record<string, unknown>,
+    styleSlots: Record<string, StrictIndicatorStyleSlotConfig>
+  ): void {
+    if (typeof this.wasm.add_indicator_strict_json !== "function") {
+      throw new Error("WASM strict indicator API is unavailable.");
+    }
+    if (!isRecord(params)) {
+      throw new Error("Strict indicator params must be a JSON object.");
+    }
+    if (!isRecord(styleSlots)) {
+      throw new Error("Strict indicator style slots must be a JSON object.");
+    }
+    this.wasm.add_indicator_strict_json(
+      indicatorId,
+      JSON.stringify(params),
+      JSON.stringify(styleSlots)
+    );
   }
 
   clearIndicatorOverlays(): void {
@@ -627,4 +649,8 @@ function safeJsonParse<T>(value: string): T | null {
   } catch {
     return null;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }

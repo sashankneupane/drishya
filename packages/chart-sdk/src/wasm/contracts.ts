@@ -66,6 +66,18 @@ export interface DiscoveredIndicator {
   visual: IndicatorVisualHint;
 }
 
+export interface StrictIndicatorStyleSlotConfig {
+  kind: "stroke" | "fill" | "histogram" | "markers";
+  color: string;
+  width?: number;
+  opacity?: number;
+  pattern?: "solid" | "dashed" | "dotted";
+  positiveColor?: string;
+  negativeColor?: string;
+  widthFactor?: number;
+  size?: number;
+}
+
 export interface SeriesStyleOverride {
   stroke_color?: string | null;
   stroke_width?: number | null;
@@ -350,6 +362,11 @@ export interface WasmChartLike {
   clear_indicator_overlays?(): void;
   indicator_catalog_json?(): string;
   add_indicator_json?(indicatorId: string, paramsJson: string): void;
+  add_indicator_strict_json?(
+    indicatorId: string,
+    paramsJson: string,
+    styleSlotsJson: string
+  ): void;
 
   // Group F: Panes + Series
   set_pane_weight?(paneId: string, ratio: number): void;
