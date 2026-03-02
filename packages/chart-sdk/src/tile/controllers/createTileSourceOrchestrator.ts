@@ -31,6 +31,7 @@ export interface TileSourceOrchestrator {
   sync: () => void;
   bindPaneRuntime: (paneId: string) => void;
   getSourceLabel: (paneId: string) => string;
+  getCandlesForPane: (paneId: string) => readonly Candle[] | null;
   dispose: () => void;
 }
 
@@ -94,6 +95,7 @@ export function createTileSourceOrchestrator(options: TileSourceOrchestratorOpti
     if (!current) return;
     current.candles = Array.isArray(snapshot) ? snapshot : [];
     applySnapshotToSource(current);
+    options.onDataMutated?.();
     if (current.unsubscribe) return;
     const maybeUnsubscribe = await options.dataFeed.subscribe(current.source, (candle) => {
       const target = sourceEntryByKey.get(entry.key);
@@ -174,6 +176,14 @@ export function createTileSourceOrchestrator(options: TileSourceOrchestratorOpti
     return `${source.symbol} · ${source.timeframe}`;
   };
 
+  const getCandlesForPane = (paneId: string): readonly Candle[] | null => {
+    const key = paneSourceKeyByPaneId.get(paneId);
+    if (!key) return null;
+    const entry = sourceEntryByKey.get(key);
+    if (!entry) return null;
+    return entry.candles;
+  };
+
   const dispose = () => {
     for (const entry of sourceEntryByKey.values()) {
       entry.unsubscribe?.();
@@ -182,5 +192,5 @@ export function createTileSourceOrchestrator(options: TileSourceOrchestratorOpti
     paneSourceKeyByPaneId.clear();
   };
 
-  return { sync, bindPaneRuntime, getSourceLabel, dispose };
+  return { sync, bindPaneRuntime, getSourceLabel, getCandlesForPane, dispose };
 }

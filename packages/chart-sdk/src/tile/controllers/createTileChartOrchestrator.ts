@@ -2,6 +2,7 @@ import type { WorkspaceController } from "../../workspace/controllers/WorkspaceC
 import type { ChartPaneRuntime } from "../../workspace/models/runtimeTypes.js";
 import type { WorkspaceIntentController } from "../../workspace/controllers/workspaceIntentController.js";
 import type { DrishyaChartClient } from "../../wasm/client.js";
+import type { Candle } from "../../wasm/contracts.js";
 import { createTileSourceOrchestrator } from "./createTileSourceOrchestrator.js";
 import { createTileObjectTreeOrchestrator } from "./createTileObjectTreeOrchestrator.js";
 import { projectTileIndicators } from "../../workspace/projectors/projectIndicators.js";
@@ -50,6 +51,7 @@ interface CreateTileChartOrchestratorOptions {
   setupCanvasBackingStore: () => void;
   savePersistedState: () => void;
   savePersistedStateImmediate: () => void;
+  onIndicatorSetApplied?: (chartTileId: string) => void;
 }
 
 export interface TileChartOrchestrator {
@@ -64,6 +66,7 @@ export interface TileChartOrchestrator {
   syncSources: () => void;
   bindRuntimeSource: (paneId: string) => void;
   getSourceLabel: (paneId: string) => string;
+  getCandlesForPane: (paneId: string) => readonly Candle[] | null;
   ensureTreeHandleForTile: (chartTileId: string) => ReturnType<
     ReturnType<typeof createTileObjectTreeOrchestrator>["ensureHandleForTile"]
   >;
@@ -90,6 +93,7 @@ export function createTileChartOrchestrator(options: CreateTileChartOrchestrator
       getRuntime: options.getRuntime,
       reconcilePaneSpecsForRuntime: options.reconcilePaneSpecsForRuntime,
     });
+    options.onIndicatorSetApplied?.(chartTileId);
   };
 
   const openIndicatorConfig = createOpenIndicatorConfig({
@@ -121,7 +125,10 @@ export function createTileChartOrchestrator(options: CreateTileChartOrchestrator
     selectedSymbol: options.selectedSymbol,
     selectedTimeframe: options.selectedTimeframe,
     dataFeed: options.dataFeed,
-    onDataMutated: options.savePersistedState,
+    onDataMutated: () => {
+      options.savePersistedState();
+      options.draw();
+    },
   });
 
   const tileObjectTreeOrchestrator = createTileObjectTreeOrchestrator({
@@ -196,6 +203,7 @@ export function createTileChartOrchestrator(options: CreateTileChartOrchestrator
     syncSources: () => tileSourceOrchestrator.sync(),
     bindRuntimeSource: (paneId) => tileSourceOrchestrator.bindPaneRuntime(paneId),
     getSourceLabel: (paneId) => tileSourceOrchestrator.getSourceLabel(paneId),
+    getCandlesForPane: (paneId) => tileSourceOrchestrator.getCandlesForPane(paneId),
     ensureTreeHandleForTile: (chartTileId) => tileObjectTreeOrchestrator.ensureHandleForTile(chartTileId),
     isChartTileTreeOpen: (chartTileId) => tileObjectTreeOrchestrator.isOpen(chartTileId),
     toggleChartTileTree: (chartTileId) => tileObjectTreeOrchestrator.toggle(chartTileId),
