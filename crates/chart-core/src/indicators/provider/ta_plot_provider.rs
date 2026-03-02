@@ -131,10 +131,11 @@ impl PlotDataProvider for TaCatalogPlotProvider {
         match self.build_series_strict(candles) {
             Ok(series) => series,
             Err(error) => {
-                panic!(
+                eprintln!(
                     "strict indicator provider '{}' failed contract validation: {}",
                     self.indicator_id, error
                 );
+                Vec::new()
             }
         }
     }
