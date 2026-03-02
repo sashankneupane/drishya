@@ -55,6 +55,7 @@ import { addChartTabForSymbol, addChartTabWithInheritedSource } from "./chartTab
 import { removeWorkspaceTileByChartTileId } from "./chartTileRemoval.js";
 import { toggleChartTileObjectTree } from "./objectTreeToggle.js";
 import { attachTileHeaderDragReorder } from "./tileHeaderDragReorder.js";
+import { attachTileResizerDrag } from "./tileResizerDrag.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -1029,32 +1030,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       resizer.style.display = tile.kind === "chart" && visibleIndex >= 0 && visibleIndex < visibleChartOrder.length - 1 ? "block" : "none";
       if (resizer.style.display === "block") {
         const nextTileId = visibleChartOrder[visibleIndex + 1];
-        resizer.onpointerdown = (event) => {
-          event.preventDefault();
-          const rowRect = tilesRow.getBoundingClientRect();
-          const startX = event.clientX;
-          const stateNow = controller.getState();
-          const leftRatio = stateNow.workspaceTiles[tileId]?.widthRatio ?? 0.5;
-          const rightRatio = stateNow.workspaceTiles[nextTileId]?.widthRatio ?? 0.5;
-          const pair = leftRatio + rightRatio;
-          const onMove = (moveEvent: PointerEvent) => {
-            const dx = moveEvent.clientX - startX;
-            const deltaRatio = dx / Math.max(1, rowRect.width);
-            const nextLeft = Math.max(0.12, Math.min(pair - 0.12, leftRatio + deltaRatio));
-            const nextRight = pair - nextLeft;
-            controller.updateWorkspaceTileRatios({
-              [tileId]: nextLeft,
-              [nextTileId]: nextRight
-            });
-          };
-          const onUp = () => {
-            window.removeEventListener("pointermove", onMove);
-            window.removeEventListener("pointerup", onUp);
-            savePersistedState();
-          };
-          window.addEventListener("pointermove", onMove);
-          window.addEventListener("pointerup", onUp);
-        };
+        attachTileResizerDrag({
+          resizer,
+          tilesRow,
+          tileId,
+          nextTileId,
+          controller,
+          onResizeEnd: () => savePersistedState(),
+        });
       } else {
         resizer.onpointerdown = null;
       }
