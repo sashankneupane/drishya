@@ -23,8 +23,12 @@ export interface CreateChartWorkspaceOptions {
   initialTheme?: WorkspaceTheme;
   initialTool?: DrawingToolId;
   injectStyles?: boolean;
-  /** When set, workspace state (theme, appearance, pane layout, candle style, UI state) is saved to localStorage and restored on load */
-  persistKey?: string;
+  /** Consumer-owned persistence lifecycle. Chart SDK emits serialized snapshots only. */
+  persistence?: {
+    initialState?: unknown;
+    onStateChange?: (next: unknown) => void;
+    debounceMs?: number;
+  };
   marketControls?: {
     /**
      * Called when a specific chart pane source is changed via pane UI.

@@ -28,7 +28,7 @@ interface RestoredWorkspaceShape {
 }
 
 interface RestorePersistedWorkspaceOptions {
-  persistKey: string | null;
+  persistedState?: unknown;
   controller: WorkspaceController;
   selectedTimeframe?: string;
   availableTimeframes?: readonly string[];
@@ -44,15 +44,13 @@ interface RestorePersistedWorkspaceOptions {
 export function restorePersistedWorkspace(
   options: RestorePersistedWorkspaceOptions
 ): { restoredObjectTreeWidth: number | null } {
-  if (!options.persistKey || typeof localStorage === "undefined") {
+  if (!options.persistedState || typeof options.persistedState !== "object") {
     return { restoredObjectTreeWidth: null };
   }
 
   let restoredObjectTreeWidth: number | null = null;
   try {
-    const raw = localStorage.getItem(options.persistKey);
-    if (!raw) return { restoredObjectTreeWidth: null };
-    const saved = JSON.parse(raw) as RestoredWorkspaceShape;
+    const saved = options.persistedState as RestoredWorkspaceShape;
     if (saved.theme) {
       options.controller.setTheme(saved.theme);
       for (const paneId of Object.keys(options.controller.getState().chartPanes)) {

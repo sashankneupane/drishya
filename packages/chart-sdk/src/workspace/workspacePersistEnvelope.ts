@@ -3,7 +3,24 @@ import type { ChartAppearanceConfig } from "../wasm/contracts.js";
 import type { PersistedChartTileStoredShape } from "./persistenceHelpers.js";
 import type { ChartStateSnapshot } from "../wasm/contracts.js";
 
-interface PersistedWorkspaceEnvelopeOptions {
+export interface WorkspacePersistenceEnvelope {
+  theme: WorkspaceState["theme"];
+  cursorMode: WorkspaceState["cursorMode"];
+  isObjectTreeOpen: WorkspaceState["isObjectTreeOpen"];
+  objectTreeWidth: number;
+  isLeftStripOpen: WorkspaceState["isLeftStripOpen"];
+  priceAxisMode: WorkspaceState["priceAxisMode"];
+  candleStyle?: string;
+  appearance?: ChartAppearanceConfig;
+  workspaceTiles: WorkspaceState["workspaceTiles"];
+  workspaceTileOrder: WorkspaceState["workspaceTileOrder"];
+  chartTiles: Record<string, PersistedChartTileStoredShape>;
+  drawingsByAsset: Record<string, ChartStateSnapshot>;
+  activeChartTileId: WorkspaceState["activeChartTileId"];
+  paneLayout: WorkspaceState["paneLayout"];
+}
+
+interface WorkspacePersistenceEnvelopeOptions {
   state: WorkspaceState;
   objectTreeWidth: number;
   candleStyle?: string | null;
@@ -12,9 +29,9 @@ interface PersistedWorkspaceEnvelopeOptions {
   drawingsByAsset?: Record<string, ChartStateSnapshot>;
 }
 
-export function buildPersistedWorkspaceEnvelope(
-  options: PersistedWorkspaceEnvelopeOptions
-): Record<string, unknown> {
+export function serializeWorkspacePersistenceEnvelope(
+  options: WorkspacePersistenceEnvelopeOptions
+): WorkspacePersistenceEnvelope {
   return {
     theme: options.state.theme,
     cursorMode: options.state.cursorMode,
@@ -32,4 +49,14 @@ export function buildPersistedWorkspaceEnvelope(
     paneLayout: options.state.paneLayout,
   };
 }
+
+export function deserializeWorkspacePersistenceEnvelope(
+  value: unknown
+): WorkspacePersistenceEnvelope | null {
+  if (!value || typeof value !== "object") return null;
+  return value as WorkspacePersistenceEnvelope;
+}
+
+// Backward-compatible alias while consumers migrate.
+export const buildPersistedWorkspaceEnvelope = serializeWorkspacePersistenceEnvelope;
 

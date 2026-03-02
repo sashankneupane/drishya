@@ -44,6 +44,14 @@ async function main() {
   // Dynamically import the modernized UI core
   const { createChartWorkspaceFromModule } = await import(`/packages/chart-sdk/dist/index.js?v=${version}`);
   const host = document.getElementById("chart-root");
+  const initialPersistedState = (() => {
+    try {
+      const raw = localStorage.getItem(DEMO_PERSIST_KEY);
+      return raw ? JSON.parse(raw) : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
 
   // Initialize the workspace with the new controller-based API
   const workspace = await createChartWorkspaceFromModule({
@@ -52,7 +60,16 @@ async function main() {
     initialTheme: "dark",
     initialTool: "select",
     injectStyles: true,
-    persistKey: DEMO_PERSIST_KEY,
+    persistence: {
+      initialState: initialPersistedState,
+      onStateChange: (next) => {
+        try {
+          localStorage.setItem(DEMO_PERSIST_KEY, JSON.stringify(next));
+        } catch {
+          // no-op
+        }
+      },
+    },
     marketControls: {
       symbols: BINANCE_SYMBOLS,
       timeframes: BINANCE_INTERVALS,

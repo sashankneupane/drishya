@@ -35,7 +35,7 @@ The workspace supports multiple vertically stacked panes (e.g., Price, RSI, MACD
 
 - **Layout Engine**: TS-driven (`WorkspaceController`). Owns pane order, ratios, and visibility.
 - **Synchronization**: Rust-driven authoritative crosshair and time-mapping.
-- **Persistence**: Pane arrangements are saved to `localStorage` via the `persistKey` option.
+- **Persistence**: Consumer-owned; pass `persistence.initialState` and `persistence.onStateChange` to control storage.
 
 ### Pane API
 

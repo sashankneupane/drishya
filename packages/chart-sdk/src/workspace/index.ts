@@ -9,4 +9,5 @@ export * from "./layout/index.js";
 export * from "./objectTreePanel.js";
 export * from "./replay/index.js";
 export * from "./types.js";
+export * from "./workspacePersistEnvelope.js";
 export * from "./WorkspaceController.js";

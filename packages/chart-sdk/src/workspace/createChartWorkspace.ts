@@ -81,8 +81,6 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   ensureHostHasViewport(host);
   host.innerHTML = "";
 
-  const persistKey = options.persistKey ?? null;
-
   const controller = new WorkspaceController({
     theme: options.initialTheme,
     activeTool: "select"
@@ -359,7 +357,7 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
 
   // Restore persisted state before building UI
   const restoreResult = restorePersistedWorkspace({
-    persistKey,
+    persistedState: options.persistence?.initialState,
     controller,
     selectedTimeframe: options.marketControls?.selectedTimeframe,
     availableTimeframes: options.marketControls?.timeframes,
@@ -380,9 +378,9 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     restoredObjectTreeWidth = restoreResult.restoredObjectTreeWidth;
   }
 
-  const DEBOUNCE_PERSIST_MS = 400;
+  const DEBOUNCE_PERSIST_MS = options.persistence?.debounceMs ?? 400;
   const persistNow = () => {
-    if (!persistKey || typeof localStorage === "undefined") return;
+    if (!options.persistence?.onStateChange) return;
     try {
       const stateNow = controller.getState();
       const persistedChartTiles = buildPersistedChartTiles({
@@ -406,14 +404,14 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
         chartTiles: persistedChartTiles,
         drawingsByAsset: Object.fromEntries(drawingsByAsset.entries()),
       });
-      localStorage.setItem(persistKey, JSON.stringify(state));
+      options.persistence.onStateChange(state);
     } catch {
-      // ignore quota or parse errors
+      // ignore consumer callback errors
     }
   };
   const persistenceScheduler = createPersistenceScheduler(persistNow, DEBOUNCE_PERSIST_MS);
   const savePersistedState = () => {
-    if (!persistKey || typeof localStorage === "undefined") return;
+    if (!options.persistence?.onStateChange) return;
     persistenceScheduler.schedule();
   };
   const savePersistedStateImmediate = () => {
