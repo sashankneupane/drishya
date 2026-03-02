@@ -3,6 +3,7 @@
  * Modernized to use the new Headless Controller Architecture.
  */
 import { createBinanceLoader } from "./loader.js";
+import { createPlaygroundStateStore } from "./stateStore.js";
 
 const DEFAULT_BINANCE_SYMBOL = "BTCUSDT";
 const DEFAULT_BINANCE_INTERVAL = "1m";
@@ -44,14 +45,8 @@ async function main() {
   // Dynamically import the modernized UI core
   const { createChartWorkspaceFromModule } = await import(`/packages/chart-sdk/dist/index.js?v=${version}`);
   const host = document.getElementById("chart-root");
-  const initialPersistedState = (() => {
-    try {
-      const raw = localStorage.getItem(DEMO_PERSIST_KEY);
-      return raw ? JSON.parse(raw) : undefined;
-    } catch {
-      return undefined;
-    }
-  })();
+  const stateStore = createPlaygroundStateStore(DEMO_PERSIST_KEY);
+  const initialPersistedState = stateStore.load();
 
   // Initialize the workspace with the new controller-based API
   const workspace = await createChartWorkspaceFromModule({
@@ -63,11 +58,7 @@ async function main() {
     persistence: {
       initialState: initialPersistedState,
       onStateChange: (next) => {
-        try {
-          localStorage.setItem(DEMO_PERSIST_KEY, JSON.stringify(next));
-        } catch {
-          // no-op
-        }
+        stateStore.save(next);
       },
     },
     marketControls: {
