@@ -8,6 +8,8 @@ interface LeftStripOptions {
   controller: WorkspaceController;
   drawingToolsEnabled?: boolean;
   onClear?: () => void;
+  onAddChartTile?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export interface LeftStripHandle {
@@ -29,14 +31,30 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
 
   const toolButtons: Map<string, HTMLElement> = new Map();
   const activePopups: HTMLElement[] = [];
-  const activeToolReadout = document.createElement("div");
-  activeToolReadout.className =
-    "mt-auto px-1 py-2 text-[9px] leading-tight text-zinc-300 bg-zinc-950/60 border-t border-workspace-border text-center break-words";
-  activeToolReadout.textContent = "Active: select";
 
   const closeAllPopups = () => {
     activePopups.forEach(p => p.remove());
     activePopups.length = 0;
+  };
+  const renderActiveState = (state: ReturnType<WorkspaceController["getState"]>) => {
+    const activeTool = state.activeTool;
+    options.tools.forEach(tool => {
+      const btn = toolButtons.get(tool.id);
+      if (!btn) return;
+      const isActive =
+        tool.id === activeTool ||
+        (tool.children?.some(c => c.id === activeTool)) ||
+        (tool.id === "cursor-group" && activeTool === "select");
+      if (isActive) {
+        btn.className = `${BTN_BASE} ${BTN_ACTIVE} relative group`;
+      } else {
+        btn.className = `${BTN_BASE} ${BTN_IDLE} relative group`;
+      }
+      if (tool.id === "theme") {
+        const container = btn.querySelector("div");
+        if (container) container.replaceChildren(makeSvgIcon(state.theme === "dark" ? "theme" : "theme-off", ICON_SIZE));
+      }
+    });
   };
 
   options.tools.forEach((tool) => {
@@ -80,6 +98,40 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
     root.appendChild(btn);
     toolButtons.set(tool.id, btn);
   });
+
+  const utilityRail = document.createElement("div");
+  utilityRail.className = "mt-auto flex flex-col border-t border-workspace-border";
+
+  const makeUtilityButton = (icon: string, label: string, onClick: () => void) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `${BTN_BASE} ${BTN_IDLE} relative group`;
+    btn.title = label;
+    btn.appendChild(makeSvgIcon(icon, ICON_SIZE));
+    const hoverLabel = document.createElement("span");
+    hoverLabel.className =
+      "pointer-events-none absolute left-full ml-2 px-2 py-1 rounded bg-zinc-950 border border-workspace-border text-[10px] text-zinc-200 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity";
+    hoverLabel.textContent = label;
+    btn.appendChild(hoverLabel);
+    btn.onclick = (event) => {
+      event.stopPropagation();
+      closeAllPopups();
+      onClick();
+    };
+    return btn;
+  };
+
+  const addTileBtn = makeUtilityButton("plus", "Add Chart Tile", () => options.onAddChartTile?.());
+  addTileBtn.draggable = true;
+  addTileBtn.ondragstart = (event) => {
+    event.dataTransfer?.setData("application/x-drishya-add-chart-tile", "1");
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copyMove";
+  };
+  utilityRail.appendChild(addTileBtn);
+
+  const settingsBtn = makeUtilityButton("settings", "Settings", () => options.onOpenSettings?.());
+  utilityRail.appendChild(settingsBtn);
+  root.appendChild(utilityRail);
 
   function showGroupPopup(tool: WorkspaceToolDef, ownerBtn: HTMLElement) {
     closeAllPopups();
@@ -126,31 +178,8 @@ export function createLeftStrip(options: LeftStripOptions): LeftStripHandle {
     activePopups.push(popup);
   }
 
-  const unsubscribe = controller.subscribe((state) => {
-    const activeTool = state.activeTool;
-    activeToolReadout.textContent = `Active: ${activeTool}`;
-
-    // Update active states
-    options.tools.forEach(tool => {
-      const btn = toolButtons.get(tool.id);
-      if (!btn) return;
-
-      const isActive = tool.id === activeTool || (tool.children?.some(c => c.id === activeTool));
-      if (isActive) {
-        btn.className = `${BTN_BASE} ${BTN_ACTIVE} relative group`;
-      } else {
-        btn.className = `${BTN_BASE} ${BTN_IDLE} relative group`;
-      }
-
-      // Update theme icon
-      if (tool.id === "theme") {
-        const container = btn.querySelector("div");
-        if (container) container.replaceChildren(makeSvgIcon(state.theme === "dark" ? "theme" : "theme-off", ICON_SIZE));
-      }
-    });
-  });
-
-  root.appendChild(activeToolReadout);
+  const unsubscribe = controller.subscribe((state) => renderActiveState(state));
+  renderActiveState(controller.getState());
 
   // Global click to close popups
   const globalClick = () => closeAllPopups();

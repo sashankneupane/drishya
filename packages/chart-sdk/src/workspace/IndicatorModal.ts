@@ -1,83 +1,7 @@
 import { makeSvgIcon } from "./icons.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
-import { buildPaneSpecForRuntime } from "./paneSpec.js";
-
-export interface IndicatorDef {
-    id: string;
-    name: string;
-    description: string;
-    apply: (chart: DrishyaChartClient, controller: WorkspaceController) => void;
-}
-
-export const AVAILABLE_INDICATORS: IndicatorDef[] = [
-    {
-        id: "sma",
-        name: "Simple Moving Average",
-        description: "Rolling average of price (20 period)",
-        apply: (chart) => chart.addSmaOverlay(20)
-    },
-    {
-        id: "ema",
-        name: "Exponential Moving Average",
-        description: "EMA overlay (20 period)",
-        apply: (chart) => chart.addEmaOverlay(20)
-    },
-    {
-        id: "bb",
-        name: "Bollinger Bands",
-        description: "Volatility bands around price",
-        apply: (chart) => chart.addBbandsOverlay(20, 2.0)
-    },
-    {
-        id: "rsi",
-        name: "Relative Strength Index",
-        description: "Momentum oscillator for overbought/oversold",
-        apply: (chart) => chart.addRsiPaneIndicator(14)
-    },
-    {
-        id: "macd",
-        name: "MACD",
-        description: "MACD line, signal line, and histogram",
-        apply: (chart) => chart.addMacdPaneIndicator(12, 26, 9)
-    },
-    {
-        id: "atr",
-        name: "Average True Range",
-        description: "Volatility indicator based on true range",
-        apply: (chart) => chart.addAtrPaneIndicator(14)
-    },
-    {
-        id: "stoch",
-        name: "Stochastic Oscillator",
-        description: "Stochastic %K/%D oscillator",
-        apply: (chart) => chart.addStochasticPaneIndicator(14, 3, 3)
-    },
-    {
-        id: "obv",
-        name: "On-Balance Volume",
-        description: "Cumulative volume-flow indicator",
-        apply: (chart) => chart.addObvPaneIndicator()
-    },
-    {
-        id: "vwap",
-        name: "VWAP",
-        description: "Volume-weighted average price overlay",
-        apply: (chart) => chart.addVwapOverlay()
-    },
-    {
-        id: "adx",
-        name: "Average Directional Index",
-        description: "Trend strength with +DI and -DI",
-        apply: (chart) => chart.addAdxPaneIndicator(14)
-    },
-    {
-        id: "mom",
-        name: "Momentum Histogram",
-        description: "Histogram showing rate of change",
-        apply: (chart) => chart.addMomentumHistogramOverlay()
-    }
-];
+import type { DiscoveredIndicator } from "../wasm/contracts.js";
 
 export interface IndicatorModalOptions {
     chart: DrishyaChartClient;
@@ -88,23 +12,19 @@ export interface IndicatorModalOptions {
     onIndicatorSelected?: (indicatorId: string) => void;
 }
 
-export function createIndicatorModal(options: IndicatorModalOptions) {
-    const syncControllerPanesFromRuntime = () => {
-        const runtimePanes = options.chart.paneLayouts();
-        if (!runtimePanes.length) return;
-        const runtimeOrder = runtimePanes.map((p) => p.id);
-        const activeChartPaneId = options.controller.getState().activeChartPaneId;
-        for (const pane of runtimePanes) {
-            const existing = options.controller.getState().paneLayout.panes[pane.id];
-            const spec = buildPaneSpecForRuntime(pane.id, options.controller.getState().paneLayout, runtimeOrder);
-            if (spec.kind === "indicator" && !existing) {
-                spec.parentChartPaneId = activeChartPaneId;
-            }
-            options.controller.registerPane(spec);
-        }
-        options.controller.setPaneOrder(runtimeOrder);
-    };
+function defaultParamsFor(indicator: DiscoveredIndicator): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const p of indicator.params ?? []) {
+        const kind = String(p.kind || "").toLowerCase();
+        if (kind === "int" || kind === "integer") out[p.name] = 14;
+        else if (kind === "float" || kind === "number") out[p.name] = 2.0;
+        else if (kind === "bool" || kind === "boolean") out[p.name] = false;
+        else if (p.name.toLowerCase() === "source") out[p.name] = "close";
+    }
+    return out;
+}
 
+export function createIndicatorModal(options: IndicatorModalOptions) {
     const backdrop = document.createElement("div");
     backdrop.className = "fixed inset-0 bg-black/40 z-[100] flex items-center justify-center animate-in fade-in duration-200";
 
@@ -139,11 +59,13 @@ export function createIndicatorModal(options: IndicatorModalOptions) {
     const list = document.createElement("div");
     list.className = "flex-1 overflow-y-auto py-2 no-scrollbar min-h-[300px]";
 
+    const catalog = options.chart.indicatorCatalog();
     const renderList = (filter: string) => {
         list.innerHTML = "";
-        const filtered = AVAILABLE_INDICATORS.filter(ind =>
-            ind.name.toLowerCase().includes(filter.toLowerCase()) ||
-            ind.description.toLowerCase().includes(filter.toLowerCase())
+        const filtered = catalog.filter(ind =>
+            ind.display_name.toLowerCase().includes(filter.toLowerCase()) ||
+            ind.id.toLowerCase().includes(filter.toLowerCase()) ||
+            ind.category.toLowerCase().includes(filter.toLowerCase())
         );
 
         if (filtered.length === 0) {
@@ -160,28 +82,27 @@ export function createIndicatorModal(options: IndicatorModalOptions) {
 
             const name = document.createElement("span");
             name.className = "text-[13px] font-medium text-zinc-300 group-hover:text-white";
-            name.textContent = ind.name;
+            name.textContent = ind.display_name;
 
             const desc = document.createElement("span");
             desc.className = "text-[11px] text-zinc-600 group-hover:text-zinc-400";
-            desc.textContent = ind.description;
+            desc.textContent = `${ind.id} • ${ind.category}`;
 
             row.append(name, desc);
             row.onclick = () => {
-                console.log(`[IndicatorModal] Applying ${ind.name} (id: ${ind.id})`);
+                console.log(`[IndicatorModal] Applying ${ind.display_name} (id: ${ind.id})`);
                 try {
                     const targets = options.getTargetCharts?.() ?? [options.chart];
                     const applied = new Set<DrishyaChartClient>();
                     for (const target of targets) {
                         if (applied.has(target)) continue;
                         applied.add(target);
-                        ind.apply(target, options.controller);
+                        target.addIndicator(ind.id, defaultParamsFor(ind));
                     }
-                    syncControllerPanesFromRuntime();
                     options.onIndicatorSelected?.(ind.id);
-                    console.log(`[IndicatorModal] Successfully applied ${ind.name}`);
+                    console.log(`[IndicatorModal] Successfully applied ${ind.display_name}`);
                 } catch (err) {
-                    console.error(`[IndicatorModal] Failed to apply ${ind.name}:`, err);
+                    console.error(`[IndicatorModal] Failed to apply ${ind.display_name}:`, err);
                 }
 
                 console.log(`[IndicatorModal] Triggering redraw...`);

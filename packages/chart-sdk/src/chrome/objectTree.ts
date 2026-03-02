@@ -27,6 +27,14 @@ export type ObjectTreeAction =
     id: string;
   };
 
+function canonicalPaneId(id: string): string {
+  const trimmed = String(id || "").trim();
+  if (!trimmed) return trimmed;
+  if (trimmed === "price-pane") return "price";
+  if (trimmed.endsWith("-pane")) return trimmed.slice(0, -"-pane".length);
+  return trimmed;
+}
+
 export function buildObjectTreeNodes(
   state: ObjectTreeState,
   paneLayout?: WorkspacePaneLayoutState
@@ -40,57 +48,71 @@ export function buildObjectTreeNodes(
     depth: 0
   });
 
-  const panesById = new Map(state.panes.map((pane) => [pane.id, pane] as const));
-  const orderedPaneIds =
-    paneLayout?.order?.filter((id) => panesById.has(id)) ?? state.panes.map((pane) => pane.id);
+  const panesById = new Map(state.panes.map((pane) => [canonicalPaneId(pane.id), pane] as const));
+  const orderedPaneIds = (() => {
+    const layoutOrder = (paneLayout?.order ?? []).map((id) => canonicalPaneId(id));
+    const base = layoutOrder.filter((id) => panesById.has(id));
+    const seen = new Set(base);
+    for (const pane of state.panes) {
+      const id = canonicalPaneId(pane.id);
+      if (!seen.has(id)) base.push(id);
+    }
+    return base.length ? base : state.panes.map((pane) => canonicalPaneId(pane.id));
+  })();
   const paneSpecMap = paneLayout?.panes ?? {};
 
   const chartRoots = orderedPaneIds.filter((id) => {
     const kind = paneSpecMap[id]?.kind;
     return kind === "price" || kind === "chart" || (!kind && id === "price");
   });
-  const indicatorIds = orderedPaneIds.filter((id) => !chartRoots.includes(id));
 
   for (const rootId of chartRoots) {
-    const pane = panesById.get(rootId);
-    if (!pane) continue;
     const title = paneSpecMap[rootId]?.title ?? (rootId === "price" ? "Main Chart" : rootId.toUpperCase());
+
     out.push({
-      id: rootId,
+      id: `chart-root:${rootId}`,
       label: `Chart: ${title}`,
       kind: "pane",
-      paneKind: paneSpecMap[rootId]?.kind ?? (rootId === "price" ? "price" : "chart"),
+      paneKind: "custom",
       depth: 1,
-      visible: pane.visible,
-      deletable: rootId !== "price"
+      deletable: false
     });
 
-    const ownedIndicators = indicatorIds.filter((id) => {
-      const spec = paneSpecMap[id];
-      if (spec?.parentChartPaneId) return spec.parentChartPaneId === rootId;
-      const idx = orderedPaneIds.indexOf(id);
-      for (let i = idx - 1; i >= 0; i -= 1) {
-        const prevId = orderedPaneIds[i];
-        if (chartRoots.includes(prevId)) return prevId === rootId;
+    const scopedPaneOrder = orderedPaneIds.filter((paneId) => {
+      if (paneId === rootId) return true;
+      const spec = paneSpecMap[paneId];
+      if (spec?.kind !== "indicator") return false;
+      return canonicalPaneId(spec.parentChartPaneId ?? "price") === rootId;
+    });
+
+    for (const scopedPaneId of scopedPaneOrder) {
+      const scopedPane = panesById.get(scopedPaneId);
+      if (!scopedPane) continue;
+      if (scopedPaneId === rootId) {
+        const rootTitle = paneSpecMap[rootId]?.title ?? (rootId === "price" ? "Main Chart" : rootId.toUpperCase());
+        out.push({
+          id: rootId,
+          label: rootId === "price" ? "Price Pane" : `Chart Pane: ${rootTitle}`,
+          kind: "pane",
+          paneKind: paneSpecMap[rootId]?.kind ?? (rootId === "price" ? "price" : "chart"),
+          depth: 2,
+          visible: scopedPane.visible,
+          deletable: rootId !== "price"
+        });
+      } else {
+        const indicatorTitle = paneSpecMap[scopedPaneId]?.title ?? scopedPaneId.toUpperCase();
+        out.push({
+          id: scopedPaneId,
+          label: `Indicator Pane: ${indicatorTitle}`,
+          kind: "pane",
+          paneKind: paneSpecMap[scopedPaneId]?.kind ?? "indicator",
+          depth: 2,
+          visible: scopedPane.visible,
+          deletable: true
+        });
       }
-      return rootId === "price";
-    });
-
-    for (const indicatorId of ownedIndicators) {
-      const indicatorPane = panesById.get(indicatorId);
-      if (!indicatorPane) continue;
-      const indicatorTitle = paneSpecMap[indicatorId]?.title ?? indicatorId.toUpperCase();
-      out.push({
-        id: indicatorId,
-        label: `Indicator Pane: ${indicatorTitle}`,
-        kind: "pane",
-        paneKind: paneSpecMap[indicatorId]?.kind ?? "indicator",
-        depth: 2,
-        visible: indicatorPane.visible,
-        deletable: true
-      });
       for (const series of state.series) {
-        if (series.deleted || series.pane_id !== indicatorId) continue;
+        if (series.deleted || canonicalPaneId(series.pane_id) !== scopedPaneId) continue;
         out.push({
           id: series.id,
           label: `Series: ${series.name}`,
@@ -100,18 +122,6 @@ export function buildObjectTreeNodes(
           deletable: true
         });
       }
-    }
-
-    for (const series of state.series) {
-      if (series.deleted || series.pane_id !== rootId) continue;
-      out.push({
-        id: series.id,
-        label: `Series: ${series.name}`,
-        kind: "series",
-        depth: 2,
-        visible: series.visible,
-        deletable: true
-      });
     }
   }
 
@@ -129,7 +139,7 @@ export function buildObjectTreeNodes(
         deletable: paneId !== "price"
       });
       for (const series of state.series) {
-        if (series.deleted || series.pane_id !== paneId) continue;
+        if (series.deleted || canonicalPaneId(series.pane_id) !== paneId) continue;
         out.push({
           id: series.id,
           label: `Series: ${series.name}`,

@@ -89,6 +89,12 @@ impl WasmChart {
         self.chart.readout_source_label_hit_test(x, y)
     }
 
+    /// Returns current readout snapshot for TS-rendered overlays.
+    pub fn readout_snapshot_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.chart.readout_snapshot())
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize readout snapshot: {e}")))
+    }
+
     /// Sets pane size ratio weight for layout. Use `price` for the main pane,
     /// or the named pane id such as `rsi` / `momentum`.
     pub fn set_pane_weight(&mut self, pane_id: &str, ratio: f32) {

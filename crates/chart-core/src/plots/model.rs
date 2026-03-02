@@ -12,6 +12,7 @@ pub enum PaneId {
 pub enum LinePattern {
     Solid,
     Dashed,
+    Dotted,
 }
 
 #[derive(Debug, Clone)]

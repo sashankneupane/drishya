@@ -3,12 +3,19 @@ import { createSymbolSearchModal } from "./SymbolSearchModal.js";
 import type { DrishyaChartClient } from "../wasm/client.js";
 import type { WorkspaceController } from "./WorkspaceController.js";
 import { buildObjectTreeNodes } from "../chrome/objectTree.js";
+import { canonicalRuntimePaneId } from "./paneSpec.js";
 
 interface ObjectTreePanelOptions {
   getChart: () => DrishyaChartClient | null;
   controller: WorkspaceController;
   symbols?: readonly string[];
   onPaneSourceChange?: (paneId: string, symbol: string) => void | Promise<void>;
+  onIndicatorConfig?: (target: { paneId?: string; seriesId?: string; indicatorId?: string }) => void;
+  onDrawingConfig?: (target: { drawingId: number }) => void;
+  onToggleVisibility?: (target: { kind: "pane" | "series" | "drawing" | "layer" | "group"; id: string; visible: boolean }) => void;
+  onToggleLock?: (target: { kind: "drawing" | "layer" | "group"; id: string; locked: boolean }) => void;
+  onDelete?: (target: { kind: "pane" | "series" | "drawing" | "layer" | "group"; id: string; paneKind?: string }) => void;
+  onMovePane?: (target: { paneId: string; direction: "up" | "down" }) => void;
   onMutate?: () => void;
   getIsOpen?: () => boolean;
   onSetOpen?: (open: boolean) => void;
@@ -58,8 +65,40 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
     if (!chart) {
       return;
     }
+    const runtimePaneOrder = chart.paneLayouts().map((pane) => canonicalRuntimePaneId(pane.id));
     const state = chart.objectTreeState();
-    const nodes = buildObjectTreeNodes(state, controller.getState().paneLayout);
+    const paneLayout = controller.getState().paneLayout;
+    const runtimePaneSet = new Set(state.panes.map((pane) => canonicalRuntimePaneId(pane.id)));
+    const controllerOrder = paneLayout.order
+      .map((id) => canonicalRuntimePaneId(id))
+      .filter((id, idx, arr) => runtimePaneSet.has(id) && arr.indexOf(id) === idx);
+    const scopedOrder = [...controllerOrder];
+    for (const paneId of runtimePaneOrder) {
+      if (!runtimePaneSet.has(paneId)) continue;
+      if (!scopedOrder.includes(paneId)) scopedOrder.push(paneId);
+    }
+    const scopedPaneLayout = {
+      ...paneLayout,
+      order: scopedOrder,
+    };
+    const nodes = buildObjectTreeNodes(state, scopedPaneLayout);
+    const orderedPaneIds = scopedOrder;
+    const paneKindById = new Map<string, string>();
+    for (const [paneId, paneSpec] of Object.entries(paneLayout.panes ?? {})) {
+      paneKindById.set(paneId, paneSpec.kind);
+    }
+    for (const pane of state.panes) {
+      const canonicalPaneId = canonicalRuntimePaneId(pane.id);
+      if (!paneKindById.has(canonicalPaneId)) {
+        paneKindById.set(canonicalPaneId, canonicalPaneId === "price" ? "price" : "custom");
+      }
+    }
+    const seriesById = new Map(state.series.map((item) => [item.id, item] as const));
+    const indicatorSeriesIds = new Set<string>();
+    const readout = chart.readoutSnapshot();
+    for (const item of readout?.indicators ?? []) {
+      indicatorSeriesIds.add(item.id);
+    }
 
     if (nodes.length === 0) {
       const empty = document.createElement("div");
@@ -89,6 +128,16 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
 
       const actions = document.createElement("div");
       actions.className = "flex items-center gap-0.5 opacity-25 group-hover:opacity-100 transition-opacity";
+      const isIndicatorPane = node.kind === "pane" && node.paneKind === "indicator";
+      const canMovePane =
+        node.kind === "pane" &&
+        (node.paneKind === "indicator" || node.paneKind === "price" || node.paneKind === "chart");
+      const isIndicatorSeries = node.kind === "series" && (() => {
+        const series = seriesById.get(node.id);
+        if (!series) return false;
+        if (paneKindById.get(canonicalRuntimePaneId(series.pane_id)) === "indicator") return true;
+        return indicatorSeriesIds.has(node.id);
+      })();
 
       if (node.kind === "pane" && (node.paneKind === "chart" || node.paneKind === "price")) {
         const sourceBtn = document.createElement("button");
@@ -110,6 +159,56 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         actions.appendChild(sourceBtn);
       }
 
+      if (isIndicatorPane || isIndicatorSeries) {
+        const config = document.createElement("button");
+        config.className = "h-6 w-6 inline-flex items-center justify-center text-zinc-600 hover:text-zinc-100 hover:bg-zinc-900/50 transition-colors cursor-pointer border-none outline-none bg-transparent rounded-none";
+        config.appendChild(makeSvgIcon("settings", "h-3.5 w-3.5"));
+        config.title = "Indicator settings";
+        config.onclick = () => {
+          const indicatorId = node.kind === "series" ? node.id.split(":")[0] : undefined;
+          options.onIndicatorConfig?.({
+            paneId: node.kind === "pane" ? node.id : undefined,
+            seriesId: node.kind === "series" ? node.id : undefined,
+            indicatorId
+          });
+        };
+        actions.appendChild(config);
+      }
+
+      if (canMovePane) {
+        const canonicalPaneId = canonicalRuntimePaneId(node.id);
+        const paneIndex = orderedPaneIds.indexOf(canonicalPaneId);
+        const canMoveUp = paneIndex > 0;
+        const canMoveDown = paneIndex >= 0 && paneIndex < orderedPaneIds.length - 1;
+        const mkPaneMoveBtn = (icon: "chevron-up" | "chevron-down", title: string, direction: "up" | "down") => {
+          const btn = document.createElement("button");
+          btn.className = "h-6 w-6 inline-flex items-center justify-center text-zinc-600 hover:text-zinc-100 hover:bg-zinc-900/50 transition-colors cursor-pointer border-none outline-none bg-transparent rounded-none";
+          btn.appendChild(makeSvgIcon(icon, "h-3.5 w-3.5"));
+          btn.title = title;
+          btn.onclick = () => {
+            options.onMovePane?.({ paneId: node.id, direction });
+            refresh();
+            options.onMutate?.();
+          };
+          return btn;
+        };
+        if (canMoveUp) actions.append(mkPaneMoveBtn("chevron-up", "Move up", "up"));
+        if (canMoveDown) actions.append(mkPaneMoveBtn("chevron-down", "Move down", "down"));
+      }
+
+      if (node.kind === "drawing") {
+        const config = document.createElement("button");
+        config.className = "h-6 w-6 inline-flex items-center justify-center text-zinc-600 hover:text-zinc-100 hover:bg-zinc-900/50 transition-colors cursor-pointer border-none outline-none bg-transparent rounded-none";
+        config.appendChild(makeSvgIcon("settings", "h-3.5 w-3.5"));
+        config.title = "Drawing settings";
+        config.onclick = () => {
+          const drawingId = Number(node.id);
+          if (!Number.isFinite(drawingId)) return;
+          options.onDrawingConfig?.({ drawingId });
+        };
+        actions.appendChild(config);
+      }
+
       // Visibility Toggle
       if (node.visible !== undefined) {
         const visibility = document.createElement("button");
@@ -117,9 +216,8 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         visibility.appendChild(makeSvgIcon(node.visible ? "eye" : "eye-off", "h-3.5 w-3.5"));
         visibility.title = node.visible ? "Hide" : "Show";
         visibility.onclick = () => {
-          chart.applyObjectTreeAction({
-            type: "toggle_visibility",
-            kind: node.kind as any,
+          options.onToggleVisibility?.({
+            kind: node.kind as "pane" | "series" | "drawing" | "layer" | "group",
             id: node.id,
             visible: !node.visible
           });
@@ -136,12 +234,12 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         lock.appendChild(makeSvgIcon(node.locked ? "lock" : "unlock", "h-3.5 w-3.5")); // Assuming 'unlock' icon exists
         lock.title = node.locked ? "Unlock" : "Lock";
         lock.onclick = () => {
-          if (node.kind === "drawing") {
-            chart.setDrawingConfig(Number(node.id), { locked: !node.locked });
-          } else if (node.kind === "layer") {
-            chart.updateLayer(node.id, { locked: !node.locked });
-          } else if (node.kind === "group") {
-            chart.updateGroup(node.id, { locked: !node.locked });
+          if (node.kind === "drawing" || node.kind === "layer" || node.kind === "group") {
+            options.onToggleLock?.({
+              kind: node.kind,
+              id: node.id,
+              locked: !node.locked
+            });
           }
           refresh();
           options.onMutate?.();
@@ -156,33 +254,11 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         del.appendChild(makeSvgIcon("delete", "h-3.5 w-3.5"));
         del.title = "Delete";
         del.onclick = () => {
-          if (node.kind === "pane") {
-            if (node.paneKind === "chart") {
-              controller.removeChartPane(node.id);
-            } else {
-              const stateBefore = chart.objectTreeState();
-              for (const series of stateBefore.series) {
-                if (!series.deleted && series.pane_id === node.id) {
-                  chart.applyObjectTreeAction({
-                    type: "delete",
-                    kind: "series",
-                    id: series.id
-                  });
-                }
-              }
-              controller.unregisterPane(node.id);
-              controller.cleanupEmptyIndicatorPanes(chart.objectTreeState());
-            }
-          } else {
-            chart.applyObjectTreeAction({
-              type: "delete",
-              kind: node.kind as any,
-              id: node.id
-            });
-          }
-          if (node.kind === "series" || node.kind === "pane") {
-            controller.cleanupEmptyIndicatorPanes(chart.objectTreeState());
-          }
+          options.onDelete?.({
+            kind: node.kind as "pane" | "series" | "drawing" | "layer" | "group",
+            id: node.id,
+            paneKind: node.paneKind
+          });
           refresh();
           options.onMutate?.();
         };

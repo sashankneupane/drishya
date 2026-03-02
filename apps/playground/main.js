@@ -8,20 +8,24 @@ const DEFAULT_BINANCE_SYMBOL = "BTCUSDT";
 const DEFAULT_BINANCE_INTERVAL = "1m";
 const BINANCE_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT"];
 const BINANCE_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"];
-const DEMO_PERSIST_KEY = "drishya-config";
-const DEMO_LEGACY_KEYS = [];
+const DEMO_PERSIST_KEY = "drishya-playground-config-v5";
+const PLAYGROUND_RESET_STAMP = "drishya-playground-reset-v5";
 
-function cleanupLegacyDemoStorage() {
+function cleanupDemoStorage() {
   try {
-    for (const key of DEMO_LEGACY_KEYS) {
-      localStorage.removeItem(key);
-    }
+    const hasReset = localStorage.getItem(PLAYGROUND_RESET_STAMP) === "1";
     for (let i = localStorage.length - 1; i >= 0; i -= 1) {
       const key = localStorage.key(i);
       if (!key) continue;
-      if (key.startsWith("drishya-") && key !== DEMO_PERSIST_KEY) {
+      const isLegacyPlayground = key.startsWith("drishya-playground-config-") && key !== DEMO_PERSIST_KEY;
+      const shouldHardResetPlayground = !hasReset && key.startsWith("drishya-playground-config-");
+      const isLegacyWorkspace = key === "drishya-config";
+      if (isLegacyPlayground || shouldHardResetPlayground || isLegacyWorkspace) {
         localStorage.removeItem(key);
       }
+    }
+    if (!hasReset) {
+      localStorage.setItem(PLAYGROUND_RESET_STAMP, "1");
     }
   } catch {
     // no-op
@@ -31,10 +35,11 @@ function cleanupLegacyDemoStorage() {
 async function main() {
   const version = Date.now();
   const loader = document.getElementById("loader");
-  cleanupLegacyDemoStorage();
+  cleanupDemoStorage();
   let activeSymbol = DEFAULT_BINANCE_SYMBOL;
   let activeInterval = DEFAULT_BINANCE_INTERVAL;
   let loaderApi = null;
+  let controllerRef = null;
 
   // Dynamically import the modernized UI core
   const { createChartWorkspaceFromModule } = await import(`/packages/chart-sdk/dist/index.js?v=${version}`);
@@ -62,13 +67,13 @@ async function main() {
       onChartPaneSourceChange: async (_chartPaneId, next) => {
         if (next.symbol) activeSymbol = next.symbol;
         if (next.timeframe) activeInterval = next.timeframe;
-        const paneId = _chartPaneId || controller.getState().activeChartPaneId;
+        const paneId = _chartPaneId || controllerRef?.getState?.().activeChartPaneId || "price";
         if (loaderApi) {
           await loaderApi.startBinanceFeed(paneId, activeSymbol, activeInterval);
         }
       },
       onCompareSymbol: async (symbol) => {
-        const paneId = controller.getState().activeChartPaneId;
+        const paneId = controllerRef?.getState?.().activeChartPaneId || "price";
         if (loaderApi) {
           await loaderApi.loadCompareSeries(paneId, symbol, activeInterval);
         }
@@ -77,6 +82,13 @@ async function main() {
   });
 
   const { draw, controller } = workspace;
+  controllerRef = controller;
+
+  const initialState = controller.getState();
+  const initialActivePane = initialState.activeChartPaneId;
+  const initialActiveSource = initialState.chartPaneSources[initialActivePane] ?? {};
+  if (initialActiveSource.symbol) activeSymbol = initialActiveSource.symbol;
+  if (initialActiveSource.timeframe) activeInterval = initialActiveSource.timeframe;
 
   // Hide loader once chart is ready
   if (loader) loader.classList.add("hidden");
@@ -107,9 +119,12 @@ async function main() {
     getDefaultInterval: () => activeInterval
   });
 
-  // Initial load
+  // Initial load: respect restored per-pane sources from persisted workspace state.
   for (const paneId of workspace.listCharts()) {
-    await loaderApi.startBinanceFeed(paneId, activeSymbol, activeInterval);
+    const source = controller.getState().chartPaneSources[paneId] ?? {};
+    const symbol = source.symbol ?? activeSymbol;
+    const timeframe = source.timeframe ?? activeInterval;
+    await loaderApi.startBinanceFeed(paneId, symbol, timeframe);
   }
 
   controller.subscribe((state) => {
@@ -118,6 +133,7 @@ async function main() {
 
   window.addEventListener("beforeunload", () => {
     loaderApi.dispose();
+    workspace.destroy();
   });
 }
 

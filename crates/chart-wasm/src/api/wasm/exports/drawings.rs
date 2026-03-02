@@ -74,6 +74,11 @@ impl WasmChart {
         self.chart.selected_drawing_id()
     }
 
+    /// Selects a drawing by id.
+    pub fn select_drawing_by_id(&mut self, drawing_id: u64) -> bool {
+        self.chart.select_drawing_by_id(drawing_id)
+    }
+
     /// Clears current drawing selection.
     pub fn clear_selected_drawing(&mut self) {
         self.chart.clear_selected_drawing();

@@ -21,7 +21,7 @@ pub struct IndicatorSpec {
     pub params: Vec<(String, IndicatorParamValue)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct IndicatorParamSchema {
     pub name: String,
     pub kind: String,

@@ -25,6 +25,77 @@ export interface ReplayState {
   cursor_ts: number | null;
 }
 
+export interface IndicatorStyleDefault {
+  color: string;
+  width: number | null;
+  opacity: number | null;
+  pattern: "solid" | "dashed" | "dotted" | null;
+}
+
+export interface IndicatorStyleSlot {
+  slot: string;
+  kind: "stroke" | "fill";
+  default: IndicatorStyleDefault;
+}
+
+export interface IndicatorOutputVisual {
+  output: string;
+  primitive: "line" | "histogram" | "band_fill" | "markers" | "signal_flag";
+  style_slot: string;
+  z_index: number;
+}
+
+export interface IndicatorVisualHint {
+  pane_hint: "price_overlay" | "separate_pane" | "volume_overlay" | "auto";
+  scale_group: "price" | "oscillator" | "volume" | "normalized" | "binary";
+  output_visuals: IndicatorOutputVisual[];
+  style_slots: IndicatorStyleSlot[];
+}
+
+export interface DiscoveredIndicator {
+  id: string;
+  display_name: string;
+  category: string;
+  runtime_binding: string;
+  params: Array<{
+    name: string;
+    kind: string;
+    required: boolean;
+  }>;
+  outputs: string[];
+  visual: IndicatorVisualHint;
+}
+
+export interface SeriesStyleOverride {
+  stroke_color?: string | null;
+  stroke_width?: number | null;
+  stroke_pattern?: "solid" | "dashed" | "dotted" | null;
+  fill_color?: string | null;
+  fill_opacity?: number | null;
+  histogram_positive_color?: string | null;
+  histogram_negative_color?: string | null;
+  histogram_width_factor?: number | null;
+  marker_color?: string | null;
+  marker_size?: number | null;
+}
+
+export interface SeriesStyleSnapshot {
+  series_id: string;
+  series_name: string;
+  pane_id: string;
+  primitive_types: string[];
+  stroke_color?: string | null;
+  stroke_width?: number | null;
+  stroke_pattern?: string | null;
+  fill_color?: string | null;
+  fill_opacity?: number | null;
+  histogram_positive_color?: string | null;
+  histogram_negative_color?: string | null;
+  histogram_width_factor?: number | null;
+  marker_color?: string | null;
+  marker_size?: number | null;
+}
+
 /** User-customizable chart appearance (background, candle up/down). */
 export interface ChartAppearanceConfig {
   background: string;
@@ -70,6 +141,26 @@ export interface ChartPaneViewport {
 export interface CrosshairPaneReadoutDto {
   pane_id: string;
   value: number;
+}
+
+export interface ReadoutIndicatorSnapshot {
+  id: string;
+  name: string;
+  pane_id: string;
+  value: number;
+  visible: boolean;
+}
+
+export interface ReadoutSnapshot {
+  source_label: string;
+  ohlcv: {
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  } | null;
+  indicators: ReadoutIndicatorSnapshot[];
 }
 
 export interface PaneTreeState {
@@ -234,6 +325,7 @@ export interface WasmChartLike {
   cancel_drawing_interaction?(): void;
   select_drawing_at?(x: number, y: number): number | undefined;
   selected_drawing_id?(): number | undefined;
+  select_drawing_by_id?(drawingId: number | bigint): boolean;
   clear_selected_drawing?(): void;
   delete_selected_drawing?(): boolean;
   drawing_config?(drawingId: number | bigint): string;
@@ -254,19 +346,10 @@ export interface WasmChartLike {
     dragTolerancePx: number
   ): string;
 
-  // Group H: Built-in indicators (transitional)
-  add_sma_overlay?(period: number): void;
-  add_ema_overlay?(period: number): void;
-  add_bbands_overlay?(period: number, stdMult: number): void;
-  add_macd_pane_indicator?(fast: number, slow: number, signal: number): void;
-  add_rsi_pane_indicator?(period: number): void;
-  add_atr_pane_indicator?(period: number): void;
-  add_stochastic_pane_indicator?(k: number, d: number, smooth: number): void;
-  add_obv_pane_indicator?(): void;
-  add_vwap_overlay?(): void;
-  add_adx_pane_indicator?(period: number): void;
-  add_momentum_histogram_overlay?(): void;
+  // Group H: Built-in indicators (generic API only)
   clear_indicator_overlays?(): void;
+  indicator_catalog_json?(): string;
+  add_indicator_json?(indicatorId: string, paramsJson: string): void;
 
   // Group F: Panes + Series
   set_pane_weight?(paneId: string, ratio: number): void;
@@ -277,6 +360,7 @@ export interface WasmChartLike {
   pane_chart_pane_map_json?(): string;
   set_readout_source_label?(label: string): void;
   source_readout_hit_test?(x: number, y: number): boolean;
+  readout_snapshot_json?(): string;
   reset_pane_weights?(): void;
   set_pane_visible?(paneId: string, visible: boolean): void;
   register_pane?(paneId: string): void;
@@ -293,6 +377,13 @@ export interface WasmChartLike {
   reset_pane_layout_state?(): void;
   pane_layouts_json?(): string;
   set_series_visible?(seriesId: string, visible: boolean): void;
+  series_style_snapshot_json?(): string;
+  series_style_override_json?(seriesId: string): string;
+  set_series_style_override_json?(seriesId: string, json: string): void;
+  clear_series_style_override?(seriesId: string): void;
+  all_series_style_overrides_json?(): string;
+  replace_series_style_overrides_json?(json: string): void;
+  patch_series_style_overrides_json?(json: string): void;
   delete_series?(seriesId: string): void;
   restore_series?(seriesId: string): void;
   select_series_at?(x: number, y: number): string | undefined;

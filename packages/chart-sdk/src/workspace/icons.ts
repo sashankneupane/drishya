@@ -25,6 +25,8 @@ export type WorkspaceIconName =
   | "eye"
   | "eye-off"
   | "close"
+  | "chevron-up"
+  | "chevron-down"
   | "chevron-right"
   | "delete"
   | "search"
@@ -39,6 +41,7 @@ export type WorkspaceIconName =
   | "highlighter"
   | "plus"
   | "tree"
+  | "panels"
   | "play"
   | "pause"
   | "stop"
@@ -83,6 +86,8 @@ export function makeSvgIcon(name: WorkspaceIconName | string, className = "drish
     "eye": ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"],
     "eye-off": ["M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22", "M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"],
     "close": ["M18 6L6 18", "M6 6l12 12"],
+    "chevron-up": ["M18 15l-6-6-6 6"],
+    "chevron-down": ["M6 9l6 6 6-6"],
     "chevron-right": ["M9 18l6-6-6-6"],
     "delete": ["M3 6h18", "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2", "M10 11v6", "M14 11v6"],
     "search": ["M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"],
@@ -101,6 +106,7 @@ export function makeSvgIcon(name: WorkspaceIconName | string, className = "drish
     "highlighter": ["M15.5 3.5a2.121 2.121 0 0 1 3 3L11 14l-4 1.5L8.5 11l7-7.5z", "M2 22l5-5"],
     "plus": ["M12 5v14", "M5 12h14"],
     "tree": ["M12 22V13", "M5 10h14", "M7 10V4h10v6", "M9 6h6"],
+    "panels": ["M3 5h18v14H3z", "M3 10h18", "M9 10v9"],
     "play": ["M8 5v14l11-7-11-7z"],
     "pause": ["M8 5h3v14H8z", "M13 5h3v14h-3z"],
     "stop": ["M7 7h10v10H7z"],

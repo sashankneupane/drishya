@@ -48,6 +48,16 @@ impl Chart {
         self.selected_drawing_id
     }
 
+    pub fn select_drawing_by_id(&mut self, drawing_id: u64) -> bool {
+        if self.drawings.drawing(drawing_id).is_none() {
+            return false;
+        }
+        self.selected_drawing_id = Some(drawing_id);
+        self.selected_series_id = None;
+        self.selected_event_id = None;
+        true
+    }
+
     pub fn clear_selected_drawing(&mut self) {
         self.selected_drawing_id = None;
     }
