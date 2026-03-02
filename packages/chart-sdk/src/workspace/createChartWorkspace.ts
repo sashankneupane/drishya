@@ -31,7 +31,7 @@ import { syncChartPaneContracts } from "./paneContracts.js";
 import { reconcilePaneSpecsForRuntime } from "./paneSpecReconcile.js";
 import { createTileObjectTreeHandle } from "./objectTreeHandleFactory.js";
 import { getActiveChartForTileFromState, getChartsForTileFromState } from "./runtimeSelection.js";
-import { applyIndicatorsToTileCharts } from "./indicatorTileSync.js";
+import { projectTileIndicators } from "./projector/projectIndicators.js";
 import { initializeChartTileSourceState } from "./chartTileSourceInit.js";
 import { syncChartTileShellWidths } from "./tileWidthSync.js";
 import { buildPersistedChartTiles } from "./workspacePersistenceSnapshot.js";
@@ -224,12 +224,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
   const applyIndicatorSetToTile = (chartTileId: string) => {
     const ids = controller.getChartTileIndicatorTokens(chartTileId);
     const chartTile = controller.getState().chartTiles[chartTileId];
-    applyIndicatorsToTileCharts({
+    projectTileIndicators({
+      chartTileId,
       chartTile,
       indicatorIds: ids,
       controller,
       getRuntime,
-      applyIndicatorSetToChart,
       reconcilePaneSpecsForRuntime,
     });
   };

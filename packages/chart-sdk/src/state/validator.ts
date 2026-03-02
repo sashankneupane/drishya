@@ -1,4 +1,6 @@
 import type { WorkspaceDocument, WorkspaceState } from "./schema.js";
+import type { DiscoveredIndicator } from "../wasm/contracts.js";
+import { validateIndicatorPayloadAgainstCatalog } from "./catalogValidation.js";
 
 export interface ValidationIssue {
   code: string;
@@ -395,4 +397,33 @@ export function assertValidWorkspaceDocument(doc: unknown): asserts doc is Works
     const details = result.errors.map((error) => `${error.path}: ${error.message}`).join("; ");
     throw new Error(`Invalid workspace document: ${details}`);
   }
+}
+
+export function validateWorkspaceDocumentAgainstCatalog(
+  doc: unknown,
+  catalog: readonly DiscoveredIndicator[]
+): ValidationResult {
+  const baseResult = validateWorkspaceDocument(doc);
+  if (!baseResult.ok) return baseResult;
+  const parsed = doc as WorkspaceDocument;
+  const errors: ValidationIssue[] = [...baseResult.errors];
+  for (const [tileId, tile] of Object.entries(parsed.workspace.tiles)) {
+    if (tile.kind !== "chart" || !tile.chart) continue;
+    for (const indicatorId of tile.chart.indicatorOrder) {
+      const indicator = tile.chart.indicators[indicatorId];
+      if (!indicator) continue;
+      const issues = validateIndicatorPayloadAgainstCatalog({
+        catalog,
+        indicatorId: indicator.indicatorId,
+        params: indicator.params,
+        styleSlots: indicator.styleSlots,
+        path: `workspace.tiles.${tileId}.indicators.${indicatorId}`,
+      });
+      errors.push(...issues);
+    }
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+  };
 }

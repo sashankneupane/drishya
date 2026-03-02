@@ -8,6 +8,7 @@ export * from "./wasm/contracts.js";
 export * from "./wasm/client.js";
 export {
   validateWorkspaceDocument,
+  validateWorkspaceDocumentAgainstCatalog,
   assertValidWorkspaceDocument,
 } from "./state/validator.js";
 export { reduceWorkspaceDocument, reduceWorkspaceState } from "./state/reducer.js";
