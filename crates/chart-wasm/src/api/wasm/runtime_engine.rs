@@ -9,6 +9,12 @@ pub struct WasmRuntimeEngine {
     engine: RuntimeEngine,
 }
 
+impl Default for WasmRuntimeEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[wasm_bindgen]
 impl WasmRuntimeEngine {
     #[wasm_bindgen(constructor)]
