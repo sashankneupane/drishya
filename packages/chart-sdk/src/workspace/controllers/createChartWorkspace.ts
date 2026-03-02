@@ -450,6 +450,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
       const state = serializeWorkspacePersistenceEnvelope({
         state: stateNow,
         workspaceLayoutTree: workspaceEngine.getState().workspace.layoutTree,
+        chartTileIndicatorTokens: Object.fromEntries(
+          Object.keys(stateNow.chartTiles).map((chartTileId) => [
+            chartTileId,
+            controller.getChartTileIndicatorTokens(chartTileId),
+          ])
+        ),
         objectTreeWidth,
         candleStyle:
           getActiveRuntime()?.chart.candleStyle() ??

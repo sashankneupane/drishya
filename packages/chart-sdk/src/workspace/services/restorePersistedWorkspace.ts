@@ -10,14 +10,20 @@ import type { WorkspaceController } from "../controllers/WorkspaceController.js"
 import type { SeriesStyleOverride } from "../../wasm/contracts.js";
 import type { ChartStateSnapshot } from "../../wasm/contracts.js";
 import type { WorkspaceLayoutNode } from "../../state/schema.js";
+import {
+  flattenOwnershipDocumentForLegacyRuntime,
+  type WorkspaceOwnershipDocument,
+} from "./workspaceOwnershipDocument.js";
 
 interface RestoredWorkspaceShape {
+  version?: number;
   theme?: "dark" | "light";
   cursorMode?: string;
   isObjectTreeOpen?: boolean;
   objectTreeWidth?: number;
   isLeftStripOpen?: boolean;
   priceAxisMode?: "linear" | "log" | "percent";
+  document?: WorkspaceOwnershipDocument;
   workspaceTiles?: Record<string, { id: string; kind: "chart" | "objects"; title: string; widthRatio: number; chartTileId?: string }>;
   workspaceTileOrder?: string[];
   workspaceLayoutTree?: WorkspaceLayoutNode;
@@ -163,12 +169,13 @@ export function restorePersistedWorkspace(
       options.controller.loadPaneLayout(saved.paneLayout as any);
     }
     options.setDrawingsByAsset(saved.drawingsByAsset ?? {});
-    const persistedChartTiles = normalizePersistedChartTiles(saved.chartTiles);
+    const persistedChartTiles = normalizePersistedChartTiles(saved.document?.tileSessions ?? saved.chartTiles);
     if (Object.keys(persistedChartTiles).length > 0) {
+      const activeChartTileId = saved.document?.workspace.activeChartTileId ?? saved.activeChartTileId;
       const derivedChartPanes = deriveChartPanesFromPersistedTiles(persistedChartTiles);
       const derivedActivePaneId = deriveActivePaneIdFromPersistedTiles(
         persistedChartTiles,
-        saved.activeChartTileId
+        activeChartTileId
       );
       options.controller.loadChartLayout(
         derivedChartPanes,
@@ -185,7 +192,9 @@ export function restorePersistedWorkspace(
           },
         ])
       );
-      const derivedWorkspace = deriveWorkspaceTilesFromPersistedState(saved, persistedChartTiles);
+      const derivedWorkspace = saved.document
+        ? flattenOwnershipDocumentForLegacyRuntime(saved.document)
+        : deriveWorkspaceTilesFromPersistedState(saved, persistedChartTiles);
       options.controller.loadWorkspaceTiles?.(
         derivedWorkspace.workspaceTiles as any,
         derivedWorkspace.workspaceTileOrder,

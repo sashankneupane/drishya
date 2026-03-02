@@ -3,8 +3,13 @@ import type { ChartAppearanceConfig } from "../../wasm/contracts.js";
 import type { PersistedChartTileStoredShape } from "./persistenceHelpers.js";
 import type { ChartStateSnapshot } from "../../wasm/contracts.js";
 import type { WorkspaceLayoutNode } from "../../state/schema.js";
+import {
+  buildWorkspaceOwnershipDocument,
+  type WorkspaceOwnershipDocument,
+} from "./workspaceOwnershipDocument.js";
 
 export interface WorkspacePersistenceEnvelope {
+  version: 2;
   theme: WorkspaceState["theme"];
   cursorMode: WorkspaceState["cursorMode"];
   isObjectTreeOpen: WorkspaceState["isObjectTreeOpen"];
@@ -13,13 +18,8 @@ export interface WorkspacePersistenceEnvelope {
   priceAxisMode: WorkspaceState["priceAxisMode"];
   candleStyle?: string;
   appearance?: ChartAppearanceConfig;
-  workspaceTiles: WorkspaceState["workspaceTiles"];
-  workspaceTileOrder: WorkspaceState["workspaceTileOrder"];
-  workspaceLayoutTree?: WorkspaceLayoutNode;
-  chartTiles: Record<string, PersistedChartTileStoredShape>;
+  document: WorkspaceOwnershipDocument;
   drawingsByAsset: Record<string, ChartStateSnapshot>;
-  activeChartTileId: WorkspaceState["activeChartTileId"];
-  paneLayout: WorkspaceState["paneLayout"];
 }
 
 interface WorkspacePersistenceEnvelopeOptions {
@@ -30,12 +30,14 @@ interface WorkspacePersistenceEnvelopeOptions {
   chartTiles: Record<string, PersistedChartTileStoredShape>;
   drawingsByAsset?: Record<string, ChartStateSnapshot>;
   workspaceLayoutTree?: WorkspaceLayoutNode;
+  chartTileIndicatorTokens?: Record<string, string[]>;
 }
 
 export function serializeWorkspacePersistenceEnvelope(
   options: WorkspacePersistenceEnvelopeOptions
 ): WorkspacePersistenceEnvelope {
   return {
+    version: 2,
     theme: options.state.theme,
     cursorMode: options.state.cursorMode,
     isObjectTreeOpen: options.state.isObjectTreeOpen,
@@ -44,13 +46,13 @@ export function serializeWorkspacePersistenceEnvelope(
     priceAxisMode: options.state.priceAxisMode,
     candleStyle: options.candleStyle ?? undefined,
     appearance: options.appearance ?? undefined,
-    workspaceTiles: options.state.workspaceTiles,
-    workspaceTileOrder: options.state.workspaceTileOrder,
-    workspaceLayoutTree: options.workspaceLayoutTree,
-    chartTiles: options.chartTiles,
+    document: buildWorkspaceOwnershipDocument({
+      state: options.state,
+      chartTiles: options.chartTiles,
+      workspaceLayoutTree: options.workspaceLayoutTree,
+      chartTileIndicatorTokens: options.chartTileIndicatorTokens,
+    }),
     drawingsByAsset: options.drawingsByAsset ?? {},
-    activeChartTileId: options.state.activeChartTileId,
-    paneLayout: options.state.paneLayout,
   };
 }
 

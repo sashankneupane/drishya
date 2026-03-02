@@ -20,6 +20,8 @@ import type { CursorMode, ReplayState, ObjectTreeState } from "../../wasm/contra
 import type { ReplayController } from "../replay/ReplayController.js";
 import { PRICE_PANE_ID, DEFAULT_INDICATOR_PANE_RATIO, DEFAULT_CHART_SPLIT_RATIO } from "../models/constants.js";
 import { normalizeIndicatorIds } from "../services/indicatorIdentity.js";
+import { TileSessionController } from "../tile/TileSessionController.js";
+import { WorkspaceGraphController } from "./WorkspaceGraphController.js";
 
 export interface WorkspaceState {
     theme: WorkspaceTheme;
@@ -753,32 +755,23 @@ export class WorkspaceController {
     }
 
     setActiveChartTile(tileId: WorkspaceChartTileId): void {
-        const tile = this.state.chartTiles[tileId];
-        if (!tile) return;
+        const session = TileSessionController.snapshot(this.state, this.chartTileIndicatorTokens, tileId);
+        if (!session) return;
         this.state.activeChartTileId = tileId;
-        const activeTab = tile.tabs.find((tab) => tab.id === tile.activeTabId) ?? tile.tabs[0];
-        if (activeTab) {
-            this.state.activeChartPaneId = activeTab.chartPaneId;
-        }
+        const activeTab =
+            session.chartTile.tabs.find((tab) => tab.id === session.chartTile.activeTabId) ??
+            session.chartTile.tabs[0];
+        if (activeTab) this.state.activeChartPaneId = activeTab.chartPaneId;
         this.notify();
     }
 
     setActiveChartTab(chartTileId: WorkspaceChartTileId, tabId: WorkspaceChartTabId): void {
-        const tile = this.state.chartTiles[chartTileId];
-        if (!tile) return;
-        const tab = tile.tabs.find((candidate) => candidate.id === tabId);
-        if (!tab) return;
-        this.state.chartTiles = {
-            ...this.state.chartTiles,
-            [chartTileId]: { ...tile, activeTabId: tabId }
-        };
-        this.state.activeChartTileId = chartTileId;
-        this.state.activeChartPaneId = tab.chartPaneId;
+        this.state = TileSessionController.setActiveTab(this.state, chartTileId, tabId);
         this.notify();
     }
 
     getChartTileIndicatorTokens(chartTileId: WorkspaceChartTileId): string[] {
-        return normalizeIndicatorIds(this.chartTileIndicatorTokens[chartTileId] ?? []);
+        return TileSessionController.snapshot(this.state, this.chartTileIndicatorTokens, chartTileId)?.indicatorTokens ?? [];
     }
 
     setChartTileIndicatorTokens(chartTileId: WorkspaceChartTileId, tokens: readonly string[]): void {
@@ -786,10 +779,11 @@ export class WorkspaceController {
         if (!tile) return;
         const next = normalizeIndicatorIds(tokens);
         if (JSON.stringify(this.chartTileIndicatorTokens[chartTileId] ?? []) === JSON.stringify(next)) return;
-        this.chartTileIndicatorTokens = {
-            ...this.chartTileIndicatorTokens,
-            [chartTileId]: next
-        };
+        this.chartTileIndicatorTokens = TileSessionController.setIndicatorTokens(
+            this.chartTileIndicatorTokens,
+            chartTileId,
+            next
+        );
         this.notify();
     }
 
@@ -800,17 +794,7 @@ export class WorkspaceController {
         const tabId = this.nextChartTabId();
         const title = `Chart ${tile.tabs.length + 1}`;
         const nextTab: WorkspaceChartTabSpec = { id: tabId, title, chartPaneId: paneId };
-        const latestTile = this.state.chartTiles[chartTileId] ?? tile;
-        this.state.chartTiles = {
-            ...this.state.chartTiles,
-            [chartTileId]: {
-                ...latestTile,
-                tabs: [...latestTile.tabs, nextTab],
-                activeTabId: tabId
-            }
-        };
-        this.state.activeChartTileId = chartTileId;
-        this.state.activeChartPaneId = paneId;
+        this.state = TileSessionController.appendTab(this.state, chartTileId, nextTab);
         this.notify();
         return tabId;
     }
@@ -844,23 +828,9 @@ export class WorkspaceController {
     }
 
     setChartTabTitle(chartTileId: WorkspaceChartTileId, tabId: WorkspaceChartTabId, title: string): void {
-        const tile = this.state.chartTiles[chartTileId];
-        if (!tile) return;
-        const trimmed = String(title || "").trim();
-        if (!trimmed) return;
-        const idx = tile.tabs.findIndex((candidate) => candidate.id === tabId);
-        if (idx < 0) return;
-        const current = tile.tabs[idx];
-        if (current.title === trimmed) return;
-        const nextTabs = [...tile.tabs];
-        nextTabs[idx] = { ...current, title: trimmed };
-        this.state.chartTiles = {
-            ...this.state.chartTiles,
-            [chartTileId]: {
-                ...tile,
-                tabs: nextTabs
-            }
-        };
+        const nextState = TileSessionController.setTabTitle(this.state, chartTileId, tabId, title);
+        if (nextState === this.state) return;
+        this.state = nextState;
         this.notify();
     }
 
@@ -870,59 +840,15 @@ export class WorkspaceController {
         targetChartTileId: WorkspaceChartTileId,
         targetIndex: number
     ): void {
-        const sourceTile = this.state.chartTiles[sourceChartTileId];
-        const targetTile = this.state.chartTiles[targetChartTileId];
-        if (!sourceTile || !targetTile) return;
-        const movingTab = sourceTile.tabs.find((tab) => tab.id === tabId);
-        if (!movingTab) return;
-
-        // Keep at least one tab per tile for predictable workspace behavior.
-        if (sourceChartTileId !== targetChartTileId && sourceTile.tabs.length <= 1) return;
-
-        if (sourceChartTileId === targetChartTileId) {
-            const currentIndex = sourceTile.tabs.findIndex((tab) => tab.id === tabId);
-            if (currentIndex < 0) return;
-            const clamped = Math.max(0, Math.min(sourceTile.tabs.length - 1, targetIndex));
-            if (clamped === currentIndex) return;
-            const nextTabs = [...sourceTile.tabs];
-            nextTabs.splice(currentIndex, 1);
-            nextTabs.splice(clamped, 0, movingTab);
-            this.state.chartTiles = {
-                ...this.state.chartTiles,
-                [sourceChartTileId]: {
-                    ...sourceTile,
-                    tabs: nextTabs
-                }
-            };
-            this.notify();
-            return;
-        }
-
-        const sourceTabs = sourceTile.tabs.filter((tab) => tab.id !== tabId);
-        const sourceActiveTabId =
-            sourceTile.activeTabId === tabId
-                ? sourceTabs[0]?.id ?? sourceTile.activeTabId
-                : sourceTile.activeTabId;
-
-        const targetTabs = [...targetTile.tabs];
-        const clampedTargetIndex = Math.max(0, Math.min(targetTabs.length, targetIndex));
-        targetTabs.splice(clampedTargetIndex, 0, movingTab);
-
-        this.state.chartTiles = {
-            ...this.state.chartTiles,
-            [sourceChartTileId]: {
-                ...sourceTile,
-                tabs: sourceTabs,
-                activeTabId: sourceActiveTabId
-            },
-            [targetChartTileId]: {
-                ...targetTile,
-                tabs: targetTabs,
-                activeTabId: movingTab.id
-            }
-        };
-        this.state.activeChartTileId = targetChartTileId;
-        this.state.activeChartPaneId = movingTab.chartPaneId;
+        const nextState = TileSessionController.moveTab(
+            this.state,
+            sourceChartTileId,
+            tabId,
+            targetChartTileId,
+            targetIndex
+        );
+        if (nextState === this.state) return;
+        this.state = nextState;
         this.notify();
     }
 
@@ -943,18 +869,7 @@ export class WorkspaceController {
             [chartTileId]: []
         };
         const tileId = this.nextWorkspaceTileId();
-        this.state.workspaceTiles = {
-            ...this.state.workspaceTiles,
-            [tileId]: {
-                id: tileId,
-                kind: "chart",
-                title: `Chart ${Object.values(this.state.workspaceTiles).filter((tile) => tile.kind === "chart").length + 1}`,
-                widthRatio: 0.5,
-                chartTileId
-            }
-        };
-        this.state.workspaceTileOrder = [...this.state.workspaceTileOrder, tileId];
-        this.state.activeChartTileId = chartTileId;
+        this.state = WorkspaceGraphController.appendChartTile(this.state, tileId, chartTileId);
         this.notify();
         return chartTileId;
     }
@@ -975,35 +890,20 @@ export class WorkspaceController {
             delete nextChartTiles[chartTileId];
             this.state.chartTiles = nextChartTiles;
         }
-        const nextTiles = { ...this.state.workspaceTiles };
-        delete nextTiles[tileId];
-        this.state.workspaceTiles = nextTiles;
-        this.state.workspaceTileOrder = this.state.workspaceTileOrder.filter((id) => id !== tileId);
+        this.state = WorkspaceGraphController.removeWorkspaceTileRecord(this.state, tileId);
         this.repairWorkspaceState();
         this.notify();
     }
 
     moveWorkspaceTile(tileId: WorkspaceTileId, nextIndex: number): void {
-        const currentIndex = this.state.workspaceTileOrder.indexOf(tileId);
-        if (currentIndex < 0) return;
-        const clamped = Math.max(0, Math.min(this.state.workspaceTileOrder.length - 1, nextIndex));
-        if (clamped === currentIndex) return;
-        const nextOrder = [...this.state.workspaceTileOrder];
-        nextOrder.splice(currentIndex, 1);
-        nextOrder.splice(clamped, 0, tileId);
-        this.state.workspaceTileOrder = nextOrder;
+        const nextState = WorkspaceGraphController.moveWorkspaceTile(this.state, tileId, nextIndex);
+        if (nextState === this.state) return;
+        this.state = nextState;
         this.notify();
     }
 
     updateWorkspaceTileRatios(updates: Record<WorkspaceTileId, number>): void {
-        const nextTiles = { ...this.state.workspaceTiles };
-        for (const [tileId, ratio] of Object.entries(updates)) {
-            const tile = nextTiles[tileId];
-            if (!tile) continue;
-            nextTiles[tileId] = { ...tile, widthRatio: Math.max(0.08, ratio) };
-        }
-        this.state.workspaceTiles = nextTiles;
-        this.normalizeWorkspaceTileRatios();
+        this.state = WorkspaceGraphController.updateWorkspaceTileRatios(this.state, updates);
         this.notify();
     }
 
@@ -1061,28 +961,7 @@ export class WorkspaceController {
     }
 
     private normalizeWorkspaceTileRatios(): void {
-        const chartTileIds = Object.entries(this.state.workspaceTiles)
-            .filter(([, tile]) => tile.kind === "chart")
-            .map(([tileId]) => tileId);
-        const ratioSum = chartTileIds.reduce(
-            (sum, id) => sum + Math.max(0, this.state.workspaceTiles[id]?.widthRatio ?? 0),
-            0
-        );
-        if (ratioSum <= 0) {
-            const each = 1 / Math.max(1, chartTileIds.length);
-            const next = { ...this.state.workspaceTiles };
-            for (const id of chartTileIds) {
-                next[id] = { ...next[id], widthRatio: each };
-            }
-            this.state.workspaceTiles = next;
-            return;
-        }
-        const next = { ...this.state.workspaceTiles };
-        for (const id of chartTileIds) {
-            const raw = Math.max(0, next[id]?.widthRatio ?? 0);
-            next[id] = { ...next[id], widthRatio: raw / ratioSum };
-        }
-        this.state.workspaceTiles = next;
+        this.state = WorkspaceGraphController.normalizeWorkspaceTileRatios(this.state);
     }
 
     private repairWorkspaceState(): void {
