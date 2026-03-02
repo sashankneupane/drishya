@@ -43,6 +43,8 @@ const tokenMatchesVisibleRuntimeSeries = (
 };
 
 export interface WorkspaceIntentController {
+  setActivePane: (paneId: string) => void;
+  setPaneSource: (paneId: string, patch: { symbol?: string; timeframe?: string }) => void;
   movePaneInTile: (chartTileId: string, paneId: string, direction: PaneDirection) => boolean;
   deletePaneInTile: (
     chartTileId: string,
@@ -249,6 +251,13 @@ export const createWorkspaceIntentController = (
   };
 
   return {
+    setActivePane: (paneId) => {
+      options.controller.setActiveChartPane(canonicalRuntimePaneId(paneId));
+    },
+    setPaneSource: (paneId, patch) => {
+      options.controller.setChartPaneSource(canonicalRuntimePaneId(paneId), patch);
+      options.savePersistedState();
+    },
     movePaneInTile,
     deletePaneInTile,
     deleteSeriesInTile,

@@ -28,6 +28,9 @@ export function createTileObjectTreeHandle(
       options.chartTileTreeOpen.set(options.chartTileId, open);
       options.onSetOpen(open);
     },
+    onActivatePane: (paneId) => {
+      options.workspaceIntents.setActivePane(paneId);
+    },
     controller: options.controller,
     symbols: options.symbols,
     onPaneSourceChange: options.onPaneSourceChange,

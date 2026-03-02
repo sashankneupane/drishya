@@ -19,6 +19,7 @@ interface ObjectTreePanelOptions {
   onMutate?: () => void;
   getIsOpen?: () => boolean;
   onSetOpen?: (open: boolean) => void;
+  onActivatePane?: (paneId: string) => void;
 }
 
 export interface ObjectTreePanelHandle {
@@ -45,11 +46,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
   close.appendChild(makeSvgIcon("close", "h-3.5 w-3.5"));
   close.onclick = () => {
     root.style.display = "none";
-    if (options.onSetOpen) {
-      options.onSetOpen(false);
-    } else {
-      controller.setObjectTreeOpen(false);
-    }
+    options.onSetOpen?.(false);
   };
 
   header.append(title, close);
@@ -140,7 +137,7 @@ export function createObjectTreePanel(options: ObjectTreePanelOptions): ObjectTr
         sourceBtn.title = "Change source";
         sourceBtn.appendChild(makeSvgIcon("search", "h-3.5 w-3.5"));
         sourceBtn.onclick = () => {
-          controller.setActiveChartPane(node.id);
+          options.onActivatePane?.(node.id);
           const symbols = options.symbols ?? [];
           if (!symbols.length) return;
           createSymbolSearchModal({
