@@ -56,6 +56,7 @@ import { removeWorkspaceTileByChartTileId } from "./chartTileRemoval.js";
 import { toggleChartTileObjectTree } from "./objectTreeToggle.js";
 import { attachTileHeaderDragReorder } from "./tileHeaderDragReorder.js";
 import { attachTileResizerDrag } from "./tileResizerDrag.js";
+import { placeNewChartTileAtPointer } from "./tilePlacement.js";
 import type {
   ChartWorkspaceHandle,
   CreateChartWorkspaceOptions,
@@ -1054,20 +1055,12 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     const after = afterState.workspaceTileOrder.filter((tileId) => afterState.workspaceTiles[tileId]?.kind === "chart");
     const newTileId = after.find((id) => !before.includes(id));
     if (!newTileId) return;
-    const ordered = afterState.workspaceTileOrder.filter((id) => afterState.workspaceTiles[id]?.kind === "chart");
-    const centers = ordered.map((id) => {
-      const el = tileShellById.get(id);
-      const rect = el?.getBoundingClientRect();
-      return rect ? rect.left + rect.width / 2 : Number.POSITIVE_INFINITY;
+    placeNewChartTileAtPointer({
+      controller,
+      tileShellById,
+      clientX,
+      newTileId,
     });
-    let targetIndex = ordered.length - 1;
-    for (let i = 0; i < centers.length; i += 1) {
-      if (clientX < centers[i]) {
-        targetIndex = i;
-        break;
-      }
-    }
-    controller.moveWorkspaceTile(newTileId, targetIndex);
     draw();
     savePersistedState();
   };
