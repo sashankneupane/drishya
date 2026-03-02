@@ -11,5 +11,5 @@ export * from "./replay/index.js";
 export * from "./models/types.js";
 export * from "./models/ownership.js";
 export * from "./controllers/WorkspaceGraphController.js";
-export * from "./tile/TileSessionController.js";
+export * from "../tile/index.js";
 export * from "./services/workspacePersistEnvelope.js";

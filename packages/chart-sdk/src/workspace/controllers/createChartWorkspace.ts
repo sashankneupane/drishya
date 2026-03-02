@@ -30,7 +30,7 @@ import { WorkspaceController } from "./WorkspaceController.js";
 import { syncChartPaneContracts } from "../services/paneContracts.js";
 import { reconcilePaneSpecsForRuntime } from "../services/paneSpecReconcile.js";
 import { createTileObjectTreeHandle } from "../views/objectTreeHandleFactory.js";
-import { getActiveChartForTileFromState, getChartsForTileFromState } from "../services/runtimeSelection.js";
+import { getActiveChartForTileFromState, getChartsForTileFromState } from "../../tile/services/runtimeSelection.js";
 import { projectTileIndicators } from "../projectors/projectIndicators.js";
 import { syncChartTileShellWidths } from "../services/tileWidthSync.js";
 import { buildPersistedChartTiles } from "../services/workspacePersistenceSnapshot.js";
@@ -41,7 +41,8 @@ import {
   initializeChartTileSourceState,
   removeWorkspaceTileByChartTileId,
   resolveChartTileHeaderContext,
-} from "../services/chartTileService.js";
+} from "../../tile/services/chartTileService.js";
+import { createTileRuntimeRegistry } from "../../tile/runtime/runtimeRegistry.js";
 import { restorePersistedWorkspace } from "../services/restorePersistedWorkspace.js";
 import { serializeWorkspacePersistenceEnvelope } from "../services/workspacePersistEnvelope.js";
 import { createChartFacade } from "../adapters/chartFacade.js";
@@ -181,7 +182,11 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     primaryAppendCandle(candle);
     latestCandlesByPane.set("price", { latest: candle, prevClose });
   };
-  const chartRuntimes = new Map<string, ChartPaneRuntime>();
+  const runtimeRegistry = createTileRuntimeRegistry({
+    paneExists: (paneId) => !!controller.getState().chartPanes[paneId],
+    createRuntimeForPane: (paneId) => createRuntimeForPane(paneId),
+  });
+  const chartRuntimes = runtimeRegistry.map;
   primaryChart.setTheme(controller.getState().theme);
   chartRuntimes.set("price", {
     paneId: "price",
@@ -193,24 +198,10 @@ export function createChartWorkspace(options: CreateChartWorkspaceOptions): Char
     resize: (width: number, height: number) => primaryChart.resize(width, height)
   });
 
-  const getActiveRuntime = () => {
-    const activeId = controller.getState().activeChartPaneId;
-    if (chartRuntimes.has(activeId)) return chartRuntimes.get(activeId) ?? null;
-    if (controller.getState().chartPanes[activeId]) {
-      const created = createRuntimeForPane(activeId);
-      chartRuntimes.set(activeId, created);
-      return created;
-    }
-    return chartRuntimes.get("price") ?? null;
-  };
-  const getRuntime = (paneId: string) => {
-    if (chartRuntimes.has(paneId)) return chartRuntimes.get(paneId) ?? null;
-    if (!controller.getState().chartPanes[paneId]) return null;
-    const created = createRuntimeForPane(paneId);
-    chartRuntimes.set(paneId, created);
-    return created;
-  };
-  const getPrimaryRuntime = () => chartRuntimes.get("price") ?? chartRuntimes.values().next().value ?? null;
+  const getActiveRuntime = () =>
+    runtimeRegistry.getActiveRuntime(controller.getState().activeChartPaneId);
+  const getRuntime = (paneId: string) => runtimeRegistry.getRuntime(paneId);
+  const getPrimaryRuntime = () => runtimeRegistry.getPrimaryRuntime();
   // Apply default appearance on init (wasm may not support it in older builds)
   const applyAppearance = (config: { background: string; candle_up: string; candle_down: string }) => {
     for (const runtime of chartRuntimes.values()) {

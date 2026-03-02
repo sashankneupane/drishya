@@ -3,7 +3,7 @@ import { normalizeIndicatorIds } from "./indicatorIdentity.js";
 import type { ChartPaneRuntime } from "../models/runtimeTypes.js";
 import type { WorkspaceState } from "../controllers/WorkspaceController.js";
 import type { PersistedChartTileStoredShape } from "./persistenceHelpers.js";
-import { getActiveTab } from "./chartTileService.js";
+import { getActiveTab } from "../../tile/services/chartTileService.js";
 
 interface BuildPersistedChartTilesOptions {
   state: WorkspaceState;

@@ -20,7 +20,7 @@ import type { CursorMode, ReplayState, ObjectTreeState } from "../../wasm/contra
 import type { ReplayController } from "../replay/ReplayController.js";
 import { PRICE_PANE_ID, DEFAULT_INDICATOR_PANE_RATIO, DEFAULT_CHART_SPLIT_RATIO } from "../models/constants.js";
 import { normalizeIndicatorIds } from "../services/indicatorIdentity.js";
-import { TileSessionController } from "../tile/TileSessionController.js";
+import { TileSessionController } from "../../tile/controllers/TileSessionController.js";
 import { WorkspaceGraphController } from "./WorkspaceGraphController.js";
 
 export interface WorkspaceState {

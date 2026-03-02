@@ -3,9 +3,9 @@ import type {
   WorkspaceChartTileSpec,
   WorkspaceChartTabId,
   WorkspaceChartTabSpec,
-} from "../models/types.js";
-import type { WorkspaceState } from "../controllers/WorkspaceController.js";
-import { normalizeIndicatorIds } from "../services/indicatorIdentity.js";
+} from "../../workspace/models/types.js";
+import type { WorkspaceState } from "../../workspace/controllers/WorkspaceController.js";
+import { normalizeIndicatorIds } from "../../workspace/services/indicatorIdentity.js";
 
 export interface TileSessionSnapshot {
   chartTileId: WorkspaceChartTileId;

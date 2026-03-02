@@ -1,5 +1,8 @@
 import type { DrishyaChartClient } from "../../wasm/client.js";
-import type { WorkspaceController, WorkspaceState } from "../controllers/WorkspaceController.js";
+import type {
+  WorkspaceController,
+  WorkspaceState,
+} from "../../workspace/controllers/WorkspaceController.js";
 
 interface AddChartTabOptions {
   chartTileId: string;
