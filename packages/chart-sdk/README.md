@@ -56,3 +56,14 @@ WASM exports `crosshair_sync_snapshot_json()` which returns:
 ## Build output
 
 Source is TypeScript-only under `src/`. JavaScript should come from `dist/` via `npm run build`.
+
+## Embedding
+
+Consumers that create a chart workspace with `createChartWorkspaceFromModule`
+can load the generated WebAssembly module from the `@drishya/workspace/wasm`
+package export. Build it first with `make wasm` from the Drishya repository
+root; this creates `pkg/chart_wasm.js` and its WASM binary under
+`packages/chart-sdk/pkg/`.
+
+Drawing IDs returned by the WASM boundary use `bigint`; the SDK converts safe
+IDs to JavaScript numbers for its UI API.

@@ -20,6 +20,10 @@
       "require": "./dist/workspace/index.cjs",
       "default": "./dist/workspace/index.js"
     },
+    "./wasm": {
+      "types": "./pkg/chart_wasm.d.ts",
+      "import": "./pkg/chart_wasm.js"
+    },
     "./tailwind-preset": "./tailwind.preset.ts",
     "./styles.css": "./dist/styles.css"
   },

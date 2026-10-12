@@ -22,6 +22,7 @@ import type {
   WasmChartLike,
   WasmRuntimeEngineLike
 } from "./contracts.js";
+import { toSafeBigInt, toSafeNumber } from "./scalars.js";
 
 import type { ObjectTreeAction } from "../workspace/models/objectTree.js";
 
@@ -129,22 +130,20 @@ export class DrishyaChartClient {
   }
 
   replayStepBar(): number | null {
-    const ts = this.wasm.replay_step_bar?.();
-    return Number.isFinite(ts) ? (ts as number) : null;
+    return toSafeNumber(this.wasm.replay_step_bar?.());
   }
 
   replayStepEvent(): number | null {
-    const ts = this.wasm.replay_step_event?.();
-    return Number.isFinite(ts) ? (ts as number) : null;
+    return toSafeNumber(this.wasm.replay_step_event?.());
   }
 
   replaySeekTs(ts: number): void {
-    this.wasm.replay_seek_ts?.(ts);
+    const timestamp = toSafeBigInt(ts);
+    if (timestamp !== null) this.wasm.replay_seek_ts?.(timestamp);
   }
 
   replayTick(): number | null {
-    const ts = this.wasm.replay_tick?.();
-    return Number.isFinite(ts) ? (ts as number) : null;
+    return toSafeNumber(this.wasm.replay_tick?.());
   }
 
   replayState(): ReplayState {
@@ -215,19 +214,15 @@ export class DrishyaChartClient {
   }
 
   selectDrawingAt(x: number, y: number): number | null {
-    const selected = this.wasm.select_drawing_at?.(x, y);
-    return Number.isFinite(selected) ? (selected as number) : null;
+    return toSafeNumber(this.wasm.select_drawing_at?.(x, y));
   }
 
   selectedDrawingId(): number | null {
-    const selected = this.wasm.selected_drawing_id?.();
-    if (selected === undefined || selected === null) return null;
-    const n = typeof selected === "bigint" ? Number(selected) : selected;
-    return Number.isFinite(n) && Number.isSafeInteger(n) ? n : null;
+    return toSafeNumber(this.wasm.selected_drawing_id?.());
   }
 
   selectDrawingById(drawingId: number): boolean {
-    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    const id = toSafeBigInt(drawingId) ?? BigInt(0);
     return this.wasm.select_drawing_by_id?.(id) ?? false;
   }
 
@@ -493,7 +488,7 @@ export class DrishyaChartClient {
   }
 
   getDrawingConfig(drawingId: number): DrawingConfig | null {
-    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    const id = toSafeBigInt(drawingId) ?? BigInt(0);
     const raw = this.wasm.drawing_config?.(id);
     if (!raw) return null;
     try {
@@ -515,7 +510,7 @@ export class DrishyaChartClient {
   }
 
   setDrawingConfig(drawingId: number, config: Partial<DrawingConfig>): void {
-    const id = Number.isSafeInteger(drawingId) ? BigInt(drawingId) : BigInt(0);
+    const id = toSafeBigInt(drawingId) ?? BigInt(0);
     const payload: Record<string, unknown> = {};
     if (config.stroke_color !== undefined) payload.stroke_color = config.stroke_color || null;
     if (config.fill_color !== undefined) payload.fill_color = config.fill_color || null;
