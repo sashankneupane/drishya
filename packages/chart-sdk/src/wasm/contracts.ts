@@ -376,8 +376,8 @@ export interface WasmChartLike {
   drawing_pointer_up?(x: number, y: number): boolean;
   drawing_cursor_hint?(x: number, y: number): string;
   cancel_drawing_interaction?(): void;
-  select_drawing_at?(x: number, y: number): number | undefined;
-  selected_drawing_id?(): number | undefined;
+  select_drawing_at?(x: number, y: number): number | bigint | undefined;
+  selected_drawing_id?(): number | bigint | undefined;
   select_drawing_by_id?(drawingId: number | bigint): boolean;
   clear_selected_drawing?(): void;
   delete_selected_drawing?(): boolean;
@@ -456,8 +456,8 @@ export interface WasmChartLike {
   create_drawing_group?(id: string, name: string, layer_id: string, parent_group_id: string | null): void;
   delete_drawing_group?(id: string): void;
   update_drawing_group?(id: string, json: string): void;
-  set_drawing_layer?(drawingId: number, layerId: string): boolean;
-  set_drawing_group?(drawingId: number, groupId: string): boolean;
+  set_drawing_layer?(drawingId: number | bigint, layerId: string): boolean;
+  set_drawing_group?(drawingId: number | bigint, groupId: string): boolean;
   set_drawing_group_visible?(groupId: string, visible: boolean): void;
   set_drawing_layer_visible?(layerId: string, visible: boolean): void;
   set_drawing_layer_order_json?(json: string): void;
@@ -488,10 +488,10 @@ export interface WasmChartLike {
   replay_play?(): void;
   replay_pause?(): void;
   replay_stop?(): void;
-  replay_step_bar?(): number | undefined;
-  replay_step_event?(): number | undefined;
-  replay_seek_ts?(ts: number): void;
-  replay_tick?(): number | undefined;
+  replay_step_bar?(): number | bigint | undefined;
+  replay_step_event?(): number | bigint | undefined;
+  replay_seek_ts?(ts: number | bigint): void;
+  replay_tick?(): number | bigint | undefined;
   replay_state_json?(): string;
 }
 
